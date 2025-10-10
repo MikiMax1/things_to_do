@@ -1,0 +1,315 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Things To Do — Generator</title>
+<meta name="description" content="Touch-friendly things-to-do generator (useful + silly), all in your browser.">
+<style>
+  :root { --bg:#0f172a; --panel:#111827; --txt:#e5e7eb; --sub:#9ca3af; --accent:#22c55e; }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;
+       background:linear-gradient(180deg,#0b1022,#0f172a); color:var(--txt)}
+  .wrap{max-width:900px;margin:0 auto;padding:16px 16px 64px}
+  .card{background:rgba(17,24,39,.85);border:1px solid #1f2937;border-radius:16px;
+        box-shadow:0 10px 30px rgba(0,0,0,.35);padding:16px;margin-top:16px}
+  h1{font-size:24px;margin:0 0 6px}
+  h2{font-size:18px;margin:0 0 6px}
+  p{color:var(--sub);margin:6px 0 0}
+  .grid{display:grid;grid-template-columns:1fr;gap:12px;margin-top:12px}
+  @media(min-width:760px){.grid{grid-template-columns:1fr 1fr}}
+  label{font-size:14px;color:var(--sub)}
+  input[type="number"],input[type="text"]{
+    background:#0b1220;border:1px solid #1f2937;border-radius:10px;color:var(--txt);
+    padding:10px 12px;outline:none;width:100%
+  }
+  .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .chip{display:inline-flex;align-items:center;gap:8px;background:#0b1220;
+        border:1px solid #1f2937;border-radius:999px;padding:9px 12px;cursor:pointer}
+  .chip input{accent-color:#22c55e;transform:scale(1.1)}
+  .btn{appearance:none;border:0;border-radius:12px;padding:12px 16px;font-weight:700;
+       cursor:pointer;color:white;background:linear-gradient(180deg,#22c55e,#16a34a)}
+  .btn.secondary{background:linear-gradient(180deg,#3b82f6,#2563eb)}
+  .btn:active{transform:translateY(1px)}
+  .results{display:grid;gap:10px;margin-top:12px}
+  .idea{background:#0b1220;border:1px solid #1f2937;border-radius:14px;padding:12px}
+  .tags{color:#a1a1aa;font-size:12px;margin-top:6px}
+  .toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+  .footer{margin-top:8px;color:#6b7280;font-size:12px}
+  .small{font-size:12px;color:#9ca3af}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card">
+    <h1>🎲 Things To Do — Generator</h1>
+    <p>Touch-friendly, mixed useful + silly. Works entirely in your browser; share the link and friends can use it too.</p>
+  </div>
+
+  <div class="card">
+    <div class="grid">
+      <div>
+        <label>How many suggestions?</label>
+        <input id="count" type="number" min="1" max="100" value="8">
+      </div>
+      <div>
+        <label>Max minutes (optional)</label>
+        <input id="maxmins" type="number" min="1" placeholder="e.g. 30">
+      </div>
+      <div>
+        <label>Seed (optional, for repeatable results)</label>
+        <input id="seed" type="number" placeholder="e.g. 42">
+      </div>
+      <div>
+        <label>Search text (optional)</label>
+        <input id="search" type="text" placeholder="e.g. playlist, yoga, cook">
+      </div>
+      <div>
+        <label>Include tags (tap to toggle)</label>
+        <div class="row" id="include"></div>
+        <div class="small">Examples: indoor, outdoor, creative, learning, mindful, productivity, practical, fitness, silly, free, cheap</div>
+      </div>
+      <div>
+        <label>Exclude tags (tap to toggle)</label>
+        <div class="row" id="exclude"></div>
+      </div>
+      <div style="grid-column:1/-1">
+        <label>Budget</label>
+        <div class="row" id="budget"></div>
+      </div>
+    </div>
+
+    <div class="toolbar">
+      <button class="btn" onclick="generate()">Generate</button>
+      <button class="btn secondary" onclick="saveTxt()">Save as .txt</button>
+      <button class="btn secondary" onclick="share()">Share</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Results</h2>
+    <div id="results" class="results"></div>
+    <div class="footer">Tip: set a Seed to reproduce the same list. Everything runs locally.</div>
+  </div>
+</div>
+
+<script>
+/* ====== FAST GENERATOR (Web Worker + batched DOM updates) ====== */
+
+/* ---------- UI helpers ---------- */
+function mkChips(id, items){
+  const root = document.getElementById(id);
+  root.innerHTML = "";
+  items.forEach(t=>{
+    const lbl = document.createElement("label");
+    lbl.className="chip";
+    lbl.innerHTML = `<input type="checkbox" value="${t}"><span>${t}</span>`;
+    root.appendChild(lbl);
+  });
+}
+function getChecked(id){ return [...document.querySelectorAll("#"+id+" input:checked")].map(x=>x.value); }
+
+/* ---------- Small spinner while generating ---------- */
+const resultsBox = () => document.getElementById("results");
+function showSpinner(){
+  const box = resultsBox();
+  box.innerHTML = `<div class="idea">Generating…</div>`;
+}
+
+/* ---------- Create a Web Worker from a Blob ---------- */
+const workerCode = `
+  const CURATED = ${JSON.stringify([
+    ["Learn a magic trick and perform it for someone", ["indoor","creative","social","cheap","<30m"]],
+    ["Do a 10-minute room reset (timer on!)", ["indoor","productivity","free","<30m"]],
+    ["Try a new fruit you’ve never had", ["outdoor","food","cheap","<30m"]],
+    ["Draw your favorite movie scene from memory", ["indoor","creative","free","<60m"]],
+    ["Write a haiku about today’s weather", ["indoor","creative","free","<15m"]],
+    ["Clean your phone’s camera lens and take 5 photos", ["either","creative","free","<30m"]],
+    ["Do 25 bodyweight squats while a song plays", ["indoor","fitness","free","<15m"]],
+    ["Handwrite a kind note to yourself and hide it", ["indoor","mindful","free","<15m"]],
+    ["Try a new walking route and notice 3 details", ["outdoor","mindful","free","<30m"]],
+    ["Organize one drawer—only one!", ["indoor","productivity","free","<30m"]],
+    ["Make a playlist with songs from the year you were born", ["indoor","creative","free","<60m"]],
+    ["Learn to say ‘hello’ in 7 languages", ["indoor","learning","free","<30m"]],
+    ["Cook something using exactly 5 ingredients", ["indoor","food","cheap","60-120m"]],
+    ["Invent a board game using coins and paper", ["indoor","creative","cheap","60-120m"]],
+    ["Do a socks-only dance battle (audience optional)", ["indoor","silly","fitness","free","<15m"]],
+    ["Build a blanket fort and read inside it", ["indoor","cozy","creative","cheap","60-120m"]],
+    ["Write a tiny sci-fi story (150 words max)", ["indoor","creative","free","<30m"]],
+    ["Sketch your room using only straight lines", ["indoor","creative","free","<30m"]],
+    ["Try breathing 4-7-8 for three rounds", ["either","mindful","free","<5m"]],
+    ["Find 10 items to donate or recycle", ["indoor","productivity","free","30-60m"]],
+    ["Do a color-themed photo scavenger hunt (find 5 red things)", ["either","creative","free","<30m"]],
+    ["Fix one squeak, wobble, or loose screw at home", ["indoor","practical","cheap","30-60m"]],
+    ["Have a staring contest with a houseplant", ["indoor","silly","free","<5m"]],
+    ["Write a postcard to your future self", ["indoor","reflect","cheap","<30m"]],
+    ["Try a no-phone walk and count interesting doors", ["outdoor","mindful","free","30-60m"]],
+    ["Practice juggling with 2 items (then 3 if brave)", ["either","learning","fitness","free","30-60m"]],
+    ["Cook breakfast for dinner", ["indoor","food","cheap","60-120m"]],
+    ["Refactor an old to-do list into 3 priorities", ["indoor","productivity","free","<15m"]],
+    ["Make a meme about your day (no posting required)", ["indoor","creative","silly","free","<30m"]],
+    ["Origami a crane from a receipt or scrap paper", ["indoor","creative","free","<30m"]],
+    ["Read the first chapter of a random book you own", ["indoor","learning","free","30-60m"]],
+    ["Build a domino run (books, blocks, or real dominos)", ["indoor","creative","cheap","60-120m"]],
+    ["Practice a foreign alphabet for 10 minutes", ["indoor","learning","free","<15m"]],
+    ["Do a 3-item gratitude list", ["either","reflect","free","<5m"]],
+    ["Stretch your calves and hips while the kettle boils", ["indoor","fitness","free","<10m"]],
+    ["Write a silly limerick about your socks", ["indoor","creative","silly","free","<15m"]],
+    ["Look up a constellation and try to spot it tonight", ["outdoor","learning","free","30-60m"]],
+    ["Clean one window and admire the difference", ["indoor","practical","free","<15m"]],
+    ["Make a paper airplane, optimize it with 3 test flights", ["either","creative","learning","free","<30m"]],
+    ["Try a 20-minute pomodoro on a lingering task", ["indoor","productivity","free","<30m"]],
+  ])};
+
+  const VERBS = ${JSON.stringify(["Learn","Try","Practice","Build","Explore","Organize","Fix","Design","Cook","Bake","Draw","Sketch","Paint","Write","Record","Photograph","Plant","Repot","Declutter","Clean","Polish","Assemble","Research","Repair","Conduct","Craft","Fold","Weave","Sew","Knit","Carve","Compose","Remix","Recreate","Rewatch","Compare","Map","Decode","Meditate on","Speed-run","Gamify","Curate","Test","Prototype"])};
+  const OBJECTS = ${JSON.stringify(["a five-ingredient meal","a minimalist desk setup","a 3-song playlist","a paper crane","a homemade spice mix","a gratitude list","a tiny comic strip","a micro-podcast (2 minutes)","a time-capsule note","a mood board","a capsule wardrobe plan","a birdhouse sketch","a habit tracker","a budget template","a plant-care schedule","a morning routine","a bedtime routine","a tiny automation","a poem about coffee","a map of favorite places","a desk yoga flow","a postcard to a friend","a 30-minute playlist","a shelf layout","a weekend micro-adventure plan","a photo collage","a memory palace","a silly limerick","a coin trick","a shoelace pattern"])};
+  const LOCATIONS = ${JSON.stringify(["at your desk","in the kitchen","on the balcony","in a nearby park","by a window","in your coziest corner","at the library","on the floor (yep)","in the backyard","on a bus route you’ve never taken","at a café","on a quiet street","under a tree","in the hallway"])};
+  const TWISTS = ${JSON.stringify(["using only items you already own","in under 20 minutes","without looking at a screen","with your non-dominant hand","blindfold the first 10 seconds (safely!)","inspired by a random Wikipedia article title","using a timer and upbeat music","as if you’re teaching a beginner","and share 1 photo with a friend","and rate your enjoyment 1–10 afterwards","while standing","with a cup of tea as a reward"])};
+
+  const TAGS_BY_VERB = ${JSON.stringify({
+    "Cook":["indoor","food"],"Bake":["indoor","food"],"Plant":["outdoor","practical"],"Repot":["indoor","practical"],
+    "Draw":["indoor","creative"],"Sketch":["indoor","creative"],"Paint":["indoor","creative"],"Write":["indoor","creative"],
+    "Photograph":["either","creative"],"Build":["indoor","creative"],"Organize":["indoor","productivity"],"Fix":["indoor","practical"],
+    "Clean":["indoor","practical"],"Meditate on":["either","mindful"],"Practice":["either","learning"],"Research":["indoor","learning"],
+    "Curate":["indoor","creative"],"Prototype":["indoor","creative","learning"],"Compose":["indoor","creative"],"Remix":["indoor","creative"],
+    "Speed-run":["either","productivity"],"Gamify":["either","silly"],"Fold":["indoor","creative"],"Weave":["indoor","creative"],
+    "Sew":["indoor","creative"],"Knit":["indoor","creative"]
+  })};
+
+  const DURATION_BUCKETS = ["<5m","<15m","<30m","30-60m","60-120m","120m+"];
+
+  function mulberry32(a){ return function(){ let t = a += 0x6D2B79F5; t = Math.imul(t ^ t>>>15, t|1); t ^= t + Math.imul(t ^ t>>>7, t|61); return ((t ^ t>>>14)>>>0) / 4294967296; } }
+  function choice(arr, rnd){ return arr[Math.floor(rnd()*arr.length)] }
+
+  function infer_budget(rnd){ const r=rnd(); if(r<0.60) return "free"; if(r<0.95) return "cheap"; return "spendy"; }
+  function infer_duration(verb,obj,twist,rnd){
+    const s=(verb+" "+obj+" "+twist).toLowerCase();
+    const longish=["prototype","compose","weave","knit","carve","research","weekend","capsule"].some(k=>s.includes(k));
+    const quickish = twist.toLowerCase().includes("under 20 minutes") || twist.toLowerCase().includes("first 10 seconds") || obj.toLowerCase().includes("micro");
+    if(quickish) return choice(["<5m","<15m","<30m"], rnd);
+    if(longish)  return choice(["60-120m","120m+"], rnd);
+    return choice(DURATION_BUCKETS, rnd);
+  }
+  function tag_union(...groups){ const set=new Set(); groups.flat().forEach(t=>set.add(t)); return Array.from(set).sort(); }
+  function make_combo_activity(rnd){
+    const verb=choice(VERBS,rnd), obj=choice(OBJECTS,rnd), loc=choice(LOCATIONS,rnd), twist=choice(TWISTS,rnd);
+    const base = TAGS_BY_VERB[verb] || ["either","creative"];
+    const budget = infer_budget(rnd), duration = infer_duration(verb,obj,twist,rnd);
+    return { text:\`\${verb} \${obj} \${loc}, \${twist}\`, tags: tag_union(base,[budget],[duration]) };
+  }
+
+  function bucketMax(b){ return b=="<5m"?5:b=="<15m"?15:b=="<30m"?30:b=="30-60m"?60:b=="60-120m"?120:1e9; }
+  function passes(a, include, exclude, maxmins, budgets, search){
+    const tset = new Set(a.tags);
+    if(include.length && !include.every(t=>tset.has(t))) return false;
+    if(exclude.length && exclude.some(t=>tset.has(t))) return false;
+    if(budgets.length && !budgets.some(b=>tset.has(b))) return false;
+    if(maxmins!=null){
+      const durs = a.tags.filter(t=>DURATION_BUCKETS.includes(t));
+      const best = durs.length ? Math.min(...durs.map(bucketMax)) : 1e9;
+      if(best>maxmins) return false;
+    }
+    if(search && !a.text.toLowerCase().includes(search)) return false;
+    return true;
+  }
+
+  onmessage = (ev)=>{
+    const {count, maxmins, seed, include, exclude, budgets, search} = ev.data;
+    const rnd = mulberry32(seed>>>0);
+    const want = Math.max(1, Math.min(100, count|0));
+    const out = [];
+    const seen = new Set();
+
+    // Try curated first quickly (cheap), then combos
+    for(let i=0;i<CURATED.length && out.length<want;i++){
+      if(rnd()<0.30){
+        const c = CURATED[Math.floor(rnd()*CURATED.length)];
+        const a = {text:c[0], tags:c[1]};
+        if(!seen.has(a.text) && passes(a, include, exclude, maxmins, budgets, search)){
+          out.push(a); seen.add(a.text);
+        }
+      }
+    }
+
+    let attempts = 0, maxAttempts = 20000; // safety cap
+    while(out.length<want && attempts<maxAttempts){
+      const a = make_combo_activity(rnd);
+      attempts++;
+      if(seen.has(a.text)) continue;
+      if(!passes(a, include, exclude, maxmins, budgets, search)) continue;
+      out.push(a); seen.add(a.text);
+    }
+    postMessage({items: out});
+  };
+`;
+
+const workerBlob = new Blob([workerCode], {type: "application/javascript"});
+const generatorWorker = new Worker(URL.createObjectURL(workerBlob));
+
+/* ---------- Wiring UI to Worker ---------- */
+function generate(){
+  showSpinner();
+  const count = Math.max(1, Math.min(100, parseInt(document.getElementById("count").value || "8", 10)));
+  const maxminsRaw = document.getElementById("maxmins").value.trim();
+  const maxmins = maxminsRaw ? parseInt(maxminsRaw,10) : null;
+  const seedRaw = document.getElementById("seed").value.trim();
+  const seed = seedRaw ? parseInt(seedRaw,10) : Math.floor(Math.random()*1e9);
+  const search = (document.getElementById("search").value || "").trim().toLowerCase();
+  const include = getChecked("include");
+  const exclude = getChecked("exclude");
+  const budgets = getChecked("budget");
+
+  generatorWorker.onmessage = (ev)=>{
+    // Batch render in one go (fast)
+    const {items} = ev.data;
+    const box = resultsBox();
+    box.innerHTML = "";
+    if(!items.length){
+      box.innerHTML = `<div class="idea">No suggestions matched. Try fewer filters.</div>`;
+      return;
+    }
+    const frag = document.createDocumentFragment();
+    items.forEach((it,i)=>{
+      const d = document.createElement("div");
+      d.className = "idea";
+      d.innerHTML = `<div><b>${i+1}.</b> ${it.text}</div><div class="tags">tags: ${it.tags.join(", ")}</div>`;
+      frag.appendChild(d);
+    });
+    box.appendChild(frag);
+  };
+
+  generatorWorker.postMessage({count, maxmins, seed, include, exclude, budgets, search});
+}
+
+/* ---------- Save + Share ---------- */
+function saveTxt(){
+  const els = document.querySelectorAll(".idea");
+  if(!els.length){ alert("Generate some items first 😊"); return; }
+  let txt = "Things To Do — Generated List\n\n";
+  els.forEach(e=>{ txt += e.textContent.trim()+"\n"; });
+  const blob = new Blob([txt], {type:"text/plain"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = "things_to_do.txt";
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url), 400);
+}
+
+async function share(){
+  const url = location.href;
+  const text = "Check out this Things-To-Do generator!";
+  if(navigator.share){
+    try{ await navigator.share({title:document.title,text, url}); }catch(e){}
+  }else{
+    try{ await navigator.clipboard.writeText(url); alert("Link copied to clipboard:\n"+url); }
+    catch(e){ alert("Your link:\n"+url); }
+  }
+}
+
+/* ---------- Build initial chips ---------- */
+mkChips("include", ["indoor","outdoor","creative","learning","mindful","productivity","practical","fitness","silly","free","cheap"].sort());
+mkChips("exclude", ["silly","spendy"].sort());
+mkChips("budget", ["free","cheap","spendy"]);
+</script>
+</body>
+</html>
