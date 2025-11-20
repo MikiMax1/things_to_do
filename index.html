@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Things To Do — Generator</title>
+<title>Everyday Helper Hub</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%2322c55e'/%3E%3Ctext x='32' y='40' text-anchor='middle' font-size='32' font-family='sans-serif' fill='white'%3E🎲%3C/text%3E%3C/svg%3E">
 <meta name="theme-color" content="#22c55e">
@@ -13,11 +13,12 @@
   *{box-sizing:border-box}
   body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;
        background:linear-gradient(180deg,#0b1022,#0f172a); color:var(--txt)}
-  .wrap{max-width:900px;margin:0 auto;padding:16px 16px 64px}
+  .wrap{max-width:1100px;margin:0 auto;padding:16px 16px 64px}
   .card{background:rgba(17,24,39,.85);border:1px solid #1f2937;border-radius:16px;
         box-shadow:0 10px 30px rgba(0,0,0,.35);padding:16px;margin-top:16px}
-  h1{font-size:24px;margin:0 0 6px}
+  h1{font-size:26px;margin:0 0 6px}
   h2{font-size:18px;margin:0 0 6px}
+  h3{font-size:16px;margin:0 0 6px}
   p{color:var(--sub);margin:6px 0 0}
   .grid{display:grid;grid-template-columns:1fr;gap:12px;margin-top:12px}
   @media(min-width:760px){.grid{grid-template-columns:1fr 1fr}}
@@ -42,13 +43,32 @@
   .small{font-size:12px;color:#9ca3af}
   .diag{font-size:12px;color:#9ca3af;margin-top:8px}
   .error{background:#7f1d1d;border:1px solid #b91c1c;padding:8px;border-radius:10px;color:#fee2e2;margin-top:10px}
+  .module-grid{display:grid;grid-template-columns:1fr;gap:12px}
+  @media(min-width:900px){.module-grid{grid-template-columns:1fr 1fr}}
+  .pill{display:inline-flex;align-items:center;gap:8px;padding:8px 12px;border-radius:999px;background:#0b1220;border:1px solid #1f2937;color:var(--txt)}
+  .pill strong{color:white}
+  .checklist-form{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
+  .checklist-form input{flex:1 1 220px}
+  .list{margin-top:12px;display:grid;gap:10px}
+  .task{display:flex;align-items:flex-start;gap:10px;background:#0b1220;border:1px solid #1f2937;border-radius:12px;padding:10px}
+  .task.done{opacity:.6;text-decoration:line-through}
+  .task small{color:#9ca3af}
+  .task button{margin-left:auto}
+  .btn.ghost{background:#0b1220;border:1px solid #1f2937;color:var(--txt)}
+  .calc{background:#0b1220;border:1px solid #1f2937;border-radius:14px;padding:12px;margin-top:10px}
+  .calc-display{background:#111827;border:1px solid #1f2937;border-radius:10px;padding:10px;font-size:22px;text-align:right;min-height:46px;word-wrap:break-word}
+  .calc-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:8px}
+  .calc-grid button{padding:12px;border-radius:10px;border:1px solid #1f2937;background:#111827;color:var(--txt);font-size:16px;cursor:pointer}
+  .calc-grid button.op{background:#193d2d;border-color:#22c55e}
+  canvas{background:#0b1220;border:1px solid #1f2937;border-radius:12px;display:block;margin-top:10px;width:100%;max-width:480px}
+  .status{color:#9ca3af;font-size:12px;margin-top:6px}
 </style>
 </head>
 <body>
 <div class="wrap">
   <div class="card">
-    <h1>🎲 Things To Do — Generator</h1>
-    <p>Touch-friendly, mixed useful + silly. Works entirely in your browser; share the link and friends can use it too.</p>
+    <h1>🧰 Everyday Helper Hub</h1>
+    <p>Generator, checklist, quick calculator, and a tiny AI pong table — all in one cozy page that runs in your browser.</p>
     <div id="diag" class="diag"></div>
   </div>
 
@@ -98,6 +118,67 @@
     <div class="footer">Tip: set a Seed to reproduce the same list. Everything runs locally.</div>
     <div id="err" class="error" style="display:none"></div>
   </div>
+
+  <div class="card">
+    <div class="row" style="justify-content:space-between;align-items:flex-start">
+      <div>
+        <h2>Checklist HQ</h2>
+        <p>Build a multifunctional checklist for errands, workouts, or little experiments. Tap an item to complete it.</p>
+      </div>
+      <div class="pill"><span>✨</span><span><strong>Keyboard tip:</strong> press Enter to add</span></div>
+    </div>
+    <div class="checklist-form">
+      <input id="task-text" type="text" placeholder="Add a task, e.g. Restock snacks">
+      <input id="task-tag" type="text" placeholder="Tag (optional)">
+      <button class="btn" id="add-task">Add</button>
+      <button class="btn ghost" id="clear-done">Clear done</button>
+    </div>
+    <div id="task-list" class="list"></div>
+    <div class="status" id="task-status"></div>
+  </div>
+
+  <div class="card module-grid">
+    <div>
+      <h2>Quick Calculator</h2>
+      <p>Speed through totals and tiny what-if math without leaving the page.</p>
+      <div class="calc">
+        <div class="calc-display" id="calc-display">0</div>
+        <div class="calc-grid">
+          <button onclick="pressCalc('7')">7</button>
+          <button onclick="pressCalc('8')">8</button>
+          <button onclick="pressCalc('9')">9</button>
+          <button class="op" onclick="pressCalc('/')">÷</button>
+          <button onclick="pressCalc('4')">4</button>
+          <button onclick="pressCalc('5')">5</button>
+          <button onclick="pressCalc('6')">6</button>
+          <button class="op" onclick="pressCalc('*')">×</button>
+          <button onclick="pressCalc('1')">1</button>
+          <button onclick="pressCalc('2')">2</button>
+          <button onclick="pressCalc('3')">3</button>
+          <button class="op" onclick="pressCalc('-')">–</button>
+          <button onclick="pressCalc('0')">0</button>
+          <button onclick="pressCalc('.')">.</button>
+          <button onclick="backspaceCalc()">⌫</button>
+          <button class="op" onclick="pressCalc('+')">+</button>
+          <button onclick="clearCalc()">C</button>
+          <button onclick="pressCalc('(')">(</button>
+          <button onclick="pressCalc(')')">)</button>
+          <button class="op" onclick="solveCalc()">=</button>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <h2>Ping Pong vs AI</h2>
+      <p>A bite-sized solo rally: use ↑/↓ or W/S. The right paddle tracks the ball with a smooth AI.</p>
+      <canvas id="pong" width="480" height="260"></canvas>
+      <div class="toolbar">
+        <button class="btn" id="start-pong">Start / Reset</button>
+        <button class="btn secondary" id="pause-pong">Pause</button>
+      </div>
+      <div class="status" id="pong-status">Press Start to serve.</div>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -123,234 +204,7 @@ function showError(e){ const d=document.getElementById('err'); d.style.display='
 
 // Shared data
 const CURATED = [
-  ["Learn a magic trick and perform it for someone", ["indoor","creative","social","cheap","<30m"]],
-  ["Do a 10-minute room reset (timer on!)", ["indoor","productivity","free","<30m"]],
-  ["Try a new fruit you’ve never had", ["outdoor","food","cheap","<30m"]],
-  ["Draw your favorite movie scene from memory", ["indoor","creative","free","<60m"]],
-  ["Write a haiku about today’s weather", ["indoor","creative","free","<15m"]],
-  ["Clean your phone’s camera lens and take 5 photos", ["either","creative","free","<30m"]],
-  ["Do 25 bodyweight squats while a song plays", ["indoor","fitness","free","<15m"]],
-  ["Handwrite a kind note to yourself and hide it", ["indoor","mindful","free","<15m"]],
-  ["Try a new walking route and notice 3 details", ["outdoor","mindful","free","<30m"]],
-  ["Organize one drawer—only one!", ["indoor","productivity","free","<30m"]],
-  ["Make a playlist with songs from the year you were born", ["indoor","creative","free","<60m"]],
-  ["Learn to say ‘hello’ in 7 languages", ["indoor","learning","free","<30m"]],
-  ["Cook something using exactly 5 ingredients", ["indoor","food","cheap","60-120m"]],
-  ["Invent a board game using coins and paper", ["indoor","creative","cheap","60-120m"]],
-  ["Do a socks-only dance battle (audience optional)", ["indoor","silly","fitness","free","<15m"]],
-  ["Build a blanket fort and read inside it", ["indoor","cozy","creative","cheap","60-120m"]],
-  ["Write a tiny sci-fi story (150 words max)", ["indoor","creative","free","<30m"]],
-  ["Sketch your room using only straight lines", ["indoor","creative","free","<30m"]],
-  ["Try breathing 4-7-8 for three rounds", ["either","mindful","free","<5m"]],
-  ["Find 10 items to donate or recycle", ["indoor","productivity","free","30-60m"]],
-  ["Do a color-themed photo scavenger hunt (find 5 red things)", ["either","creative","free","<30m"]],
-  ["Fix one squeak, wobble, or loose screw at home", ["indoor","practical","cheap","30-60m"]],
-  ["Have a staring contest with a houseplant", ["indoor","silly","free","<5m"]],
-  ["Write a postcard to your future self", ["indoor","reflect","cheap","<30m"]],
-  ["Try a no-phone walk and count interesting doors", ["outdoor","mindful","free","30-60m"]],
-  ["Practice juggling with 2 items (then 3 if brave)", ["either","learning","fitness","free","30-60m"]],
-  ["Cook breakfast for dinner", ["indoor","food","cheap","60-120m"]],
-  ["Refactor an old to-do list into 3 priorities", ["indoor","productivity","free","<15m"]],
-  ["Make a meme about your day (no posting required)", ["indoor","creative","silly","free","<30m"]],
-  ["Origami a crane from a receipt or scrap paper", ["indoor","creative","free","<30m"]],
-  ["Read the first chapter of a random book you own", ["indoor","learning","free","30-60m"]],
-  ["Build a domino run (books, blocks, or real dominos)", ["indoor","creative","cheap","60-120m"]],
-  ["Practice a foreign alphabet for 10 minutes", ["indoor","learning","free","<15m"]],
-  ["Do a 3-item gratitude list", ["either","reflect","free","<5m"]],
-  ["Stretch your calves and hips while the kettle boils", ["indoor","fitness","free","<10m"]],
-  ["Write a silly limerick about your socks", ["indoor","creative","silly","free","<15m"]],
-  ["Look up a constellation and try to spot it tonight", ["outdoor","learning","free","30-60m"]],
-  ["Clean one window and admire the difference", ["indoor","practical","free","<15m"]],
-  ["Make a paper airplane, optimize it with 3 test flights", ["either","creative","learning","free","<30m"]],
-  ["Try a 20-minute pomodoro on a lingering task", ["indoor","productivity","free","<30m"]],
-];
-const VERBS = ["Learn","Try","Practice","Build","Explore","Organize","Fix","Design","Cook","Bake","Draw","Sketch","Paint","Write","Record","Photograph","Plant","Repot","Declutter","Clean","Polish","Assemble","Research","Repair","Conduct","Craft","Fold","Weave","Sew","Knit","Carve","Compose","Remix","Recreate","Rewatch","Compare","Map","Decode","Meditate on","Speed-run","Gamify","Curate","Test","Prototype"];
-const OBJECTS = ["a five-ingredient meal","a minimalist desk setup","a 3-song playlist","a paper crane","a homemade spice mix","a gratitude list","a tiny comic strip","a micro-podcast (2 minutes)","a time-capsule note","a mood board","a capsule wardrobe plan","a birdhouse sketch","a habit tracker","a budget template","a plant-care schedule","a morning routine","a bedtime routine","a tiny automation","a poem about coffee","a map of favorite places","a desk yoga flow","a postcard to a friend","a 30-minute playlist","a shelf layout","a weekend micro-adventure plan","a photo collage","a memory palace","a silly limerick","a coin trick","a shoelace pattern"];
-const LOCATIONS = ["at your desk","in the kitchen","on the balcony","in a nearby park","by a window","in your coziest corner","at the library","on the floor (yep)","in the backyard","on a bus route you’ve never taken","at a café","on a quiet street","under a tree","in the hallway"];
-const TWISTS = ["using only items you already own","in under 20 minutes","without looking at a screen","with your non-dominant hand","blindfold the first 10 seconds (safely!)","inspired by a random Wikipedia article title","using a timer and upbeat music","as if you’re teaching a beginner","and share 1 photo with a friend","and rate your enjoyment 1–10 afterwards","while standing","with a cup of tea as a reward"];
-const TAGS_BY_VERB = {"Cook":["indoor","food"],"Bake":["indoor","food"],"Plant":["outdoor","practical"],"Repot":["indoor","practical"],"Draw":["indoor","creative"],"Sketch":["indoor","creative"],"Paint":["indoor","creative"],"Write":["indoor","creative"],"Photograph":["either","creative"],"Build":["indoor","creative"],"Organize":["indoor","productivity"],"Fix":["indoor","practical"],"Clean":["indoor","practical"],"Meditate on":["either","mindful"],"Practice":["either","learning"],"Research":["indoor","learning"],"Curate":["indoor","creative"],"Prototype":["indoor","creative","learning"],"Compose":["indoor","creative"],"Remix":["indoor","creative"],"Speed-run":["either","productivity"],"Gamify":["either","silly"],"Fold":["indoor","creative"],"Weave":["indoor","creative"],"Sew":["indoor","creative"],"Knit":["indoor","creative"]};
-const DURATION_BUCKETS = ["<5m","<15m","<30m","30-60m","60-120m","120m+"];
-
-function mulberry32(a){ return function(){ let t = a += 0x6D2B79F5; t = Math.imul(t ^ t>>>15, t|1); t ^= t + Math.imul(t ^ t>>>7, t|61); return ((t ^ t>>>14)>>>0) / 4294967296; } }
-function choice(arr, rnd){ return arr[Math.floor(rnd()*arr.length)] }
-function infer_budget(rnd){ const r=rnd(); if(r<0.60) return "free"; if(r<0.95) return "cheap"; return "spendy"; }
-function infer_duration(verb,obj,twist,rnd){
-  const s=(verb+" "+obj+" "+twist).toLowerCase();
-  const longish=["prototype","compose","weave","knit","carve","research","weekend","capsule"].some(k=>s.includes(k));
-  const quickish = twist.toLowerCase().includes("under 20 minutes") || twist.toLowerCase().includes("first 10 seconds") || obj.toLowerCase().includes("micro");
-  if(quickish) return choice(["<5m","<15m","<30m"], rnd);
-  if(longish)  return choice(["60-120m","120m+"], rnd);
-  return choice(DURATION_BUCKETS, rnd);
-}
-function tag_union(...groups){ const set=new Set(); groups.flat().forEach(t=>set.add(t)); return Array.from(set).sort(); }
-function make_combo_activity(rnd){
-  const verb=choice(VERBS,rnd), obj=choice(OBJECTS,rnd), loc=choice(LOCATIONS,rnd), twist=choice(TWISTS,rnd);
-  const base = TAGS_BY_VERB[verb] || ["either","creative"];
-  const budget = infer_budget(rnd), duration = infer_duration(verb,obj,twist,rnd);
-  return { text:`${verb} ${obj} ${loc}, ${twist}`, tags: tag_union(base,[budget],[duration]) };
-}
-function bucketMax(b){ return b=="<5m"?5:b=="<15m"?15:b=="<30m"?30:b=="30-60m"?60:b=="60-120m"?120:1e9; }
-function passes(a, include, exclude, maxmins, budgets, search){
-  const tset = new Set(a.tags);
-  if(include.length && !include.every(t=>tset.has(t))) return false;
-  if(exclude.length && exclude.some(t=>tset.has(t))) return false;
-  if(budgets.length && !budgets.some(b=>tset.has(b))) return false;
-  if(maxmins!=null){
-    const durs = a.tags.filter(t=>DURATION_BUCKETS.includes(t));
-    const best = durs.length ? Math.min(...durs.map(bucketMax)) : 1e9;
-    if(best>maxmins) return false;
-  }
-  if(search && !a.text.toLowerCase().includes(search.toLowerCase())) return false;
-  return true;
-}
-
-// Render
-function renderItems(items){
-  const box = resultsBox();
-  box.innerHTML = "";
-  if(!items.length){
-    box.innerHTML = `<div class="idea">No suggestions matched. Try fewer filters.</div>`;
-    return;
-  }
-  const frag=document.createDocumentFragment();
-  items.forEach((it,i)=>{
-    const d=document.createElement("div");
-    d.className="idea";
-    d.innerHTML=`<div><b>${i+1}.</b> ${it.text}</div><div class="tags">tags: ${it.tags.join(", ")}</div>`;
-    frag.appendChild(d);
-  });
-  box.appendChild(frag);
-}
-
-// Worker setup (with fallback)
-let generatorWorker = null;
-let workerOK = false;
-try{
-  const code = `
-    ${mulberry32.__code__ if False else ""}
-  `; // placeholder so Python doesn't format JS
-  const workerSource = `
-    ${ open(__file__).read() if False else ""}
-  `; // not used; we construct below
-}catch(e){/* ignore */}
-
-// Build worker blob text (copy of logic above)
-const workerText = `
-  const CURATED = ${JSON.stringify(CURATED)};
-  const VERBS = ${JSON.stringify(VERBS)};
-  const OBJECTS = ${JSON.stringify(OBJECTS)};
-  const LOCATIONS = ${JSON.stringify(LOCATIONS)};
-  const TWISTS = ${JSON.stringify(TWISTS)};
-  const TAGS_BY_VERB = ${JSON.stringify(TAGS_BY_VERB)};
-  const DURATION_BUCKETS = ${JSON.stringify(DURATION_BUCKETS)};
-  function mulberry32(a){ return function(){ let t = a += 0x6D2B79F5; t = Math.imul(t ^ t>>>15, t|1); t ^= t + Math.imul(t ^ t>>>7, t|61); return ((t ^ t>>>14)>>>0) / 4294967296; } }
-  function choice(arr, rnd){ return arr[Math.floor(rnd()*arr.length)] }
-  function infer_budget(rnd){ const r=rnd(); if(r<0.60) return "free"; if(r<0.95) return "cheap"; return "spendy"; }
-  function infer_duration(verb,obj,twist,rnd){
-    const s=(verb+" "+obj+" "+twist).toLowerCase();
-    const longish=["prototype","compose","weave","knit","carve","research","weekend","capsule"].some(k=>s.includes(k));
-    const quickish = twist.toLowerCase().includes("under 20 minutes") || twist.toLowerCase().includes("first 10 seconds") || obj.toLowerCase().includes("micro");
-    if(quickish) return choice(["<5m","<15m","<30m"], rnd);
-    if(longish)  return choice(["60-120m","120m+"], rnd);
-    return choice(DURATION_BUCKETS, rnd);
-  }
-  function tag_union(...groups){ const set=new Set(); groups.flat().forEach(t=>set.add(t)); return Array.from(set).sort(); }
-  function make_combo_activity(rnd){
-    const verb=choice(VERBS,rnd), obj=choice(OBJECTS,rnd), loc=choice(LOCATIONS,rnd), twist=choice(TWISTS,rnd);
-    const base = TAGS_BY_VERB[verb] || ["either","creative"];
-    const budget = infer_budget(rnd), duration = infer_duration(verb,obj,twist,rnd);
-    return { text:\`\${verb} \${obj} \${loc}, \${twist}\`, tags: tag_union(base,[budget],[duration]) };
-  }
-  function bucketMax(b){ return b=="<5m"?5:b=="<15m"?15:b=="<30m"?30:b=="30-60m"?60:b=="60-120m"?120:1e9; }
-  function passes(a, include, exclude, maxmins, budgets, search){
-    const tset = new Set(a.tags);
-    if(include.length && !include.every(t=>tset.has(t))) return false;
-    if(exclude.length && exclude.some(t=>tset.has(t))) return false;
-    if(budgets.length && !budgets.some(b=>tset.has(b))) return false;
-    if(maxmins!=null){
-      const durs = a.tags.filter(t=>DURATION_BUCKETS.includes(t));
-      const best = durs.length ? Math.min(...durs.map(bucketMax)) : 1e9;
-      if(best>maxmins) return false;
-    }
-    if(search && !a.text.toLowerCase().includes(search)) return false;
-    return true;
-  }
-  onmessage = (ev)=>{
-    const {count, maxmins, seed, include, exclude, budgets, search} = ev.data;
-    const rnd = mulberry32(seed>>>0);
-    const want = Math.max(1, Math.min(100, count|0));
-    const out = [];
-    const seen = new Set();
-    for(let i=0;i<CURATED.length && out.length<want;i++){
-      if(rnd()<0.30){
-        const c = CURATED[Math.floor(rnd()*CURATED.length)];
-        const a = {text:c[0], tags:c[1]};
-        if(!seen.has(a.text) && passes(a, include, exclude, maxmins, budgets, search)){
-          out.push(a); seen.add(a.text);
-        }
-      }
-    }
-    let attempts = 0, maxAttempts = 20000;
-    while(out.length<want && attempts<maxAttempts){
-      const a = make_combo_activity(rnd);
-      attempts++;
-      if(seen.has(a.text)) continue;
-      if(!passes(a, include, exclude, maxmins, budgets, search)) continue;
-      out.push(a); seen.add(a.text);
-    }
-    postMessage({items: out});
-  };
-`;
-
-let workerSupported = !!window.Worker;
-try{
-  if(workerSupported){
-    const blob = new Blob([workerText], {type:"application/javascript"});
-    generatorWorker = new Worker(URL.createObjectURL(blob));
-    workerOK = true;
-    logDiag("Mode: Web Worker ✅");
-  }else{
-    logDiag("Mode: Fallback (no Worker) ⚠️");
-  }
-}catch(e){
-  workerOK = false;
-  logDiag("Mode: Fallback (worker blocked) ⚠️");
-}
-
-function generate(){
-  showSpinner();
-  const count = Math.max(1, Math.min(100, parseInt(document.getElementById("count").value || "8", 10)));
-  const maxminsRaw = document.getElementById("maxmins").value.trim();
-  const maxmins = maxminsRaw ? parseInt(maxminsRaw,10) : null;
-  const seedRaw = document.getElementById("seed").value.trim();
-  const seed = seedRaw ? parseInt(seedRaw,10) : Math.floor(Math.random()*1e9);
-  const search = (document.getElementById("search").value || "").trim().toLowerCase();
-  const include = getChecked("include");
-  const exclude = getChecked("exclude");
-  const budgets = getChecked("budget");
-
-  if(workerOK){
-    generatorWorker.onmessage = (ev)=>{
-      const {items} = ev.data;
-      renderItems(items);
-    };
-    generatorWorker.onerror = (e)=>{ showError(e.message || "Worker error"); };
-    generatorWorker.postMessage({count, maxmins, seed, include, exclude, budgets, search});
-  }else{
-    // Fallback on main thread with chunked batching to keep UI responsive
-    try{
-      const rnd = (function(a){ return function(){ let t = a += 0x6D2B79F5; t = Math.imul(t ^ t>>>15, t|1); t ^= t + Math.imul(t ^ t>>>7, t|61); return ((t ^ t>>>14)>>>0) / 4294967296; } })(seed>>>0);
-      const seen = new Set(); const out = [];
-      const want = count; let attempts = 0;
-      function step(){
-        let loops = 0;
-        while(out.length<want && attempts<20000 && loops<500){
-          const useCur = rnd()<0.30;
-          const c = useCur ? CURATED[Math.floor(rnd()*CURATED.length)] : null;
-          const cand = useCur ? {text:c[0], tags:c[1]} : make_combo_activity(rnd);
-          attempts++; loops++;
-          if(seen.has(cand.text)) continue;
-          if(!passes(cand, include, exclude, maxmins, budgets, search)) continue;
+@@ -354,48 +435,205 @@ function generate(){
           out.push(cand); seen.add(cand.text);
         }
         if(out.length>=want || attempts>=20000){ renderItems(out); }
@@ -376,7 +230,7 @@ function saveTxt(){
 
 async function share(){
   const url = location.href;
-  const text = "Check out this Things-To-Do generator!";
+  const text = "Check out this Everyday Helper Hub!";
   if(navigator.share){
     try{ await navigator.share({title:document.title,text, url}); }catch(e){}
   }else{
@@ -384,6 +238,163 @@ async function share(){
     catch(e){ alert("Your link:\n"+url); }
   }
 }
+
+// Checklist
+let tasks = [];
+const $taskList = document.getElementById("task-list");
+const $taskText = document.getElementById("task-text");
+const $taskTag = document.getElementById("task-tag");
+const $taskStatus = document.getElementById("task-status");
+function renderTasks(){
+  $taskList.innerHTML = "";
+  if(!tasks.length){
+    const empty = document.createElement("div");
+    empty.className = "small";
+    empty.textContent = "No tasks yet — try " + ["morning jog","budget review","call a friend"][Math.floor(Math.random()*3)];
+    $taskList.appendChild(empty);
+  }
+  tasks.forEach(t=>{
+    const row = document.createElement("div");
+    row.className = "task" + (t.done?" done":"");
+    const cb = document.createElement("input");
+    cb.type = "checkbox"; cb.checked = t.done;
+    cb.addEventListener("change", ()=>toggleTask(t.id));
+    const txt = document.createElement("div");
+    txt.innerHTML = `<strong>${t.text}</strong>${t.tag?`<div class="small">${t.tag}</div>`:""}`;
+    row.appendChild(cb); row.appendChild(txt);
+    const btn = document.createElement("button");
+    btn.className = "btn ghost"; btn.textContent = "Remove";
+    btn.onclick = ()=>deleteTask(t.id);
+    row.appendChild(btn);
+    $taskList.appendChild(row);
+  });
+  const done = tasks.filter(t=>t.done).length;
+  $taskStatus.textContent = `${tasks.length} total · ${done} done · ${tasks.length-done} open`;
+}
+function addTask(){
+  const text = ($taskText.value||"").trim();
+  if(!text) return;
+  const tag = ($taskTag.value||"").trim();
+  tasks.unshift({id:crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2), text, tag, done:false});
+  $taskText.value = ""; $taskTag.value=""; renderTasks();
+}
+function toggleTask(id){
+  tasks = tasks.map(t=>t.id===id?{...t, done:!t.done}:t);
+  renderTasks();
+}
+function deleteTask(id){ tasks = tasks.filter(t=>t.id!==id); renderTasks(); }
+function clearDone(){ tasks = tasks.filter(t=>!t.done); renderTasks(); }
+document.getElementById("add-task").addEventListener("click", addTask);
+document.getElementById("clear-done").addEventListener("click", clearDone);
+$taskText.addEventListener("keydown", (e)=>{ if(e.key==="Enter") addTask(); });
+$taskTag.addEventListener("keydown", (e)=>{ if(e.key==="Enter") addTask(); });
+renderTasks();
+
+// Calculator
+let calcBuffer = "0";
+const $calcDisplay = document.getElementById("calc-display");
+function refreshCalc(){ $calcDisplay.textContent = calcBuffer; }
+function pressCalc(v){
+  if(calcBuffer==="Err") calcBuffer = "0";
+  if(calcBuffer==="0" && /[0-9.]/.test(v)) calcBuffer = "";
+  calcBuffer += v; refreshCalc();
+}
+function backspaceCalc(){ calcBuffer = calcBuffer.slice(0,-1) || "0"; refreshCalc(); }
+function clearCalc(){ calcBuffer = "0"; refreshCalc(); }
+function solveCalc(){
+  try{
+    const safe = calcBuffer.replace(/[^0-9+\-*/(). ]/g,"");
+    const val = Function(`"use strict"; return (${safe||0})`)();
+    calcBuffer = String(val);
+  }catch(e){ calcBuffer = "Err"; }
+  refreshCalc();
+}
+
+// Ping Pong mini-game
+const pong = document.getElementById("pong");
+const ctx = pong.getContext("2d");
+const pongState = {
+  ball:{x:pong.width/2,y:pong.height/2,vx:180,vy:90,r:7},
+  left:{y:pong.height/2-30,h:60},
+  right:{y:pong.height/2-30,h:60},
+  running:false,
+  paused:false,
+  rally:0,
+};
+let lastTime = 0;
+const keys = {up:false, down:false};
+function resetBall(dir=1){
+  pongState.ball.x = pong.width/2;
+  pongState.ball.y = pong.height/2;
+  pongState.ball.vx = 160*dir;
+  pongState.ball.vy = (Math.random()*140-70);
+  pongState.rally = 0;
+}
+function drawPong(){
+  ctx.clearRect(0,0,pong.width,pong.height);
+  ctx.fillStyle = "#0f172a"; ctx.fillRect(0,0,pong.width,pong.height);
+  ctx.strokeStyle = "#1f2937"; ctx.setLineDash([6,6]);
+  ctx.beginPath(); ctx.moveTo(pong.width/2,0); ctx.lineTo(pong.width/2,pong.height); ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle = "white";
+  ctx.fillRect(12,pongState.left.y,10,pongState.left.h);
+  ctx.fillRect(pong.width-22,pongState.right.y,10,pongState.right.h);
+  ctx.beginPath(); ctx.arc(pongState.ball.x,pongState.ball.y,pongState.ball.r,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle = "#9ca3af";
+  ctx.font = "12px system-ui";
+  ctx.fillText(`Rally: ${pongState.rally}`, 10, 16);
+}
+function stepPong(ts){
+  if(!pongState.running || pongState.paused) return;
+  const dt = (ts - lastTime)/1000 || 0; lastTime = ts;
+  const speed = 260;
+  if(keys.up) pongState.left.y -= speed*dt;
+  if(keys.down) pongState.left.y += speed*dt;
+  pongState.left.y = Math.max(6, Math.min(pong.height - pongState.left.h - 6, pongState.left.y));
+
+  // AI paddle follows the ball with easing
+  const targetY = pongState.ball.y - pongState.right.h/2;
+  pongState.right.y += (targetY - pongState.right.y) * 0.08;
+  pongState.right.y = Math.max(6, Math.min(pong.height - pongState.right.h - 6, pongState.right.y));
+
+  pongState.ball.x += pongState.ball.vx * dt;
+  pongState.ball.y += pongState.ball.vy * dt;
+  if(pongState.ball.y < pongState.ball.r || pongState.ball.y > pong.height - pongState.ball.r){ pongState.ball.vy *= -1; }
+
+  // Collisions
+  if(pongState.ball.x - pongState.ball.r < 22 && pongState.ball.y > pongState.left.y && pongState.ball.y < pongState.left.y+pongState.left.h){
+    pongState.ball.x = 22 + pongState.ball.r;
+    pongState.ball.vx = Math.abs(pongState.ball.vx) + 10;
+    pongState.ball.vy += (pongState.ball.y - (pongState.left.y+pongState.left.h/2))*3;
+    pongState.rally++;
+  }
+  if(pongState.ball.x + pongState.ball.r > pong.width-22 && pongState.ball.y > pongState.right.y && pongState.ball.y < pongState.right.y+pongState.right.h){
+    pongState.ball.x = pong.width-22 - pongState.ball.r;
+    pongState.ball.vx = -Math.abs(pongState.ball.vx) - 6;
+    pongState.ball.vy += (pongState.ball.y - (pongState.right.y+pongState.right.h/2))*2.5;
+    pongState.rally++;
+  }
+
+  // Missed
+  if(pongState.ball.x < 0){ resetBall(1); }
+  if(pongState.ball.x > pong.width){ resetBall(-1); }
+
+  drawPong();
+  requestAnimationFrame(stepPong);
+}
+function startPong(){ pongState.running = true; pongState.paused=false; resetBall(Math.random()>0.5?1:-1); drawPong(); lastTime = performance.now(); requestAnimationFrame(stepPong); updatePongStatus(); }
+function pausePong(){ pongState.paused = !pongState.paused; if(!pongState.paused){ lastTime = performance.now(); requestAnimationFrame(stepPong);} updatePongStatus(); }
+function updatePongStatus(){ document.getElementById("pong-status").textContent = pongState.paused?"Paused — press Pause to resume.": pongState.running?`Rally ${pongState.rally}. Keep it going!`:"Press Start to serve."; }
+document.getElementById("start-pong").addEventListener("click", ()=>{ startPong(); });
+document.getElementById("pause-pong").addEventListener("click", ()=>{ pausePong(); });
+window.addEventListener("keydown", (e)=>{
+  if(["ArrowUp","w","W"].includes(e.key)) keys.up = true;
+  if(["ArrowDown","s","S"].includes(e.key)) keys.down = true;
+});
+window.addEventListener("keyup", (e)=>{
+  if(["ArrowUp","w","W"].includes(e.key)) keys.up = false;
+  if(["ArrowDown","s","S"].includes(e.key)) keys.down = false;
+});
+drawPong();
 
 // Build initial chips
 mkChips("include", ["indoor","outdoor","creative","learning","mindful","productivity","practical","fitness","silly","free","cheap"].sort());
