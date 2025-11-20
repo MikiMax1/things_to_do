@@ -22,6 +22,7 @@
   p{color:var(--sub);margin:6px 0 0}
   .grid{display:grid;grid-template-columns:1fr;gap:12px;margin-top:12px}
   @media(min-width:760px){.grid{grid-template-columns:1fr 1fr}}
+  @media(min-width:1040px){.grid{grid-template-columns:repeat(3,1fr)}}
   label{font-size:14px;color:var(--sub)}
   input[type="number"],input[type="text"]{
     background:#0b1220;border:1px solid #1f2937;border-radius:10px;color:var(--txt);
@@ -39,6 +40,7 @@
   .idea{background:#0b1220;border:1px solid #1f2937;border-radius:14px;padding:12px}
   .tags{color:#a1a1aa;font-size:12px;margin-top:6px}
   .toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+  .toolbar .btn{flex:1 1 180px;justify-content:center;display:inline-flex;align-items:center;text-align:center}
   .footer{margin-top:8px;color:#6b7280;font-size:12px}
   .small{font-size:12px;color:#9ca3af}
   .diag{font-size:12px;color:#9ca3af;margin-top:8px}
@@ -62,13 +64,6 @@
   .calc-grid button.op{background:#193d2d;border-color:#22c55e}
   canvas{background:#0b1220;border:1px solid #1f2937;border-radius:12px;display:block;margin-top:10px;width:100%;max-width:480px}
   .status{color:#9ca3af;font-size:12px;margin-top:6px}
-  @media(max-width:640px){
-    .wrap{padding:12px}
-    .toolbar{flex-direction:column}
-    .toolbar .btn,.checklist-form button{width:100%}
-    .checklist-form{flex-direction:column}
-    .checklist-form input{flex:1 1 auto;width:100%}
-  }
 </style>
 </head>
 <body>
@@ -107,9 +102,8 @@
         <div class="row" id="exclude"></div>
       </div>
       <div style="grid-column:1/-1">
-        <label>Budget filter (optional)</label>
+        <label>Budget (optional)</label>
         <div class="row" id="budget"></div>
-        <div class="small">Pick the price vibe(s) you want: free, cheap, or spendy.</div>
       </div>
     </div>
 
@@ -212,7 +206,7 @@ function showError(e){ const d=document.getElementById('err'); d.style.display='
 
 // Shared data
 const CURATED = [
-@@ -203,58 +292,50 @@ function passes(a, include, exclude, maxmins, budgets, search){
+@@ -203,60 +286,52 @@ function passes(a, include, exclude, maxmins, budgets, search){
   if(search && !a.text.toLowerCase().includes(search.toLowerCase())) return false;
   return true;
 }
@@ -239,7 +233,7 @@ function renderItems(items){
 let generatorWorker = null;
 let workerOK = false;
 
-// Build worker blob text (copy of logic above)
+// Build worker blob text (copy of logic above, without DOM deps)
 const workerText = `
   const CURATED = ${JSON.stringify(CURATED)};
   const VERBS = ${JSON.stringify(VERBS)};
@@ -263,7 +257,9 @@ const workerText = `
   function make_combo_activity(rnd){
     const verb=choice(VERBS,rnd), obj=choice(OBJECTS,rnd), loc=choice(LOCATIONS,rnd), twist=choice(TWISTS,rnd);
     const base = TAGS_BY_VERB[verb] || ["either","creative"];
-@@ -354,48 +435,206 @@ function generate(){
+    const budget = infer_budget(rnd), duration = infer_duration(verb,obj,twist,rnd);
+    return { text:\`\${verb} \${obj} \${loc}, \${twist}\`, tags: tag_union(base,[budget],[duration]) };
+@@ -354,48 +429,205 @@ function generate(){
           out.push(cand); seen.add(cand.text);
         }
         if(out.length>=want || attempts>=20000){ renderItems(out); }
@@ -459,7 +455,6 @@ drawPong();
 mkChips("include", ["indoor","outdoor","creative","learning","mindful","productivity","practical","fitness","silly","free","cheap"].sort());
 mkChips("exclude", ["silly","spendy"].sort());
 mkChips("budget", ["free","cheap","spendy"]);
-generate();
 
 // PWA: register service worker
 if('serviceWorker' in navigator){
