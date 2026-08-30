@@ -56,7 +56,7 @@ var UI = (function () {
       var rt = box.querySelector('.rate');
       rt.textContent = U.signed(net[r.key], 1);
       rt.className = 'rate ' + (net[r.key] > 0.049 ? 'up' : net[r.key] < -0.049 ? 'dn' : '');
-      box.classList.toggle('warn', (r.key === 'food' && v < 30 && net.food < 0));
+      box.classList.toggle('warn', (r.key === 'food' && net[r.key] < 0.05 && v < G.pop * 3));
       box.title = r.name + ' — ' + Math.floor(v) + ' / ' + c;
     });
     var mood = G.happy > 75 ? '😀' : G.happy > 55 ? '🙂' : G.happy > 35 ? '😐' : G.happy > 18 ? '😟' : '😠';
@@ -196,6 +196,9 @@ var UI = (function () {
       G.buildings.forEach(function (b) { if (b.built && b.def.happy) capacity += b.def.happy * 6; });
       lines.push(['Amenities serve', Math.round(capacity) + ' of ' + Math.floor(G.pop) + ' people']);
       lines.push(['Food stores', G.res.food > G.pop * 10 ? 'plentiful (+8)' : G.res.food <= 0 ? 'empty (−34)' : G.res.food < G.pop * 2 ? 'low (−12)' : 'adequate']);
+      lines.push(['Growing?', G.pop >= SIM.housing() ? 'no — out of housing'
+        : G.res.food <= G.pop * 1.5 ? 'no — barns too low to feed more mouths'
+        : G.happy <= 38 ? 'no — people are too unhappy' : 'yes']);
       if (G.pop > SIM.housing()) lines.push(['Overcrowding', '−18']);
       if (SIM.season().key === 'winter') lines.push(['Winter', '−4']);
       if (G.tech.sanitation) lines.push(['Sanitation', '+8']);
@@ -914,14 +917,20 @@ var UI = (function () {
     el('ev-text').textContent = ev.text;
     var box = el('ev-choices');
     box.innerHTML = '';
-    ev.choices.forEach(function (c) {
+
+    function shortFor(c) {
+      if (!c.apply) return false;
+      return Object.keys(c.apply).some(function (k) {
+        return SIM.G.res[k] !== undefined && c.apply[k] < 0 && SIM.G.res[k] + c.apply[k] < 0;
+      });
+    }
+    var afford = ev.choices.map(function (c) { return !shortFor(c); });
+    var anyAfford = afford.some(function (a) { return a; });
+
+    function addChoice(c, disabled, note) {
       var b = h('<button class="ev-choice">' + c.label + '<small>' + (c.sub || '') + '</small></button>');
-      if (c.apply) {
-        var short = Object.keys(c.apply).some(function (k) {
-          return SIM.G.res[k] !== undefined && c.apply[k] < 0 && SIM.G.res[k] + c.apply[k] < 0;
-        });
-        if (short) { b.disabled = true; b.querySelector('small').textContent = (c.sub || '') + ' — you cannot afford this'; }
-      }
+      if (note) b.querySelector('small').textContent = (c.sub || '') + ' — ' + note;
+      b.disabled = !!disabled;
       b.addEventListener('click', function () {
         el('event-modal').classList.add('hidden');
         modalBusy = false;
@@ -931,12 +940,33 @@ var UI = (function () {
           startBattle('raid', { power: 30 + SIM.G.stats.wins * 12, name: 'Bandits', flavour: 'bandits' }, prevSpeed);
           return;
         }
-        if (c.apply) SIM.applyEffects(c.apply);
+        if (c.apply) SIM.applyEffects(c.apply);   // applyEffects clamps at zero
         setSpeed(prevSpeed || 1);
         refreshHUD();
       });
       box.appendChild(b);
+      return b;
+    }
+
+    ev.choices.forEach(function (c, i) {
+      // A choice you cannot fully pay for is only greyed out when some OTHER
+      // choice is affordable. If the realm can afford none of them, every one
+      // stays open and simply takes everything you have — an event must never
+      // be able to trap you behind a wall of dead buttons.
+      if (afford[i]) addChoice(c, false, null);
+      else if (anyAfford) addChoice(c, true, 'you cannot afford this');
+      else addChoice(c, false, 'takes everything you have');
     });
+
+    // Last resort: there is always a way out of an event.
+    if (!anyAfford) {
+      addChoice({
+        label: 'Endure it as best you can',
+        sub: 'You have nothing left to give — −8 contentment',
+        apply: { happy: -8 }
+      }, false, null);
+    }
+
     el('event-modal').classList.remove('hidden');
     U.sfx.horn();
   }
