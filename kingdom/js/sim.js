@@ -60,7 +60,7 @@ var SIM = (function () {
     var def = DATA.B[id];
     return {
       uid: uid++, id: id, def: def, x: x, y: y,
-      built: false, prog: 0, workers: 0, paused: false, prio: 1,
+      built: false, prog: 0, workers: 0, paused: false,
       t: Math.random() * 6.28, level: 1
     };
   }
@@ -273,42 +273,121 @@ var SIM = (function () {
     return { atk: 1 + Math.min(atk, 0.6), def: 1 + Math.min(def, 0.5) };
   }
 
-  /* jobs / workforce -------------------------------------- */
-  var PRIORITY = { food: 0, industry: 1, civic: 2, military: 3, housing: 4 };
-  function assignWorkers() {
+  /* jobs / workforce --------------------------------------
+     Nobody is told what to do by hand any more. Every few moments the realm
+     works out what it is short of, scores each workplace against that, and
+     spreads the villagers over the jobs in proportion to how badly each one
+     is needed. Anyone left over becomes a labourer rather than standing idle.
+  */
+
+  function raidSoon() {
+    return G.rival && G.rival.nextRaid < DATA.SEASON_LEN * 1.5 && seasonIndex() >= GRACE_SEASONS;
+  }
+
+  /* how badly the realm wants each resource right now */
+  function pressures() {
+    var net = ledger(), p = {};
+    ['food', 'wood', 'stone', 'iron', 'gold'].forEach(function (k) {
+      var c = cap(k), ratio = c > 0 ? G.res[k] / c : 0;
+      var need = 1;
+      if (net[k] < 0) need += 1.5;
+      if (ratio < 0.10) need += 1.3;
+      else if (ratio < 0.30) need += 0.55;
+      else if (ratio > 0.92) need -= 0.75;      // barns are full; go do something else
+      p[k] = Math.max(0.12, need);
+    });
+    // starving is not a resource problem, it is an emergency
+    if (G.res.food < G.pop * 2) p.food += 2.6;
+    else if (G.res.food < G.pop * 5) p.food += 1.1;
+    if (net.food < 0) p.food += 1.0;
+    return p;
+  }
+
+  /* score one workplace against those pressures */
+  function needScore(b, p) {
+    var s = 0.45;
+    if (b.def.produces) {
+      Object.keys(b.def.produces).forEach(function (k) { s = Math.max(s, p[k] || 1); });
+    }
+    if (b.def.trade) s = Math.max(s, p.gold);
+    if (b.def.research) s = Math.max(s, G.research ? 1.15 : 0.30);
+    if (b.def.happy) s = Math.max(s, G.happy < 42 ? 2.6 : G.happy < 62 ? 1.25 : 0.5);
+    if (b.def.aura) s = Math.max(s, 1.35);                       // multiplies its neighbours
+    if (b.def.store) s = Math.max(s, 0.55);
+    if (b.def.armyCap || b.def.defense) s = Math.max(s, raidSoon() ? 1.6 : 0.5);
+    if (b.id === 'smith') s = Math.max(s, raidSoon() ? 1.3 : 0.8);
+    // don't staff something that eats a resource we have none of
+    if (b.def.consumes) {
+      Object.keys(b.def.consumes).forEach(function (k) {
+        if (G.res[k] !== undefined && G.res[k] < 15) s *= 0.35;
+      });
+    }
+    // a farm on bad ground is a poor use of a pair of hands
+    if (b.def.soilBonus) {
+      var t = W.at(b.x, b.y);
+      if (t && t.terr === 'meadow') s *= 1.25;
+      if (t && t.terr === 'sand') s *= 0.75;
+    }
+    if (b.def.seasonal) s *= (0.55 + foodSeasonMul() * 0.6);      // nobody farms hard in deep winter
+    return Math.max(0.05, s);
+  }
+
+  /* a plain-English label for the UI */
+  function priorityLabel(score) {
+    return score >= 2.4 ? 'Critical' : score >= 1.5 ? 'High' : score >= 0.8 ? 'Normal' : 'Low';
+  }
+  /* the UI asks for this once per building per redraw, so memo it briefly */
+  var _pCache = null, _pAt = -1e9;
+  function pressuresCached() {
+    if (_pCache && Math.abs(G.time - _pAt) < 0.3) return _pCache;
+    _pCache = pressures(); _pAt = G.time;
+    return _pCache;
+  }
+  function scoreOf(b) {
+    if (!b.built || jobsOf(b) === 0 || b.paused) return 0;
+    return needScore(b, pressuresCached());
+  }
+
+  function assignWorkers(force) {
+    var key = G.buildings.length + '|' + Math.floor(G.pop) + '|' + (G.research ? 1 : 0);
+    if (!force && G._workTimer > 0 && G._workKey === key) return;
+    G._workTimer = 0.45;
+    G._workKey = key;
+
     var avail = Math.floor(G.pop);
     var list = G.buildings.filter(function (b) { return b.built && jobsOf(b) > 0 && !b.paused; });
-    list.sort(function (a, b) {
-      var pa = PRIORITY[a.def.cat], pb = PRIORITY[b.def.cat];
-      if (pa !== pb) return pa - pb;
-      return a.uid - b.uid;
-    });
-    list.forEach(function (b) { b.workers = 0; });
+    G.buildings.forEach(function (b) { b.workers = 0; });
+    if (!list.length) { G.idle = avail; G.builders = Math.min(6, Math.max(1, Math.floor(avail * 0.5) + 1)); return; }
 
-    // High priority is staffed to the brim first. Everything else shares what
-    // is left round-robin, so a new quarry still gets a pair of hands instead
-    // of the farms swallowing the whole village.
-    var high = list.filter(function (b) { return b.prio === 2; });
-    for (var i = 0; i < high.length && avail > 0; i++) {
-      var give = Math.min(jobsOf(high[i]), avail);
-      high[i].workers = give; avail -= give;
+    var p = pressures(), total = 0;
+    list.forEach(function (b) {
+      b._score = needScore(b, p);
+      b._weight = b._score * jobsOf(b);
+      total += b._weight;
+    });
+
+    // share the villagers out in proportion to need
+    var left = avail;
+    if (total > 0) {
+      list.forEach(function (b) {
+        var want = Math.floor(avail * b._weight / total);
+        var give = Math.min(jobsOf(b), want, left);
+        b.workers = give; left -= give;
+      });
     }
-    [1, 0].forEach(function (tier) {
-      var tierList = list.filter(function (b) { return (b.prio === undefined ? 1 : b.prio) === tier; });
-      var guard = 0;
-      while (avail > 0 && guard++ < 12) {
-        var gave = false;
-        for (var j = 0; j < tierList.length && avail > 0; j++) {
-          var b = tierList[j];
-          if (b.workers < jobsOf(b)) { b.workers++; avail--; gave = true; }
-        }
-        if (!gave) break;
+    // hand out the remainder to whoever wants it most
+    var order = list.slice().sort(function (a, b) { return b._score - a._score; });
+    var guard = 0;
+    while (left > 0 && guard++ < 400) {
+      var gave = false;
+      for (var i = 0; i < order.length && left > 0; i++) {
+        if (order[i].workers < jobsOf(order[i])) { order[i].workers++; left--; gave = true; }
       }
-    });
+      if (!gave) break;
+    }
 
-    G.buildings.forEach(function (b) { if (b.paused || jobsOf(b) === 0) b.workers = 0; });
-    G.idle = avail;
-    G.builders = Math.min(6, Math.max(1, Math.floor(avail * 0.5) + 1));
+    G.idle = left;
+    G.builders = Math.min(8, Math.max(1, Math.floor(left * 0.6) + 1));
   }
 
   function jobsOf(b) {
@@ -413,6 +492,14 @@ var SIM = (function () {
       Object.keys(o).forEach(function (k) { net[k] += o[k]; });
       if (b.built && b.def.upkeep) net.gold -= b.def.upkeep;
     });
+    // villagers with no post left to fill turn their hands to foraging and
+    // hauling — far less than a proper job, but never nothing
+    var spare = G.idle || 0;
+    if (spare > 0) {
+      var eff = efficiency();
+      net.food += spare * 0.020 * eff * foodSeasonMul();
+      net.wood += spare * 0.010 * eff;
+    }
     net.food -= G.pop * 0.055;
     net.food -= armySlots() * 0.012;
     net.gold -= armySlots() * 0.014;
@@ -438,7 +525,7 @@ var SIM = (function () {
     else if (G.res.food <= 0) t -= 34;
     else if (G.res.food < G.pop * 2) t -= 12;
     if (G.pop > housing()) t -= 18;
-    if (G.idle > G.pop * 0.45 && G.pop > 12) t -= 6;
+    if (G.idle > G.pop * 0.5 && G.pop > 14) t -= 4;   // too many with no real trade
     if (season().key === 'winter') t -= 4;
     t += (G.stats.wins - G.stats.losses) * 2;
     return U.clamp(t, 0, 100);
@@ -452,6 +539,7 @@ var SIM = (function () {
     var prevSeason = seasonIndex();
     G.time += dt;
 
+    G._workTimer = (G._workTimer || 0) - dt;
     assignWorkers();
 
     // construction
@@ -792,7 +880,7 @@ var SIM = (function () {
       eventTimer: G.eventTimer, speed: G.speed,
       buildings: G.buildings.map(function (b) {
         return [b.id, b.x, b.y, b.built ? 1 : 0, Number(b.prog.toFixed(3)),
-                b.paused ? 1 : 0, b.level || 1, b.prio === undefined ? 1 : b.prio];
+                b.paused ? 1 : 0, b.level || 1];
       })
     };
     return U.save(d);
@@ -819,7 +907,6 @@ var SIM = (function () {
       var b = mkBuilding(a[0], a[1], a[2]);
       b.built = !!a[3]; b.prog = a[4]; b.paused = !!a[5];
       b.level = a[6] || 1;
-      b.prio = a[7] === undefined ? 1 : a[7];
       commit(b);
     });
     refreshCounts();
@@ -841,6 +928,7 @@ var SIM = (function () {
     fieldStrength: fieldStrength, unitStrength: unitStrength,
     raidPower: raidPower, graceLeft: graceLeft, GRACE_SEASONS: GRACE_SEASONS,
     jobsOf: jobsOf, staffRatio: staffRatio, efficiency: efficiency,
+    scoreOf: scoreOf, priorityLabel: priorityLabel, assignWorkers: assignWorkers,
     season: season, seasonIndex: seasonIndex, year: year, seasonProgress: seasonProgress,
     nextCastle: nextCastle, upgradeCastle: upgradeCastle,
     lvlMul: lvlMul, canUpgrade: canUpgrade, upgradeCost: upgradeCost, upgradeBuilding: upgradeBuilding,

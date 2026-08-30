@@ -17,11 +17,20 @@ walls can be **dragged** to lay a whole line at once.
 inspect it, long-press for the same thing without selecting. The 🎯 button
 snaps back to your castle.
 
-**Villagers are the bottleneck.** Every workplace needs people, and people
-come from cottages. Workers are shared round-robin: *every* workplace gets
-one villager before any gets a second, so twenty buildings and ten people
-means everything runs at half speed. Build fewer, better things — or pause a
-building (in the inspector, or **People → Work**) to free its workers.
+**Villagers are the bottleneck, and they post themselves.** Every workplace
+needs people, and people come from cottages. You never assign anyone by hand:
+every few moments the realm works out what it is short of and spreads the
+villagers over the jobs in proportion to how badly each is needed. Let food run
+low and the farms go **Critical** and fill first; fill the barns and those same
+farms drop to **Low** and people move to the woods or the quarry. Unhappiness
+staffs the tavern; an approaching raid staffs the barracks.
+
+Anyone with no post left becomes a **labourer** — foraging and hauling for the
+builders, so nobody stands idle. Labourers are worth far less than a proper
+job, so a crowd of them means you need more workplaces.
+
+You keep two controls: **pause** a building to keep hands off it, and
+**upgrade** it to raise output without needing more people.
 
 **You can never get permanently stuck.** Your castle collects a small tax, so
 coin always trickles in. Any woodland tile can be felled for timber by tapping
@@ -49,9 +58,6 @@ leave.
 about six people per point of contentment they give. Content villagers work
 faster; miserable ones drift away.
 
-**Steer your workforce.** Set a building to **High** priority and it gets
-staffed to the brim before anything else; everything else shares what's left.
-
 **Fight.** Pick a **formation** in Army → War (Line, Wedge or Shieldwall).
 Soldiers who survive a victory become **veterans** — noticeably tougher next
 time out. Brannoch raids you every few seasons. Battles are played out on a
@@ -76,7 +82,7 @@ arrows to pan, `Esc` to back out.
 | World | 28×28 generated island — water, beaches, grass, rich soil, woodland, hills, crags |
 | Buildings | 21 types across housing, food, industry, civic and military |
 | Economy | Gold, food, wood, stone and iron, with storage caps, upkeep and winter spoilage |
-| People | Population, housing, jobs, idle workers, contentment |
+| People | Population, housing, self-assigning jobs, labourers, contentment |
 | Tech | 16 technologies over three tiers, gated behind libraries |
 | Trade | Sell surplus and buy shortfalls at a spread that narrows with research and market level |
 | Upgrades | Every building upgradeable to level 3 — more output, same workers |

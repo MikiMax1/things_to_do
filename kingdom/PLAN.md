@@ -63,8 +63,14 @@ cost you your kingdom.
 - **Building levels.** ✅ Every building upgrades to level 3, +50% output per
   level, with no extra villagers — the answer to a town bigger than its
   workforce.
-- **Worker priorities.** ✅ Low / Normal / High per building. High is staffed
-  to the brim first; the rest share what's left.
+- **Worker priorities.** ✅ …then removed again. Hand-set Low/Normal/High was
+  busywork: the game already knows what the realm is short of. Replaced with
+  automatic assignment — every workplace is scored each moment against real
+  pressures (stores against capacity, whether a resource is running negative,
+  contentment, an approaching raid, soil quality, the season) and villagers are
+  shared out in proportion to those scores. Spare hands become **labourers**
+  who forage and haul instead of standing idle. Pause and upgrade remain as the
+  two manual controls.
 - **Trade.** ✅ Sell surplus and buy shortfalls at a market, at a spread that
   narrows with Trade Charter, Guilds, Banking and market level.
 - **Formations.** ✅ Line, Wedge and Shieldwall, chosen in Army → War.
@@ -150,6 +156,15 @@ motivation behind it:
 
 ### Phase 2.5 — economy resilience (next)
 Refinements that came directly out of playing it:
+- **Show the reasoning.** The auto-assignment says *what* it decided (Critical
+  / High / Normal / Low) but not *why*. A one-line explanation per building
+  would make it trustworthy instead of magic.
+- **Let labourers specialise.** Foraging and hauling is a flat trickle; it
+  should depend on what is nearby — labourers by the woods gather more timber,
+  labourers by the water fish.
+- **Smooth the reassignment.** Villagers currently re-post instantly when
+  pressures shift; a short hysteresis would stop workplaces flickering between
+  states when a resource hovers near a threshold.
 - **Event previews.** Show what an event will cost against what you hold, so a
   choice never surprises you.
 - **Softer, scaled events.** Costs proportional to the size of your realm

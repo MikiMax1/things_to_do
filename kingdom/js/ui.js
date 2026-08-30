@@ -68,7 +68,7 @@ var UI = (function () {
     ma.textContent = '⚔️ ' + SIM.armyCount() + ' (' + SIM.armySlots() + '/' + SIM.armyCap() + ')';
     ma.className = 'mini';
     var note = '';
-    if (G.idle) note = '💤 ' + G.idle + ' idle';
+    if (G.idle) note = '🧺 ' + G.idle + ' labourer' + (G.idle > 1 ? 's' : '');
     if (G.research) note = '📜 ' + Math.round(U.clamp(G.research.prog / DATA.TECH[G.research.id].time, 0, 1) * 100) + '%';
     mn.textContent = note;
     mn.className = 'mini dim' + (note ? '' : ' hidden');
@@ -184,7 +184,7 @@ var UI = (function () {
       box.appendChild(h('<div class="card">' +
         '<div class="stat-line"><span>Villagers</span><b>' + Math.floor(G.pop) + ' / ' + SIM.housing() + ' housing</b></div>' +
         '<div class="stat-line"><span>At work</span><b>' + (Math.floor(G.pop) - (G.idle || 0)) + '</b></div>' +
-        '<div class="stat-line"><span>Idle</span><b>' + (G.idle || 0) + '</b></div>' +
+        '<div class="stat-line"><span>Labourers (foraging &amp; hauling)</span><b>' + (G.idle || 0) + '</b></div>' +
         '<div class="stat-line"><span>Contentment</span><b>' + Math.round(G.happy) + '% → ' + Math.round(target) + '%</b></div>' +
         '<div class="meter"><i class="' + (G.happy < 30 ? 'bad' : G.happy < 55 ? 'warn' : '') + '" style="width:' + G.happy + '%"></i></div>' +
         '<div class="stat-line" style="margin-top:8px"><span>Work efficiency</span><b>' + Math.round(SIM.efficiency() * 100) + '%</b></div>' +
@@ -210,7 +210,7 @@ var UI = (function () {
     }
 
     if (tab === 'jobs') {
-      box.appendChild(h('<p class="hint"><b>High</b> priority buildings are staffed to the brim first; everything else shares what is left, one villager each before any gets a second. Upgrading a building raises its output without needing more hands.</p>'));
+      box.appendChild(h('<p class="hint">Villagers post themselves. Every few moments the realm works out what it is short of and shares everyone out in proportion to how badly each workplace is needed — so a famine pulls people onto the farms and full barns send them elsewhere. Anyone with no post left becomes a <b>labourer</b>, foraging and hauling for the builders. Pause a building to keep hands off it, and upgrade to raise output without needing more people.</p>'));
       var working = G.buildings.filter(function (b) { return b.built && SIM.jobsOf(b) > 0; });
       if (!working.length) box.appendChild(h('<p class="hint">No workplaces yet.</p>'));
       working.sort(function (a, b) { return a.def.cat.localeCompare(b.def.cat) || a.uid - b.uid; });
@@ -221,19 +221,13 @@ var UI = (function () {
         var card = h('<div class="card"><div class="card-row">' +
           '<div class="card-ic"></div>' +
           '<div class="card-main"><h4>' + b.def.name + ' <span style="opacity:.5;font-weight:400">(' + b.x + ',' + b.y + ')</span></h4>' +
-          '<p>' + b.workers + '/' + SIM.jobsOf(b) + ' workers' + ((b.level || 1) > 1 ? ' · Lv ' + b.level : '') + ' · ' + outTxt + '/s</p></div>' +
+          '<p>' + b.workers + '/' + SIM.jobsOf(b) + ' workers · ' + (b.paused ? 'paused' : SIM.priorityLabel(SIM.scoreOf(b)) + ' need') +
+          ((b.level || 1) > 1 ? ' · Lv ' + b.level : '') + ' · ' + outTxt + '/s</p></div>' +
           '</div></div>');
         card.querySelector('.card-ic').appendChild(ART.icon(b.id, 40));
-        var prow2 = h('<div class="pill-row"></div>');
-        ['Low', 'Normal', 'High'].forEach(function (lab, i) {
-          var pl = h('<button class="pill' + ((b.prio === undefined ? 1 : b.prio) === i ? ' on' : '') + '">' + lab + '</button>');
-          pl.addEventListener('click', function () { b.prio = i; U.sfx.tap(); renderSheet(); });
-          prow2.appendChild(pl);
-        });
-        card.appendChild(prow2);
         var row = h('<div style="display:flex;gap:6px;margin-top:8px"></div>');
         var pb = h('<button class="btn sec" style="flex:1">' + (b.paused ? '▶ Resume' : '⏸ Pause') + '</button>');
-        pb.addEventListener('click', function () { b.paused = !b.paused; renderSheet(); });
+        pb.addEventListener('click', function () { b.paused = !b.paused; SIM.assignWorkers(true); renderSheet(); });
         var gb = h('<button class="btn sec" style="flex:1">Show</button>');
         gb.addEventListener('click', function () { RENDER.centreOn(b.x, b.y); closeSheet(); select({ b: b }); });
         row.appendChild(pb); row.appendChild(gb);
@@ -669,16 +663,11 @@ var UI = (function () {
       }
 
       if (b.built && SIM.jobsOf(b) > 0) {
-        body.innerHTML += '<div class="sect-label" style="margin:10px 0 4px">Worker priority</div>';
-        var prow = h('<div class="pill-row" style="margin:0 0 2px"></div>');
-        ['Low', 'Normal', 'High'].forEach(function (lab, i) {
-          var pl = h('<button class="pill' + ((b.prio === undefined ? 1 : b.prio) === i ? ' on' : '') + '">' + lab + '</button>');
-          pl.addEventListener('click', function () { b.prio = i; U.sfx.tap(); renderInspector(); });
-          prow.appendChild(pl);
-        });
-        body.appendChild(prow);
+        var sc = SIM.scoreOf(b);
+        body.innerHTML += '<div class="stat-line"><span>Assigned by the realm</span><b>' +
+          (b.paused ? 'paused' : SIM.priorityLabel(sc) + ' need') + '</b></div>';
         var pb = h('<button class="btn sec">' + (b.paused ? '▶ Resume' : '⏸ Pause') + '</button>');
-        pb.addEventListener('click', function () { b.paused = !b.paused; renderInspector(); });
+        pb.addEventListener('click', function () { b.paused = !b.paused; SIM.assignWorkers(true); renderInspector(); });
         acts.appendChild(pb);
       }
       if (b.id !== 'castle') {
