@@ -208,19 +208,29 @@ var SIM = (function () {
     rebuildPaths();
   }
 
-  /* how much traffic passes near a spot — a cheap stand-in for the goods
-     that move through it, until markets earn from real catchment */
-  function traffic(x, y, r) {
-    ensurePaths();
-    var n = 0;
-    for (var oy = -r; oy <= r; oy++) {
-      for (var ox = -r; ox <= r; ox++) {
-        var t = W.at(x + ox, y + oy);
-        if (t && t.path) n += Math.min(4, t.path);
-      }
-    }
-    return n;
+  /* What the realm produces each second, valued in gold. Markets take a cut
+     of this, so trade grows with what your kingdom actually makes rather than
+     with where a stall happens to sit. Cached — output() asks for it once per
+     market and it must not walk every building each time. */
+  var GOODS_VALUE = { food: 1.00, wood: 1.30, stone: 1.85, iron: 3.60 };
+  var _goodsCache = 0, _goodsAt = -1e9;
+  function goodsValue() {
+    if (Math.abs(G.time - _goodsAt) < 0.25) return _goodsCache;
+    var total = 0;
+    G.buildings.forEach(function (b) {
+      if (!b.built || b.paused || !b.def.produces) return;
+      var o = output(b);
+      Object.keys(o).forEach(function (k) {
+        if (o[k] > 0 && GOODS_VALUE[k]) total += o[k] * GOODS_VALUE[k];
+      });
+    });
+    _goodsAt = G.time; _goodsCache = total;
+    return total;
   }
+
+  /* Each further market takes a smaller cut of the same goods, so a second
+     market is worth building and a tenth is not. */
+  function marketCut(index) { return 0.16 * Math.pow(0.68, index); }
 
   function costOf(id) {
     var def = DATA.B[id], out = {};
@@ -302,7 +312,14 @@ var SIM = (function () {
     var c = {};
     Object.keys(DATA.B).forEach(function (k) { c[k] = 0; });
     G.buildings.forEach(function (b) { if (b.built) c[b.id]++; });
+    var mi = 0;
+    G.buildings.forEach(function (b) {
+      if (b.built && b.def.trade && b.id !== 'castle') b._mIdx = mi++;
+    });
     G.count = c;
+    // Both caches are keyed on game time, which does not move while paused.
+    // Building something must refresh them or the numbers freeze with it.
+    _goodsAt = -1e9; _pAt = -1e9;
   }
 
   function castleBonus() { return DATA.CASTLE[G.castle].bonus || {}; }
@@ -584,10 +601,11 @@ var SIM = (function () {
       });
     }
     if (b.def.trade) {
-      // busy ground means goods passing the stall, so a market set among the
-      // lanes earns far more than one stuck out on its own
-      var busy = b.id === 'castle' ? 0 : Math.min(30, traffic(b.x, b.y, 2));
-      var g = (b.def.trade * G.pop + 0.30) * eff * techMul('gold') * (1 + busy * 0.030);
+      // retail from the people, plus a cut of the realm's goods
+      var g = (b.def.trade * G.pop + 0.30) * eff * techMul('gold');
+      if (b.id !== 'castle') {
+        g += goodsValue() * marketCut(b._mIdx || 0) * eff * techMul('gold') * lvlMul(b);
+      }
       out.gold = (out.gold || 0) + g;
     }
     if (b.def.consumes) {
@@ -1065,7 +1083,8 @@ var SIM = (function () {
     nextCastle: nextCastle, upgradeCastle: upgradeCastle,
     lvlMul: lvlMul, canUpgrade: canUpgrade, upgradeCost: upgradeCost, upgradeBuilding: upgradeBuilding,
     canFell: canFell, fell: fell,
-    ensurePaths: ensurePaths, markPathsDirty: markPathsDirty, traffic: traffic,
+    ensurePaths: ensurePaths, markPathsDirty: markPathsDirty,
+    goodsValue: goodsValue, marketCut: marketCut,
     rebuildPaths: function () { markPathsDirty(); ensurePaths(true); },
     canTrade: canTrade, priceOf: priceOf, sell: sell, buy: buy, tradeSpread: tradeSpread,
     techAvailable: techAvailable, startResearch: startResearch,
