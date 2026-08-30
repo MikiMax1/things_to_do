@@ -451,7 +451,10 @@ var SIM = (function () {
         G._starveWarned = G.time;
         emit('toast', { msg: 'Your people are starving — build farms!', kind: 'bad' });
       }
-    } else if (G.pop < h && G.happy > 38) {
+    } else if (G.pop < h && G.happy > 38 && G.res.food > G.pop * 1.5) {
+      // People only have children while the barns can actually feed them.
+      // Without this the village breeds itself straight into a famine every
+      // time housing outruns the harvest.
       var rate = 0.09 * season().growth * (G.happy / 70) * U.clamp((h - G.pop) / 6, 0.15, 1);
       G.pop = Math.min(h, G.pop + rate * dt);
     } else if (G.happy < 18 && G.pop > 2) {

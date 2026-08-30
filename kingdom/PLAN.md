@@ -87,8 +87,42 @@ The game could strand you, in three separate ways:
   thresholds; a map now averages roughly 28% woodland, 18% rich soil, 11% hills
   and 2% crags, with at least 95% of land buildable on every seed tested.
 
+- **An event could freeze the game outright.** The Ash Storm charges food for
+  both of its options. Arrive with less food than the cheaper one costs and
+  both buttons grey out — with no dismiss, no third option and the clock
+  paused, the game simply stopped. Events now grey a choice out only when some
+  *other* choice is affordable; if you can afford none of them, every option
+  stays open and takes what you have, and an **"Endure it as best you can"**
+  option is always appended as a way through.
+- **Villages bred themselves into famine.** Population grew toward the housing
+  cap whether or not the barns could feed it, so overbuilding cottages led
+  straight to starvation. People now only have children while food stores are
+  above roughly 1.5× the population, and **People → Realm** says plainly why
+  growth has stalled.
+
 A market lets you trade your way out of any imbalance, and a steward's relief
 event catches anyone who still manages to end up with nothing.
+
+### Design rules these bugs bought us
+1. **No screen may ever have zero available actions.** Any modal that gates its
+   options on resources must guarantee a fallback.
+2. **Never charge for a choice the player cannot refuse.** A dilemma is only a
+   dilemma if you can pick something.
+3. **Growth must be self-limiting.** Any loop that expands consumption needs a
+   brake tied to supply, or it ends in a death spiral.
+
+### Phase 2.5 — economy resilience (next)
+Refinements that came directly out of playing it:
+- **Event previews.** Show what an event will cost against what you hold, so a
+  choice never surprises you.
+- **Softer, scaled events.** Costs proportional to the size of your realm
+  rather than flat numbers, so a storm bites a village and a kingdom equally.
+- **A food forecast.** A seasons-of-food-left readout in the HUD, and a warning
+  before winter if your stores will not cover it.
+- **Emergency rationing.** A toggle that halves food consumption at a cost to
+  contentment, to ride out a bad winter deliberately.
+- **Auto-balancing worker fallback.** When food goes negative, idle villagers
+  should drift to farms on their own rather than waiting to be told.
 
 ### Phase 3 — the world beyond Ashveil
 - **A world map.** Ashveil as one holding among several, with neighbours to
