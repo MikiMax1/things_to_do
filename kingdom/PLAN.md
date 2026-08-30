@@ -1,5 +1,26 @@
 # Kingdom of Ashveil — the redesign plan
 
+## Start here next session
+
+**Next task: reach, and local contentment.** The smallest useful slice of the
+spatial rework, and everything else in the plan is queued behind it.
+
+- **Do:** each dwelling is served only by the amenities that can reach it;
+  realm contentment becomes the average across households instead of a global
+  pool. `happyTarget()` in `sim.js` is the function to change.
+- **Ship with it:** a contentment overlay. Without a way to *see* which houses
+  are served, this makes the game more opaque, not less. That is not optional.
+- **Known trap:** existing kingdoms were built when placement did not matter,
+  so switching this on will hurt them. Either apply it to new games only, or
+  give a grace period with a clear explanation and cheap building moves.
+- **Also fix while there:** the inspector currently says "+4 realm-wide" for
+  amenities. That line becomes wrong the moment this lands.
+- **Then:** markets earning from goods in their catchment, which reuses the
+  same reach code.
+
+Everything below is context and the longer plan. The balance audit is the part
+worth re-reading — it is measured from the build, not guessed.
+
 ## Where it started
 
 The original was one 6×6 SVG grid, five buildings, a "Next season" button and
