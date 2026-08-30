@@ -1,0 +1,50 @@
+* { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #F4F1EA;
+    color: #2C2C2A;
+    padding: 16px;
+    max-width: 480px;
+    margin: 0 auto;
+  }
+  h1 { font-size: 20px; font-weight: 600; margin: 0 0 4px; }
+  .sub { font-size: 13px; color: #6B6A63; margin: 0 0 16px; }
+  svg#map { width: 100%; height: auto; display: block; background: #EAF3DE; border-radius: 12px; margin-bottom: 10px; border: 1px solid #D3D1C7; }
+  .tile { cursor: pointer; }
+  .btnrow { display: grid; grid-template-columns: repeat(3,1fr); gap: 6px; margin-bottom: 6px; }
+  button {
+    font-family: inherit;
+    font-size: 12px;
+    padding: 10px 4px;
+    border-radius: 8px;
+    border: 1px solid #D3D1C7;
+    background: #fff;
+    cursor: pointer;
+    color: #2C2C2A;
+  }
+  button:active { transform: scale(0.97); }
+  button.active { background: #EAF3DE; border-color: #639922; font-weight: 600; }
+  button.wide { width: 100%; }
+  .selinfo { font-size: 12px; color: #6B6A63; margin: 0 0 14px; }
+  .selinfo b { color: #2C2C2A; }
+  .statgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 14px; }
+  .statcard { background: #fff; border: 1px solid #E5E3DA; border-radius: 8px; padding: 10px 12px; }
+  .statcard .lbl { font-size: 11px; color: #6B6A63; margin: 0; }
+  .statcard .val { font-size: 19px; font-weight: 600; margin: 2px 0 0; }
+  .card { background: #fff; border: 1px solid #E5E3DA; border-radius: 12px; padding: 12px 14px; margin-bottom: 12px; }
+  .card p.title { font-size: 12px; color: #6B6A63; margin: 0 0 8px; }
+  .barwrap { height: 6px; background: #F1EFE8; border-radius: 4px; overflow: hidden; margin: 6px 0; }
+  .barfill { height: 100%; background: #378ADD; }
+  .questcard { border: 1px solid #E5E3DA; border-radius: 8px; padding: 8px 10px; margin-bottom: 6px; }
+  .questcard:last-child { margin-bottom: 0; }
+  .questcard p { margin: 0; }
+  .questcard .qlabel { font-size: 12px; }
+  .questcard .qreward { font-size: 11px; color: #185FA5; margin-top: 2px; }
+  .mrow { display: flex; align-items: center; gap: 8px; font-size: 12px; padding: 3px 0; }
+  .mrow .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: #D3D1C7; }
+  .mrow .dot.hit { background: #1D9E75; }
+  .mrow .done { color: #2C2C2A; }
+  .mrow .pending { color: #A5A39A; }
+  #log { max-height: 130px; overflow-y: auto; font-size: 12px; color: #6B6A63; line-height: 1.6; }
+  #log div { padding: 2px 0; }
