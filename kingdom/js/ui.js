@@ -140,12 +140,11 @@ var UI = (function () {
   /* ---------------- BUILD ---------------- */
   function buildBody(box, cat) {
     var G = SIM.G;
-    box.appendChild(h('<p class="hint">Pick a building, then tap the land. Roads are laid for you automatically — a building joined to the castle by road produces <b>+' +
-      Math.round(SIM.ROAD_BONUS * 100) + '%</b>. You can still lay your own by dragging, or switch the automatic ones off in The Realm → Settings.</p>'));
+    box.appendChild(h('<p class="hint">Pick a building, then tap the land. Walls can be dragged in a line. Footpaths wear themselves in between your buildings — they cost nothing, take no space, and you can build straight over them.</p>'));
     var any = false;
     Object.keys(DATA.B).forEach(function (id) {
       var def = DATA.B[id];
-      if (def.cat !== cat || def.unique) return;
+      if (def.cat !== cat || def.unique || def.isRoad) return;
       var locked = def.tech && !G.tech[def.tech];
       var maxed = def.max && G.count[id] >= def.max;
       any = true;
@@ -475,7 +474,7 @@ var UI = (function () {
       box.appendChild(h('<div class="card">' +
         '<div class="stat-line"><span>Season</span><b>' + SIM.season().name + ', Year ' + SIM.year() + '</b></div>' +
         '<div class="stat-line"><span>Buildings standing</span><b>' + built + '</b></div>' +
-        '<div class="stat-line"><span>Roads laid</span><b>' + (G.count.road || 0) + '</b></div>' +
+
         '<div class="stat-line"><span>Research complete</span><b>' + G.stats.techDone + ' / ' + Object.keys(DATA.TECH).length + '</b></div>' +
         '<div class="stat-line"><span>Charters fulfilled</span><b>' + Object.keys(G.quests).length + ' / ' + DATA.QUESTS.length + '</b></div>' +
         '<div class="stat-line"><span>Raids survived</span><b>' + G.stats.raidsSurvived + '</b></div>' +
@@ -532,14 +531,6 @@ var UI = (function () {
         toast(SIM.save() ? 'Kingdom saved.' : 'Could not save (storage blocked).', SIM.save() ? 'good' : 'bad');
       });
       box.appendChild(sv);
-      var ar = h('<button class="btn sec wide">' + (G.autoRoads !== false ? '🛤️ Roads: laid automatically' : '🛤️ Roads: placed by hand') + '</button>');
-      ar.addEventListener('click', function () {
-        G.autoRoads = !(G.autoRoads !== false);
-        toast(G.autoRoads ? 'New buildings will be joined to the road network automatically.'
-                          : 'You will lay roads yourself from the Build menu.', 'good');
-        renderSheet();
-      });
-      box.appendChild(ar);
       var snd = h('<button class="btn sec wide">' + (U.isMuted() ? '🔇 Sound off' : '🔊 Sound on') + '</button>');
       snd.addEventListener('click', function () { toggleSound(); renderSheet(); });
       box.appendChild(snd);
@@ -637,16 +628,6 @@ var UI = (function () {
         : 'Under construction — ' + Math.round(b.prog * 100) + '%';
       var out = SIM.output(b);
       var lines = [];
-      if (b.built && !def.isRoad && !def.isWall) {
-        var conn = SIM.isConnected(b);
-        lines.push('<div class="stat-line"><span>Road to the castle</span><b style="color:' +
-          (conn ? '#8fd06a' : '#e0b23c') + '">' +
-          (conn ? 'connected +' + Math.round(SIM.ROAD_BONUS * 100) + '% output' : 'not connected') + '</b></div>');
-      }
-      Object.keys(out).forEach(function (k) {
-        if (Math.abs(out[k]) < 0.001) return;
-        lines.push('<div class="stat-line"><span>' + k + '</span><b>' + U.signed(out[k], 2) + '/s</b></div>');
-      });
       if (def.upkeep) lines.push('<div class="stat-line"><span>upkeep</span><b>−' + def.upkeep.toFixed(2) + ' g/s</b></div>');
       if (def.housing) lines.push('<div class="stat-line"><span>housing</span><b>+' + def.housing + '</b></div>');
       // NB: contentment is still pooled realm-wide, so don't claim a radius
@@ -655,6 +636,10 @@ var UI = (function () {
       if (def.defense) lines.push('<div class="stat-line"><span>defence</span><b>+' + def.defense * (SIM.G.tech.fortification ? 1.6 : 1) + '</b></div>');
       if (def.armyCap) lines.push('<div class="stat-line"><span>troop capacity</span><b>+' + def.armyCap + '</b></div>');
       if (def.aura) lines.push('<div class="stat-line"><span>aura</span><b>+' + Math.round(Object.values(def.aura)[0] * 100) + '% nearby</b></div>');
+      if (b.built && def.trade && b.id !== 'castle') {
+        lines.push('<div class="stat-line"><span>Passing trade</span><b>' + SIM.traffic(b.x, b.y, 2) +
+          ' (busier ground earns more)</b></div>');
+      }
       if (b.built && def.scaleNear) {
         var n = W.nearCount(b.x, b.y, def.scaleNear.terrain, 1);
         lines.push('<div class="stat-line"><span>resource tiles nearby</span><b>' + n + '</b></div>');
@@ -706,7 +691,7 @@ var UI = (function () {
       ic.textContent = { water: '🌊', shore: '🌊', sand: '🏖️', grass: '🌿', meadow: '🌸', forest: '🌲', hill: '⛰️', rock: '🪨' }[t.terr];
       ic.style.fontSize = '20px';
       el('insp-name').textContent = terr.name;
-      el('insp-sub').textContent = 'Tile ' + t.x + ', ' + t.y + (t.road ? ' · road' : '');
+      el('insp-sub').textContent = 'Tile ' + t.x + ', ' + t.y + (t.path ? ' · footpath' : '');
       var near = {};
       ['forest', 'rock', 'hill', 'water'].forEach(function (k) { near[k] = W.nearCount(t.x, t.y, [k], 1); });
       body.innerHTML =
@@ -733,15 +718,6 @@ var UI = (function () {
         var bb = h('<button class="btn">Build here</button>');
         bb.addEventListener('click', function () { clearSelection(); openSheet('build'); });
         acts.appendChild(bb);
-      }
-      if (t.road) {
-        var rb = h('<button class="btn danger">Tear up road</button>');
-        rb.addEventListener('click', function () {
-          var road = SIM.G.buildings.filter(function (b2) { return b2.def.isRoad && b2.x === t.x && b2.y === t.y; })[0];
-          if (road) SIM.demolish(road); else t.road = false;
-          clearSelection(); refreshHUD();
-        });
-        acts.appendChild(rb);
       }
     }
   }
@@ -1059,9 +1035,6 @@ var UI = (function () {
       if (kind === 'raid-incoming') eventQueue.push('raid');
       if (kind === 'relief') eventQueue.push('relief');
       if (kind === 'season') { chronicle(payload.name + ' comes to Ashveil.'); }
-      if (kind === 'roads') {
-        toast('Laid ' + payload.laid + ' road tile' + (payload.laid > 1 ? 's' : '') + ' to join it to the castle.', 'good');
-      }
       if (kind === 'completed') {
         RENDER.puff(payload.x + .5, payload.y + .6, '#e8dcb5', 10);
         RENDER.floater(payload.x + .5, payload.y - .1, payload.def.name + ' done', '#a8f07a');

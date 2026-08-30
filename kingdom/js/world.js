@@ -153,8 +153,6 @@ var W = (function () {
       if (!t) return { ok: false, why: 'Outside the realm' };
       if (def.terrain.indexOf(t.terr) < 0) return { ok: false, why: 'Cannot build on ' + DATA.TERRAIN[t.terr].name.toLowerCase() };
       if (t.bld) return { ok: false, why: 'Already occupied' };
-      if (t.road && !def.isRoad) return { ok: false, why: 'A road runs here' };
-      if (def.isRoad && t.road) return { ok: false, why: 'Already a road' };
     }
     if (def.near) {
       var n = nearCount(x, y, def.near.terrain, 1);
@@ -174,7 +172,7 @@ var W = (function () {
     if (t.bld && t.bld.def.isWall) return false;
     return true;
   }
-  function stepCost(t) { return t.road ? 0.45 : (t.terr === 'forest' ? 1.5 : 1); }
+  function stepCost(t) { return t.path ? 0.45 : (t.terr === 'forest' ? 1.5 : 1); }
 
   var NB = [[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]];
 
@@ -228,7 +226,6 @@ var W = (function () {
   function serialize() {
     var mods = [];
     tiles.forEach(function (t, i) {
-      if (t.road) mods.push([i, 'r']);
       if (t.cleared) mods.push([i, 'c', t.terr]);
     });
     return { seed: seed, mods: mods };
@@ -238,7 +235,6 @@ var W = (function () {
     (d.mods || []).forEach(function (m) {
       var t = tiles[m[0]];
       if (!t) return;
-      if (m[1] === 'r') t.road = true;
       if (m[1] === 'c') { t.cleared = true; t.terr = m[2]; }
     });
   }
