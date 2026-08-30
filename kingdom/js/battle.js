@@ -119,11 +119,13 @@ var BATTLE = (function () {
       spec.warhound = Math.round(budget / 26);
       spec.bowman = Math.round(budget / 30);
     } else {
-      spec.axeman = Math.max(2, Math.round(budget / 15));
-      spec.raider = Math.max(2, Math.round(budget / 13));
-      spec.bowman = Math.round(budget / 22);
-      if (budget > 70) spec.warhound = Math.round(budget / 40);
-      if (budget > 110) spec.champion = Math.max(1, Math.round(budget / 90));
+      // small war bands are mostly light raiders; the heavy troops only
+      // appear once Brannoch is actually throwing weight at you
+      spec.raider = Math.max(2, Math.round(budget / 11));
+      spec.axeman = Math.round(budget / 18);
+      spec.bowman = Math.round(budget / 26);
+      if (budget > 70) spec.warhound = Math.round(budget / 42);
+      if (budget > 120) spec.champion = Math.max(1, Math.round(budget / 95));
     }
     Object.keys(spec).forEach(function (k) { if (!spec[k]) delete spec[k]; });
     return spec;

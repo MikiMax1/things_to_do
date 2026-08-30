@@ -26,7 +26,7 @@ var SIM = (function () {
       tech: {}, research: null, researchPts: 0,
       castle: 0,
       army: { militia: 4 },
-      rival: { str: 34, anger: 0, nextRaid: DATA.SEASON_LEN * 3.2 },
+      rival: { str: 30, anger: 0, nextRaid: DATA.SEASON_LEN * 6.5, warned: false },
       quests: {}, questShown: [],
       stats: { wins: 0, losses: 0, built: 0, raidsSurvived: 0, techDone: 0, upgrades: 0, traded: 0 },
       vets: {}, formation: 'line',
@@ -221,6 +221,41 @@ var SIM = (function () {
     Object.keys(G.army).forEach(function (k) { n += G.army[k]; });
     return n;
   }
+
+  /* ---------------------------------------------------------
+     how strong a force actually is — one formula, used by the
+     odds readout AND by how hard Brannoch hits you
+     --------------------------------------------------------- */
+  var GRACE_SEASONS = 6;
+
+  function unitStrength(hp, atk, def) { return (hp * 0.25 + atk * 1.6 + def * 0.8) / 3.1; }
+
+  function fieldStrength(extraDef) {
+    var sb = smithBonus(), out = 0;
+    Object.keys(G.army).forEach(function (k) {
+      var u = DATA.UNITS[k];
+      if (!u) return;
+      out += G.army[k] * unitStrength(u.hp, u.atk * sb.atk, u.def + (extraDef || 0));
+    });
+    return out;
+  }
+
+  /* Brannoch sends a war band sized against YOU, not against a number that
+     ticks up on its own. A defenceless village gets a scouting party; a
+     kingdom with knights gets a real war. Never more than their true
+     strength, so beating them down still counts for something. */
+  function raidPower() {
+    var seasons = seasonIndex();
+    var ramp = U.clamp((seasons - GRACE_SEASONS) / 14, 0, 1);
+    // scaled against your ARMY only — walls and towers must stay a pure
+    // advantage, never a reason for Brannoch to send more men
+    var mine = fieldStrength(0);
+    var base = 6 + ramp * 26;
+    var target = mine * (0.50 + ramp * 0.60) + base;
+    return U.clamp(Math.min(G.rival.str, target), 6, G.rival.str);
+  }
+
+  function graceLeft() { return Math.max(0, GRACE_SEASONS - seasonIndex()); }
 
   function defenseScore() {
     var d = castleBonus().defense || 0;
@@ -478,11 +513,22 @@ var SIM = (function () {
     }
 
     // the rival
-    G.rival.str += dt * (0.014 + G.time / 90000);
+    G.rival.str += dt * (0.010 + G.time / 140000);
     G.rival.nextRaid -= dt;
+    if (!G.rival.warned && G.rival.nextRaid <= DATA.SEASON_LEN * 0.85 && seasonIndex() >= GRACE_SEASONS - 1) {
+      G.rival.warned = true;
+      emit('toast', { msg: 'Scouts: Brannoch is mustering. Roughly a season before they ride.', kind: 'war' });
+    }
     if (G.rival.nextRaid <= 0) {
-      G.rival.nextRaid = DATA.SEASON_LEN * (2.6 + Math.random() * 1.8);
-      emit('raid-incoming');
+      G.rival.warned = false;
+      // raids come further apart while you are still finding your feet
+      var gap = seasonIndex() < GRACE_SEASONS + 8 ? (4.5 + Math.random() * 2.2) : (2.8 + Math.random() * 1.8);
+      G.rival.nextRaid = DATA.SEASON_LEN * gap;
+      if (seasonIndex() < GRACE_SEASONS) {
+        G.rival.nextRaid = DATA.SEASON_LEN * 2;   // still at peace — try again later
+      } else {
+        emit('raid-incoming');
+      }
     }
 
     regrow(dt);
@@ -792,6 +838,8 @@ var SIM = (function () {
     ledger: ledger, output: output, cap: cap, housing: housing,
     armyCap: armyCap, armySlots: armySlots, armyCount: armyCount,
     defenseScore: defenseScore, smithBonus: smithBonus,
+    fieldStrength: fieldStrength, unitStrength: unitStrength,
+    raidPower: raidPower, graceLeft: graceLeft, GRACE_SEASONS: GRACE_SEASONS,
     jobsOf: jobsOf, staffRatio: staffRatio, efficiency: efficiency,
     season: season, seasonIndex: seasonIndex, year: year, seasonProgress: seasonProgress,
     nextCastle: nextCastle, upgradeCastle: upgradeCastle,
