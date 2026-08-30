@@ -140,7 +140,8 @@ var UI = (function () {
   /* ---------------- BUILD ---------------- */
   function buildBody(box, cat) {
     var G = SIM.G;
-    box.appendChild(h('<p class="hint">Pick a building, then tap the land. Roads and walls can be dragged in a line.</p>'));
+    box.appendChild(h('<p class="hint">Pick a building, then tap the land. Roads are laid for you automatically — a building joined to the castle by road produces <b>+' +
+      Math.round(SIM.ROAD_BONUS * 100) + '%</b>. You can still lay your own by dragging, or switch the automatic ones off in The Realm → Settings.</p>'));
     var any = false;
     Object.keys(DATA.B).forEach(function (id) {
       var def = DATA.B[id];
@@ -531,6 +532,14 @@ var UI = (function () {
         toast(SIM.save() ? 'Kingdom saved.' : 'Could not save (storage blocked).', SIM.save() ? 'good' : 'bad');
       });
       box.appendChild(sv);
+      var ar = h('<button class="btn sec wide">' + (G.autoRoads !== false ? '🛤️ Roads: laid automatically' : '🛤️ Roads: placed by hand') + '</button>');
+      ar.addEventListener('click', function () {
+        G.autoRoads = !(G.autoRoads !== false);
+        toast(G.autoRoads ? 'New buildings will be joined to the road network automatically.'
+                          : 'You will lay roads yourself from the Build menu.', 'good');
+        renderSheet();
+      });
+      box.appendChild(ar);
       var snd = h('<button class="btn sec wide">' + (U.isMuted() ? '🔇 Sound off' : '🔊 Sound on') + '</button>');
       snd.addEventListener('click', function () { toggleSound(); renderSheet(); });
       box.appendChild(snd);
@@ -628,6 +637,12 @@ var UI = (function () {
         : 'Under construction — ' + Math.round(b.prog * 100) + '%';
       var out = SIM.output(b);
       var lines = [];
+      if (b.built && !def.isRoad && !def.isWall) {
+        var conn = SIM.isConnected(b);
+        lines.push('<div class="stat-line"><span>Road to the castle</span><b style="color:' +
+          (conn ? '#8fd06a' : '#e0b23c') + '">' +
+          (conn ? 'connected +' + Math.round(SIM.ROAD_BONUS * 100) + '% output' : 'not connected') + '</b></div>');
+      }
       Object.keys(out).forEach(function (k) {
         if (Math.abs(out[k]) < 0.001) return;
         lines.push('<div class="stat-line"><span>' + k + '</span><b>' + U.signed(out[k], 2) + '/s</b></div>');
@@ -1044,6 +1059,9 @@ var UI = (function () {
       if (kind === 'raid-incoming') eventQueue.push('raid');
       if (kind === 'relief') eventQueue.push('relief');
       if (kind === 'season') { chronicle(payload.name + ' comes to Ashveil.'); }
+      if (kind === 'roads') {
+        toast('Laid ' + payload.laid + ' road tile' + (payload.laid > 1 ? 's' : '') + ' to join it to the castle.', 'good');
+      }
       if (kind === 'completed') {
         RENDER.puff(payload.x + .5, payload.y + .6, '#e8dcb5', 10);
         RENDER.floater(payload.x + .5, payload.y - .1, payload.def.name + ' done', '#a8f07a');
