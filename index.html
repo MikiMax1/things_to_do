@@ -2,466 +2,153 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Everyday Helper Hub</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#1b2a1e">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="description" content="Kingdom of Ashveil - build a living medieval kingdom on your phone.">
+<title>Kingdom of Ashveil</title>
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%2322c55e'/%3E%3Ctext x='32' y='40' text-anchor='middle' font-size='32' font-family='sans-serif' fill='white'%3E🎲%3C/text%3E%3C/svg%3E">
-<meta name="theme-color" content="#22c55e">
-<meta name="description" content="Touch-friendly things-to-do generator (useful + silly), all in your browser.">
-<style>
-  :root { --bg:#0f172a; --panel:#111827; --txt:#e5e7eb; --sub:#9ca3af; --accent:#22c55e; }
-  *{box-sizing:border-box}
-  body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;
-       background:linear-gradient(180deg,#0b1022,#0f172a); color:var(--txt)}
-  .wrap{max-width:1100px;margin:0 auto;padding:16px 16px 64px}
-  .card{background:rgba(17,24,39,.85);border:1px solid #1f2937;border-radius:16px;
-        box-shadow:0 10px 30px rgba(0,0,0,.35);padding:16px;margin-top:16px}
-  h1{font-size:26px;margin:0 0 6px}
-  h2{font-size:18px;margin:0 0 6px}
-  h3{font-size:16px;margin:0 0 6px}
-  p{color:var(--sub);margin:6px 0 0}
-  .grid{display:grid;grid-template-columns:1fr;gap:12px;margin-top:12px}
-  @media(min-width:760px){.grid{grid-template-columns:1fr 1fr}}
-  @media(min-width:1040px){.grid{grid-template-columns:repeat(3,1fr)}}
-  label{font-size:14px;color:var(--sub)}
-  input[type="number"],input[type="text"]{
-    background:#0b1220;border:1px solid #1f2937;border-radius:10px;color:var(--txt);
-    padding:10px 12px;outline:none;width:100%
-  }
-  .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-  .chip{display:inline-flex;align-items:center;gap:8px;background:#0b1220;
-        border:1px solid #1f2937;border-radius:999px;padding:9px 12px;cursor:pointer}
-  .chip input{accent-color:#22c55e;transform:scale(1.1)}
-  .btn{appearance:none;border:0;border-radius:12px;padding:12px 16px;font-weight:700;
-       cursor:pointer;color:white;background:linear-gradient(180deg,#22c55e,#16a34a)}
-  .btn.secondary{background:linear-gradient(180deg,#3b82f6,#2563eb)}
-  .btn:active{transform:translateY(1px)}
-  .results{display:grid;gap:10px;margin-top:12px}
-  .idea{background:#0b1220;border:1px solid #1f2937;border-radius:14px;padding:12px}
-  .tags{color:#a1a1aa;font-size:12px;margin-top:6px}
-  .toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
-  .toolbar .btn{flex:1 1 180px;justify-content:center;display:inline-flex;align-items:center;text-align:center}
-  .footer{margin-top:8px;color:#6b7280;font-size:12px}
-  .small{font-size:12px;color:#9ca3af}
-  .diag{font-size:12px;color:#9ca3af;margin-top:8px}
-  .error{background:#7f1d1d;border:1px solid #b91c1c;padding:8px;border-radius:10px;color:#fee2e2;margin-top:10px}
-  .module-grid{display:grid;grid-template-columns:1fr;gap:12px}
-  @media(min-width:900px){.module-grid{grid-template-columns:1fr 1fr}}
-  .pill{display:inline-flex;align-items:center;gap:8px;padding:8px 12px;border-radius:999px;background:#0b1220;border:1px solid #1f2937;color:var(--txt)}
-  .pill strong{color:white}
-  .checklist-form{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
-  .checklist-form input{flex:1 1 220px}
-  .list{margin-top:12px;display:grid;gap:10px}
-  .task{display:flex;align-items:flex-start;gap:10px;background:#0b1220;border:1px solid #1f2937;border-radius:12px;padding:10px}
-  .task.done{opacity:.6;text-decoration:line-through}
-  .task small{color:#9ca3af}
-  .task button{margin-left:auto}
-  .btn.ghost{background:#0b1220;border:1px solid #1f2937;color:var(--txt)}
-  .calc{background:#0b1220;border:1px solid #1f2937;border-radius:14px;padding:12px;margin-top:10px}
-  .calc-display{background:#111827;border:1px solid #1f2937;border-radius:10px;padding:10px;font-size:22px;text-align:right;min-height:46px;word-wrap:break-word}
-  .calc-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:8px}
-  .calc-grid button{padding:12px;border-radius:10px;border:1px solid #1f2937;background:#111827;color:var(--txt);font-size:16px;cursor:pointer}
-  .calc-grid button.op{background:#193d2d;border-color:#22c55e}
-  canvas{background:#0b1220;border:1px solid #1f2937;border-radius:12px;display:block;margin-top:10px;width:100%;max-width:480px}
-  .status{color:#9ca3af;font-size:12px;margin-top:6px}
-</style>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%232f5d34'/%3E%3Cpath d='M14 44h36v6H14z' fill='%23d9c89a'/%3E%3Cpath d='M16 24l6 6 5-10 5 10 5-10 5 10 6-6v20H16z' fill='%23e8dcb5'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-<div class="wrap">
-  <div class="card">
-    <h1>🧰 Everyday Helper Hub</h1>
-    <p>Generator, checklist, quick calculator, and a tiny AI pong table — all in one cozy page that runs in your browser.</p>
-    <div id="diag" class="diag"></div>
+
+<div id="app">
+  <canvas id="scene"></canvas>
+
+  <!-- ============ TOP HUD ============ -->
+  <header id="hud-top">
+    <div class="res-strip" id="res-strip"></div>
+    <div class="hud-row2">
+      <button class="chip season-chip" id="season-chip" type="button">
+        <span id="season-icon">🌱</span>
+        <span id="season-name">Spring</span>
+        <span class="year" id="year-label">Yr 1</span>
+      </button>
+      <div class="season-bar"><div class="season-fill" id="season-fill"></div></div>
+      <div class="speed-group">
+        <button class="spd" id="spd-0" type="button" aria-label="Pause">❚❚</button>
+        <button class="spd active" id="spd-1" type="button">1×</button>
+        <button class="spd" id="spd-2" type="button">2×</button>
+        <button class="spd" id="spd-3" type="button">4×</button>
+      </div>
+    </div>
+    <div class="hud-row3">
+      <span class="mini" id="mini-pop">👥 0/0</span>
+      <span class="mini" id="mini-happy">🙂 0%</span>
+      <span class="mini" id="mini-army">⚔️ 0/0</span>
+      <span class="mini" id="mini-note"></span>
+    </div>
+  </header>
+
+  <!-- ============ FLOATING SIDE BUTTONS ============ -->
+  <div id="side-tools">
+    <button class="tool-btn" id="btn-center" type="button" title="Centre on castle">🎯</button>
+    <button class="tool-btn" id="btn-sound" type="button" title="Sound">🔊</button>
+    <button class="tool-btn" id="btn-menu" type="button" title="Menu">☰</button>
   </div>
 
-  <div class="card">
-    <div class="grid">
-      <div>
-        <label>How many suggestions?</label>
-        <input id="count" type="number" min="1" max="100" value="8">
-      </div>
-      <div>
-        <label>Max minutes (optional)</label>
-        <input id="maxmins" type="number" min="1" placeholder="e.g. 30">
-      </div>
-      <div>
-        <label>Seed (optional, for repeatable results)</label>
-        <input id="seed" type="number" placeholder="e.g. 42">
-      </div>
-      <div>
-        <label>Search text (optional)</label>
-        <input id="search" type="text" placeholder="e.g. playlist, yoga, cook">
-      </div>
-      <div>
-        <label>Include tags (tap to toggle)</label>
-        <div class="row" id="include"></div>
-        <div class="small">Examples: indoor, outdoor, creative, learning, mindful, productivity, practical, fitness, silly, free, cheap</div>
-      </div>
-      <div>
-        <label>Exclude tags (tap to toggle)</label>
-        <div class="row" id="exclude"></div>
-      </div>
-      <div style="grid-column:1/-1">
-        <label>Budget (optional)</label>
-        <div class="row" id="budget"></div>
-      </div>
-    </div>
+  <!-- ============ ALERT / TOAST STACK ============ -->
+  <div id="toasts"></div>
 
-    <div class="toolbar">
-      <button class="btn" onclick="generate()">Generate</button>
-      <button class="btn secondary" onclick="saveTxt()">Save as .txt</button>
-      <button class="btn secondary" onclick="share()">Share</button>
+  <!-- ============ TILE INSPECTOR ============ -->
+  <div id="inspector" class="hidden">
+    <div class="insp-head">
+      <div class="insp-icon" id="insp-icon"></div>
+      <div class="insp-title">
+        <h3 id="insp-name">Tile</h3>
+        <p id="insp-sub">—</p>
+      </div>
+      <button class="x" id="insp-close" type="button">✕</button>
+    </div>
+    <div id="insp-body"></div>
+    <div id="insp-actions"></div>
+  </div>
+
+  <!-- ============ BUILD GHOST BANNER ============ -->
+  <div id="build-banner" class="hidden">
+    <span id="build-banner-text">Tap a tile to place</span>
+    <button id="build-cancel" type="button">Cancel</button>
+  </div>
+
+  <!-- ============ BOTTOM NAV ============ -->
+  <nav id="hud-bottom">
+    <button class="nav-btn" data-panel="build" type="button"><span>🏗️</span><b>Build</b></button>
+    <button class="nav-btn" data-panel="people" type="button"><span>👥</span><b>People</b></button>
+    <button class="nav-btn" data-panel="army" type="button"><span>⚔️</span><b>Army</b></button>
+    <button class="nav-btn" data-panel="tech" type="button"><span>📜</span><b>Tech</b></button>
+    <button class="nav-btn" data-panel="world" type="button"><span>🗺️</span><b>World</b></button>
+  </nav>
+
+  <!-- ============ SLIDE-UP SHEET ============ -->
+  <div id="sheet-scrim" class="hidden"></div>
+  <section id="sheet" class="hidden">
+    <div class="sheet-grab"></div>
+    <div class="sheet-head">
+      <h2 id="sheet-title">Build</h2>
+      <button class="x" id="sheet-close" type="button">✕</button>
+    </div>
+    <div id="sheet-tabs"></div>
+    <div id="sheet-body"></div>
+  </section>
+
+  <!-- ============ BATTLE OVERLAY ============ -->
+  <div id="battle" class="hidden">
+    <canvas id="battle-canvas"></canvas>
+    <div id="battle-hud">
+      <div class="bt-head">
+        <div class="bt-side ours"><b id="bt-our-name">Ashveil</b><span id="bt-our-count">0</span></div>
+        <div class="bt-vs" id="bt-phase">Deploying</div>
+        <div class="bt-side theirs"><b id="bt-foe-name">Brannoch</b><span id="bt-foe-count">0</span></div>
+      </div>
+      <div class="bt-strength">
+        <div class="bt-fill ours" id="bt-our-bar"></div>
+        <div class="bt-fill theirs" id="bt-foe-bar"></div>
+      </div>
+      <div id="bt-log"></div>
+      <div id="bt-orders"></div>
+      <div id="bt-result" class="hidden">
+        <h2 id="bt-result-title">Victory</h2>
+        <div id="bt-result-body"></div>
+        <button id="bt-done" type="button">Return to Ashveil</button>
+      </div>
     </div>
   </div>
 
-  <div class="card">
-    <h2>Results</h2>
-    <div id="results" class="results"></div>
-    <div class="footer">Tip: set a Seed to reproduce the same list. Everything runs locally.</div>
-    <div id="err" class="error" style="display:none"></div>
+  <!-- ============ EVENT MODAL ============ -->
+  <div id="event-modal" class="hidden">
+    <div class="ev-card">
+      <div class="ev-art" id="ev-art">📜</div>
+      <h2 id="ev-title">An Event</h2>
+      <p id="ev-text"></p>
+      <div id="ev-choices"></div>
+    </div>
   </div>
 
-  <div class="card">
-    <div class="row" style="justify-content:space-between;align-items:flex-start">
-      <div>
-        <h2>Checklist HQ</h2>
-        <p>Build a multifunctional checklist for errands, workouts, or little experiments. Tap an item to complete it.</p>
-      </div>
-      <div class="pill"><span>✨</span><span><strong>Keyboard tip:</strong> press Enter to add</span></div>
-    </div>
-    <div class="checklist-form">
-      <input id="task-text" type="text" placeholder="Add a task, e.g. Restock snacks">
-      <input id="task-tag" type="text" placeholder="Tag (optional)">
-      <button class="btn" id="add-task">Add</button>
-      <button class="btn ghost" id="clear-done">Clear done</button>
-    </div>
-    <div id="task-list" class="list"></div>
-    <div class="status" id="task-status"></div>
-  </div>
-
-  <div class="card module-grid">
-    <div>
-      <h2>Quick Calculator</h2>
-      <p>Speed through totals and tiny what-if math without leaving the page.</p>
-      <div class="calc">
-        <div class="calc-display" id="calc-display">0</div>
-        <div class="calc-grid">
-          <button onclick="pressCalc('7')">7</button>
-          <button onclick="pressCalc('8')">8</button>
-          <button onclick="pressCalc('9')">9</button>
-          <button class="op" onclick="pressCalc('/')">÷</button>
-          <button onclick="pressCalc('4')">4</button>
-          <button onclick="pressCalc('5')">5</button>
-          <button onclick="pressCalc('6')">6</button>
-          <button class="op" onclick="pressCalc('*')">×</button>
-          <button onclick="pressCalc('1')">1</button>
-          <button onclick="pressCalc('2')">2</button>
-          <button onclick="pressCalc('3')">3</button>
-          <button class="op" onclick="pressCalc('-')">–</button>
-          <button onclick="pressCalc('0')">0</button>
-          <button onclick="pressCalc('.')">.</button>
-          <button onclick="backspaceCalc()">⌫</button>
-          <button class="op" onclick="pressCalc('+')">+</button>
-          <button onclick="clearCalc()">C</button>
-          <button onclick="pressCalc('(')">(</button>
-          <button onclick="pressCalc(')')">)</button>
-          <button class="op" onclick="solveCalc()">=</button>
-        </div>
-      </div>
-    </div>
-
-    <div>
-      <h2>Ping Pong vs AI</h2>
-      <p>A bite-sized solo rally: use ↑/↓ or W/S. The right paddle tracks the ball with a smooth AI.</p>
-      <canvas id="pong" width="480" height="260"></canvas>
-      <div class="toolbar">
-        <button class="btn" id="start-pong">Start / Reset</button>
-        <button class="btn secondary" id="pause-pong">Pause</button>
-      </div>
-      <div class="status" id="pong-status">Press Start to serve.</div>
+  <!-- ============ TITLE SCREEN ============ -->
+  <div id="title-screen">
+    <div class="title-inner">
+      <div class="crest">🏰</div>
+      <h1>Kingdom<span>of</span>Ashveil</h1>
+      <p class="tagline">Raise a living realm from the ash.</p>
+      <button class="primary" id="btn-continue" type="button">Continue</button>
+      <button class="primary" id="btn-new" type="button">New Kingdom</button>
+      <p class="version">v2.0 · tap · drag · pinch</p>
     </div>
   </div>
 </div>
 
-<script>
-// Diagnostics
-const $diag = document.getElementById('diag');
-function logDiag(msg){ $diag.textContent = msg; }
-
-/* ====== FAST GENERATOR (Web Worker + fallback) ====== */
-function mkChips(id, items){
-  const root=document.getElementById(id);
-  root.innerHTML="";
-  items.forEach(t=>{
-    const lbl=document.createElement("label");
-    lbl.className="chip";
-    lbl.innerHTML=`<input type="checkbox" value="${t}"><span>${t}</span>`;
-    root.appendChild(lbl);
-  });
-}
-function getChecked(id){return[...document.querySelectorAll("#"+id+" input:checked")].map(x=>x.value);}
-const resultsBox=()=>document.getElementById("results");
-function showSpinner(){resultsBox().innerHTML=`<div class="idea">Generating…</div>`;}
-function showError(e){ const d=document.getElementById('err'); d.style.display='block'; d.textContent = 'Error: '+e; }
-
-// Shared data
-const CURATED = [
-@@ -203,60 +286,52 @@ function passes(a, include, exclude, maxmins, budgets, search){
-  if(search && !a.text.toLowerCase().includes(search.toLowerCase())) return false;
-  return true;
-}
-
-// Render
-function renderItems(items){
-  const box = resultsBox();
-  box.innerHTML = "";
-  if(!items.length){
-    box.innerHTML = `<div class="idea">No suggestions matched. Try fewer filters.</div>`;
-    return;
-  }
-  const frag=document.createDocumentFragment();
-  items.forEach((it,i)=>{
-    const d=document.createElement("div");
-    d.className="idea";
-    d.innerHTML=`<div><b>${i+1}.</b> ${it.text}</div><div class="tags">tags: ${it.tags.join(", ")}</div>`;
-    frag.appendChild(d);
-  });
-  box.appendChild(frag);
-}
-
-// Worker setup (with fallback)
-let generatorWorker = null;
-let workerOK = false;
-
-// Build worker blob text (copy of logic above, without DOM deps)
-const workerText = `
-  const CURATED = ${JSON.stringify(CURATED)};
-  const VERBS = ${JSON.stringify(VERBS)};
-  const OBJECTS = ${JSON.stringify(OBJECTS)};
-  const LOCATIONS = ${JSON.stringify(LOCATIONS)};
-  const TWISTS = ${JSON.stringify(TWISTS)};
-  const TAGS_BY_VERB = ${JSON.stringify(TAGS_BY_VERB)};
-  const DURATION_BUCKETS = ${JSON.stringify(DURATION_BUCKETS)};
-  function mulberry32(a){ return function(){ let t = a += 0x6D2B79F5; t = Math.imul(t ^ t>>>15, t|1); t ^= t + Math.imul(t ^ t>>>7, t|61); return ((t ^ t>>>14)>>>0) / 4294967296; } }
-  function choice(arr, rnd){ return arr[Math.floor(rnd()*arr.length)] }
-  function infer_budget(rnd){ const r=rnd(); if(r<0.60) return "free"; if(r<0.95) return "cheap"; return "spendy"; }
-  function infer_duration(verb,obj,twist,rnd){
-    const s=(verb+" "+obj+" "+twist).toLowerCase();
-    const longish=["prototype","compose","weave","knit","carve","research","weekend","capsule"].some(k=>s.includes(k));
-    const quickish = twist.toLowerCase().includes("under 20 minutes") || twist.toLowerCase().includes("first 10 seconds") || obj.toLowerCase().includes("micro");
-    if(quickish) return choice(["<5m","<15m","<30m"], rnd);
-    if(longish)  return choice(["60-120m","120m+"], rnd);
-    return choice(DURATION_BUCKETS, rnd);
-  }
-  function tag_union(...groups){ const set=new Set(); groups.flat().forEach(t=>set.add(t)); return Array.from(set).sort(); }
-  function make_combo_activity(rnd){
-    const verb=choice(VERBS,rnd), obj=choice(OBJECTS,rnd), loc=choice(LOCATIONS,rnd), twist=choice(TWISTS,rnd);
-    const base = TAGS_BY_VERB[verb] || ["either","creative"];
-    const budget = infer_budget(rnd), duration = infer_duration(verb,obj,twist,rnd);
-    return { text:\`\${verb} \${obj} \${loc}, \${twist}\`, tags: tag_union(base,[budget],[duration]) };
-@@ -354,48 +429,205 @@ function generate(){
-          out.push(cand); seen.add(cand.text);
-        }
-        if(out.length>=want || attempts>=20000){ renderItems(out); }
-        else { setTimeout(step, 0); }
-      }
-      step();
-    }catch(e){ showError(e.message||String(e)); }
-  }
-}
-
-function saveTxt(){
-  const els = document.querySelectorAll(".idea");
-  if(!els.length){ alert("Generate some items first 😊"); return; }
-  let txt = "Things To Do — Generated List\n\n";
-  els.forEach(e=>{ txt += e.textContent.trim()+"\n"; });
-  const blob = new Blob([txt], {type:"text/plain"});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url; a.download = "things_to_do.txt";
-  document.body.appendChild(a); a.click(); a.remove();
-  setTimeout(()=>URL.revokeObjectURL(url), 400);
-}
-
-async function share(){
-  const url = location.href;
-  const text = "Check out this Everyday Helper Hub!";
-  if(navigator.share){
-    try{ await navigator.share({title:document.title,text, url}); }catch(e){}
-  }else{
-    try{ await navigator.clipboard.writeText(url); alert("Link copied to clipboard:\n"+url); }
-    catch(e){ alert("Your link:\n"+url); }
-  }
-}
-
-// Checklist
-let tasks = [];
-const $taskList = document.getElementById("task-list");
-const $taskText = document.getElementById("task-text");
-const $taskTag = document.getElementById("task-tag");
-const $taskStatus = document.getElementById("task-status");
-function renderTasks(){
-  $taskList.innerHTML = "";
-  if(!tasks.length){
-    const empty = document.createElement("div");
-    empty.className = "small";
-    empty.textContent = "No tasks yet — try " + ["morning jog","budget review","call a friend"][Math.floor(Math.random()*3)];
-    $taskList.appendChild(empty);
-  }
-  tasks.forEach(t=>{
-    const row = document.createElement("div");
-    row.className = "task" + (t.done?" done":"");
-    const cb = document.createElement("input");
-    cb.type = "checkbox"; cb.checked = t.done;
-    cb.addEventListener("change", ()=>toggleTask(t.id));
-    const txt = document.createElement("div");
-    txt.innerHTML = `<strong>${t.text}</strong>${t.tag?`<div class="small">${t.tag}</div>`:""}`;
-    row.appendChild(cb); row.appendChild(txt);
-    const btn = document.createElement("button");
-    btn.className = "btn ghost"; btn.textContent = "Remove";
-    btn.onclick = ()=>deleteTask(t.id);
-    row.appendChild(btn);
-    $taskList.appendChild(row);
-  });
-  const done = tasks.filter(t=>t.done).length;
-  $taskStatus.textContent = `${tasks.length} total · ${done} done · ${tasks.length-done} open`;
-}
-function addTask(){
-  const text = ($taskText.value||"").trim();
-  if(!text) return;
-  const tag = ($taskTag.value||"").trim();
-  tasks.unshift({id:crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2), text, tag, done:false});
-  $taskText.value = ""; $taskTag.value=""; renderTasks();
-}
-function toggleTask(id){
-  tasks = tasks.map(t=>t.id===id?{...t, done:!t.done}:t);
-  renderTasks();
-}
-function deleteTask(id){ tasks = tasks.filter(t=>t.id!==id); renderTasks(); }
-function clearDone(){ tasks = tasks.filter(t=>!t.done); renderTasks(); }
-document.getElementById("add-task").addEventListener("click", addTask);
-document.getElementById("clear-done").addEventListener("click", clearDone);
-$taskText.addEventListener("keydown", (e)=>{ if(e.key==="Enter") addTask(); });
-$taskTag.addEventListener("keydown", (e)=>{ if(e.key==="Enter") addTask(); });
-renderTasks();
-
-// Calculator
-let calcBuffer = "0";
-const $calcDisplay = document.getElementById("calc-display");
-function refreshCalc(){ $calcDisplay.textContent = calcBuffer; }
-function pressCalc(v){
-  if(calcBuffer==="Err") calcBuffer = "0";
-  if(calcBuffer==="0" && /[0-9.]/.test(v)) calcBuffer = "";
-  calcBuffer += v; refreshCalc();
-}
-function backspaceCalc(){ calcBuffer = calcBuffer.slice(0,-1) || "0"; refreshCalc(); }
-function clearCalc(){ calcBuffer = "0"; refreshCalc(); }
-function solveCalc(){
-  try{
-    const safe = calcBuffer.replace(/[^0-9+\-*/(). ]/g,"");
-    const val = Function(`"use strict"; return (${safe||0})`)();
-    calcBuffer = String(val);
-  }catch(e){ calcBuffer = "Err"; }
-  refreshCalc();
-}
-
-// Ping Pong mini-game
-const pong = document.getElementById("pong");
-const ctx = pong.getContext("2d");
-const pongState = {
-  ball:{x:pong.width/2,y:pong.height/2,vx:180,vy:90,r:7},
-  left:{y:pong.height/2-30,h:60},
-  right:{y:pong.height/2-30,h:60},
-  running:false,
-  paused:false,
-  rally:0,
-};
-let lastTime = 0;
-const keys = {up:false, down:false};
-function resetBall(dir=1){
-  pongState.ball.x = pong.width/2;
-  pongState.ball.y = pong.height/2;
-  pongState.ball.vx = 160*dir;
-  pongState.ball.vy = (Math.random()*140-70);
-  pongState.rally = 0;
-}
-function drawPong(){
-  ctx.clearRect(0,0,pong.width,pong.height);
-  ctx.fillStyle = "#0f172a"; ctx.fillRect(0,0,pong.width,pong.height);
-  ctx.strokeStyle = "#1f2937"; ctx.setLineDash([6,6]);
-  ctx.beginPath(); ctx.moveTo(pong.width/2,0); ctx.lineTo(pong.width/2,pong.height); ctx.stroke(); ctx.setLineDash([]);
-  ctx.fillStyle = "white";
-  ctx.fillRect(12,pongState.left.y,10,pongState.left.h);
-  ctx.fillRect(pong.width-22,pongState.right.y,10,pongState.right.h);
-  ctx.beginPath(); ctx.arc(pongState.ball.x,pongState.ball.y,pongState.ball.r,0,Math.PI*2); ctx.fill();
-  ctx.fillStyle = "#9ca3af";
-  ctx.font = "12px system-ui";
-  ctx.fillText(`Rally: ${pongState.rally}`, 10, 16);
-}
-function stepPong(ts){
-  if(!pongState.running || pongState.paused) return;
-  const dt = (ts - lastTime)/1000 || 0; lastTime = ts;
-  const speed = 260;
-  if(keys.up) pongState.left.y -= speed*dt;
-  if(keys.down) pongState.left.y += speed*dt;
-  pongState.left.y = Math.max(6, Math.min(pong.height - pongState.left.h - 6, pongState.left.y));
-
-  // AI paddle follows the ball with easing
-  const targetY = pongState.ball.y - pongState.right.h/2;
-  pongState.right.y += (targetY - pongState.right.y) * 0.08;
-  pongState.right.y = Math.max(6, Math.min(pong.height - pongState.right.h - 6, pongState.right.y));
-
-  pongState.ball.x += pongState.ball.vx * dt;
-  pongState.ball.y += pongState.ball.vy * dt;
-  if(pongState.ball.y < pongState.ball.r || pongState.ball.y > pong.height - pongState.ball.r){ pongState.ball.vy *= -1; }
-
-  // Collisions
-  if(pongState.ball.x - pongState.ball.r < 22 && pongState.ball.y > pongState.left.y && pongState.ball.y < pongState.left.y+pongState.left.h){
-    pongState.ball.x = 22 + pongState.ball.r;
-    pongState.ball.vx = Math.abs(pongState.ball.vx) + 10;
-    pongState.ball.vy += (pongState.ball.y - (pongState.left.y+pongState.left.h/2))*3;
-    pongState.rally++;
-  }
-  if(pongState.ball.x + pongState.ball.r > pong.width-22 && pongState.ball.y > pongState.right.y && pongState.ball.y < pongState.right.y+pongState.right.h){
-    pongState.ball.x = pong.width-22 - pongState.ball.r;
-    pongState.ball.vx = -Math.abs(pongState.ball.vx) - 6;
-    pongState.ball.vy += (pongState.ball.y - (pongState.right.y+pongState.right.h/2))*2.5;
-    pongState.rally++;
-  }
-
-  // Missed
-  if(pongState.ball.x < 0){ resetBall(1); }
-  if(pongState.ball.x > pong.width){ resetBall(-1); }
-
-  drawPong();
-  requestAnimationFrame(stepPong);
-}
-function startPong(){ pongState.running = true; pongState.paused=false; resetBall(Math.random()>0.5?1:-1); drawPong(); lastTime = performance.now(); requestAnimationFrame(stepPong); updatePongStatus(); }
-function pausePong(){ pongState.paused = !pongState.paused; if(!pongState.paused){ lastTime = performance.now(); requestAnimationFrame(stepPong);} updatePongStatus(); }
-function updatePongStatus(){ document.getElementById("pong-status").textContent = pongState.paused?"Paused — press Pause to resume.": pongState.running?`Rally ${pongState.rally}. Keep it going!`:"Press Start to serve."; }
-document.getElementById("start-pong").addEventListener("click", ()=>{ startPong(); });
-document.getElementById("pause-pong").addEventListener("click", ()=>{ pausePong(); });
-window.addEventListener("keydown", (e)=>{
-  if(["ArrowUp","w","W"].includes(e.key)) keys.up = true;
-  if(["ArrowDown","s","S"].includes(e.key)) keys.down = true;
-});
-window.addEventListener("keyup", (e)=>{
-  if(["ArrowUp","w","W"].includes(e.key)) keys.up = false;
-  if(["ArrowDown","s","S"].includes(e.key)) keys.down = false;
-});
-drawPong();
-
-// Build initial chips
-mkChips("include", ["indoor","outdoor","creative","learning","mindful","productivity","practical","fitness","silly","free","cheap"].sort());
-mkChips("exclude", ["silly","spendy"].sort());
-mkChips("budget", ["free","cheap","spendy"]);
-
-// PWA: register service worker
-if('serviceWorker' in navigator){
-  window.addEventListener('load', ()=>{
-    navigator.serviceWorker.register('./sw.js').catch(()=>{});
-  });
-}
-</script>
+<script src="js/util.js"></script>
+<script src="js/data.js"></script>
+<script src="js/art.js"></script>
+<script src="js/world.js"></script>
+<script src="js/sim.js"></script>
+<script src="js/agents.js"></script>
+<script src="js/render.js"></script>
+<script src="js/battle.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/main.js"></script>
 </body>
 </html>
