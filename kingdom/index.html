@@ -2,153 +2,21 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<meta name="theme-color" content="#1b2a1e">
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="description" content="Kingdom of Ashveil - build a living medieval kingdom on your phone.">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Kingdom of Ashveil</title>
-<link rel="manifest" href="manifest.webmanifest">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%232f5d34'/%3E%3Cpath d='M14 44h36v6H14z' fill='%23d9c89a'/%3E%3Cpath d='M16 24l6 6 5-10 5 10 5-10 5 10 6-6v20H16z' fill='%23e8dcb5'/%3E%3C/svg%3E">
-<link rel="stylesheet" href="css/style.css">
+<!-- The game moved up a level. This keeps old links and home-screen
+     shortcuts working. Your saved kingdom is unaffected: browser storage
+     is tied to the site, not the folder. -->
+<meta http-equiv="refresh" content="0; url=../">
+<link rel="canonical" href="../">
+<style>
+  body{margin:0;height:100vh;display:flex;align-items:center;justify-content:center;
+       background:#12180f;color:#efe3c8;font-family:system-ui,sans-serif;text-align:center}
+  a{color:#8fd06a}
+</style>
 </head>
 <body>
-
-<div id="app">
-  <canvas id="scene"></canvas>
-
-  <!-- ============ TOP HUD ============ -->
-  <header id="hud-top">
-    <div class="res-strip" id="res-strip"></div>
-    <div class="hud-row2">
-      <button class="chip season-chip" id="season-chip" type="button">
-        <span id="season-icon">🌱</span>
-        <span id="season-name">Spring</span>
-        <span class="year" id="year-label">Yr 1</span>
-      </button>
-      <div class="season-bar"><div class="season-fill" id="season-fill"></div></div>
-      <div class="speed-group">
-        <button class="spd" id="spd-0" type="button" aria-label="Pause">❚❚</button>
-        <button class="spd active" id="spd-1" type="button">1×</button>
-        <button class="spd" id="spd-2" type="button">2×</button>
-        <button class="spd" id="spd-3" type="button">4×</button>
-      </div>
-    </div>
-    <div class="hud-row3">
-      <span class="mini" id="mini-pop">👥 0/0</span>
-      <span class="mini" id="mini-happy">🙂 0%</span>
-      <span class="mini" id="mini-army">⚔️ 0/0</span>
-      <span class="mini" id="mini-note"></span>
-    </div>
-  </header>
-
-  <!-- ============ FLOATING SIDE BUTTONS ============ -->
-  <div id="side-tools">
-    <button class="tool-btn" id="btn-center" type="button" title="Centre on castle">🎯</button>
-    <button class="tool-btn" id="btn-sound" type="button" title="Sound">🔊</button>
-    <button class="tool-btn" id="btn-menu" type="button" title="Menu">☰</button>
-  </div>
-
-  <!-- ============ ALERT / TOAST STACK ============ -->
-  <div id="toasts"></div>
-
-  <!-- ============ TILE INSPECTOR ============ -->
-  <div id="inspector" class="hidden">
-    <div class="insp-head">
-      <div class="insp-icon" id="insp-icon"></div>
-      <div class="insp-title">
-        <h3 id="insp-name">Tile</h3>
-        <p id="insp-sub">—</p>
-      </div>
-      <button class="x" id="insp-close" type="button">✕</button>
-    </div>
-    <div id="insp-body"></div>
-    <div id="insp-actions"></div>
-  </div>
-
-  <!-- ============ BUILD GHOST BANNER ============ -->
-  <div id="build-banner" class="hidden">
-    <span id="build-banner-text">Tap a tile to place</span>
-    <button id="build-cancel" type="button">Cancel</button>
-  </div>
-
-  <!-- ============ BOTTOM NAV ============ -->
-  <nav id="hud-bottom">
-    <button class="nav-btn" data-panel="build" type="button"><span>🏗️</span><b>Build</b></button>
-    <button class="nav-btn" data-panel="people" type="button"><span>👥</span><b>People</b></button>
-    <button class="nav-btn" data-panel="army" type="button"><span>⚔️</span><b>Army</b></button>
-    <button class="nav-btn" data-panel="tech" type="button"><span>📜</span><b>Tech</b></button>
-    <button class="nav-btn" data-panel="world" type="button"><span>🗺️</span><b>World</b></button>
-  </nav>
-
-  <!-- ============ SLIDE-UP SHEET ============ -->
-  <div id="sheet-scrim" class="hidden"></div>
-  <section id="sheet" class="hidden">
-    <div class="sheet-grab"></div>
-    <div class="sheet-head">
-      <h2 id="sheet-title">Build</h2>
-      <button class="x" id="sheet-close" type="button">✕</button>
-    </div>
-    <div id="sheet-tabs"></div>
-    <div id="sheet-body"></div>
-  </section>
-
-  <!-- ============ BATTLE OVERLAY ============ -->
-  <div id="battle" class="hidden">
-    <canvas id="battle-canvas"></canvas>
-    <div id="battle-hud">
-      <div class="bt-head">
-        <div class="bt-side ours"><b id="bt-our-name">Ashveil</b><span id="bt-our-count">0</span></div>
-        <div class="bt-vs" id="bt-phase">Deploying</div>
-        <div class="bt-side theirs"><b id="bt-foe-name">Brannoch</b><span id="bt-foe-count">0</span></div>
-      </div>
-      <div class="bt-strength">
-        <div class="bt-fill ours" id="bt-our-bar"></div>
-        <div class="bt-fill theirs" id="bt-foe-bar"></div>
-      </div>
-      <div id="bt-log"></div>
-      <div id="bt-orders"></div>
-      <div id="bt-result" class="hidden">
-        <h2 id="bt-result-title">Victory</h2>
-        <div id="bt-result-body"></div>
-        <button id="bt-done" type="button">Return to Ashveil</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- ============ EVENT MODAL ============ -->
-  <div id="event-modal" class="hidden">
-    <div class="ev-card">
-      <div class="ev-art" id="ev-art">📜</div>
-      <h2 id="ev-title">An Event</h2>
-      <p id="ev-text"></p>
-      <div id="ev-choices"></div>
-    </div>
-  </div>
-
-  <!-- ============ TITLE SCREEN ============ -->
-  <div id="title-screen">
-    <div class="title-inner">
-      <div class="crest">🏰</div>
-      <h1>Kingdom<span>of</span>Ashveil</h1>
-      <p class="tagline">Raise a living realm from the ash.</p>
-      <button class="primary" id="btn-continue" type="button">Continue</button>
-      <button class="primary" id="btn-new" type="button">New Kingdom</button>
-      <p class="version">v2.0 · tap · drag · pinch</p>
-    </div>
-  </div>
-</div>
-
-<script src="js/util.js"></script>
-<script src="js/data.js"></script>
-<script src="js/art.js"></script>
-<script src="js/world.js"></script>
-<script src="js/sim.js"></script>
-<script src="js/agents.js"></script>
-<script src="js/render.js"></script>
-<script src="js/battle.js"></script>
-<script src="js/ui.js"></script>
-<script src="js/main.js"></script>
+  <p>Kingdom of Ashveil has moved.<br><a href="../">Tap here if you are not redirected.</a></p>
+  <script>location.replace('../');</script>
 </body>
 </html>
