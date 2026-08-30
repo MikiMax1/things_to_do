@@ -125,29 +125,31 @@ var RENDER = (function () {
   }
 
   /* ---------------- roads ---------------- */
-  function drawRoad(t, sx, sy, z) {
+  /* Footpaths are drawn on the ground between buildings. They occupy no
+     tile and cost nothing — the more routes cross a spot, the wider and
+     darker the track it wears. */
+  function drawPath(t, sx, sy, z) {
     var n = W.at(t.x, t.y - 1), so = W.at(t.x, t.y + 1);
     var e = W.at(t.x + 1, t.y), we = W.at(t.x - 1, t.y);
-    var hN = !!(n && n.road), hS = !!(so && so.road), hE = !!(e && e.road), hW = !!(we && we.road);
-    var cx = sx + z / 2, cy = sy + z / 2, wd = z * 0.48, half = wd / 2;
+    var busy = Math.min(4, t.path);
+    var w = z * (0.21 + busy * 0.065);
+    var cx = sx + z / 2, cy = sy + z / 2, half = w / 2;
+    var a = 0.44 + busy * 0.10;
 
-    // shadowed rut under the path
-    g.fillStyle = 'rgba(60,46,26,.22)';
-    g.beginPath(); g.arc(cx, cy + z * .03, half + z * .05, 0, 6.3); g.fill();
-
-    g.fillStyle = '#ab9268';
+    g.fillStyle = 'rgba(163,136,90,' + Math.min(0.9, a).toFixed(2) + ')';
     g.beginPath(); g.arc(cx, cy, half, 0, 6.3); g.fill();
-    if (hN) g.fillRect(cx - half, sy - 1, wd, z / 2 + 2);
-    if (hS) g.fillRect(cx - half, cy, wd, z / 2 + 2);
-    if (hE) g.fillRect(cx, cy - half, z / 2 + 2, wd);
-    if (hW) g.fillRect(sx - 1, cy - half, z / 2 + 2, wd);
+    if (n && n.path)  g.fillRect(cx - half, sy - 1, w, z / 2 + 2);
+    if (so && so.path) g.fillRect(cx - half, cy, w, z / 2 + 2);
+    if (e && e.path)  g.fillRect(cx, cy - half, z / 2 + 2, w);
+    if (we && we.path) g.fillRect(sx - 1, cy - half, z / 2 + 2, w);
 
-    // gravel — stable per tile so it doesn't crawl between frames
-    g.fillStyle = 'rgba(122,98,60,.5)';
-    for (var i = 0; i < 5; i++) {
-      var a = ((t.x * 37 + t.y * 71 + i * 53) % 100) / 100;
-      var b = ((t.x * 17 + t.y * 43 + i * 29) % 100) / 100;
-      g.fillRect(cx - half + a * wd * .85, cy - half + b * wd * .85, z * .06, z * .045);
+    if (busy >= 2) {
+      g.fillStyle = 'rgba(112,92,58,.28)';
+      for (var i = 0; i < 3; i++) {
+        var r1 = ((t.x * 37 + t.y * 71 + i * 53) % 100) / 100;
+        var r2 = ((t.x * 17 + t.y * 43 + i * 29) % 100) / 100;
+        g.fillRect(cx - half + r1 * w * .8, cy - half + r2 * w * .8, z * .05, z * .04);
+      }
     }
   }
 
@@ -190,7 +192,7 @@ var RENDER = (function () {
           g.fillStyle = 'rgba(230,238,250,.30)';
           g.fillRect(s.x, s.y, z + 1, z + 1);
         }
-        if (t.road) drawRoad(t, s.x, s.y, z);
+        if (t.path) drawPath(t, s.x, s.y, z);
       }
     }
 

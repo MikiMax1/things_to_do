@@ -13,13 +13,14 @@ Open `index.html` and play. It saves to your device automatically.
 green where it can go and red where it cannot, and tells you why. Walls can be
 **dragged** to lay a whole line at once.
 
-**Roads lay themselves.** Place a building and the shortest run of road joining
-it to the castle is laid for you, reusing what is already there and charging
-the stone. Anything on the road network produces **+14%**, so a joined-up
-kingdom is a richer one — and building compactly is cheaper to connect than
-sprawling. If you cannot afford the run, the building still goes up
-unconnected and its inspector says so. You can still draw roads by hand, or
-turn the automatic ones off in **The Realm → Settings**.
+**Footpaths wear themselves in.** You never place a path. They are worked out
+from where your buildings stand, cost nothing, and take up no ground — build
+straight over one and it reroutes. Every building traces a route to the castle
+gate, routes braid together into shared lanes, and the ground near the keep
+wears into a broad road while the outskirts stay a thin trail.
+
+That traffic is worth money: a **market set among the lanes earns far more**
+than one stuck out on its own, so where you put your market matters.
 
 **Move around.** Drag to pan, pinch to zoom, tap a tile or building to
 inspect it, long-press for the same thing without selecting. The 🎯 button

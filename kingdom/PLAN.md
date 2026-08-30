@@ -323,40 +323,42 @@ because a rule told you to, but because the simulation rewards it.
 - **A build queue.** Plan a district, let the builders work through it in
   order, instead of placing one building at a time and waiting.
 
-### Roads: shipped, and the reasoning behind it
-Roads were pointless busywork. They cost 3 stone, gave a small market bonus,
-and made villagers walk faster — which changed nothing, because production
-never depended on walking. On a phone, dragging them out by hand was tedious
-for no return.
+### Footpaths: shipped, and a design I got wrong first
+Roads were pointless busywork — 3 stone for a small market bonus and faster
+walking that changed nothing, because production never depended on walking
+time. Hand-drawing them on a phone was tedious for no return.
 
-There were two ways to read that complaint, and they lead to opposite designs.
-"Roads are tedious" argues for removing them. "Roads do nothing" argues for
-making them matter. Deleting the decision would have been the wrong fix,
-because the spatial rework above needs the road network to be the skeleton of
-the kingdom — free, automatic, weightless roads would gut it before it was
-built.
+My first answer was to keep the cost and add a payoff: automatic routing, and
++14% output for anything joined to the castle. That fixed the tedium but kept
+two things that were still wrong — roads **occupied a whole tile**, so a path
+between two buildings ate ground you wanted to build on, and they **cost
+stone**, so connecting your kingdom was a tax on expanding it. The right
+complaint was that a footpath is not a structure. It is the ground worn between
+doorways.
 
-So: **automatic placement, but a real cost and a real benefit.**
-- Placing a building lays the cheapest run of road joining it to the network,
-  reusing existing road where it can, and charges the stone.
-- A building joined to the castle by road produces **+14%**. A bonus for being
-  connected, never a penalty for not being — so no existing kingdom got worse
-  the day this shipped.
-- It is all-or-nothing: if you cannot afford the whole run, no road is laid and
-  the building still goes up, unconnected, with the shortfall visible in its
-  inspector. Placement never fails because of it.
-- Manual dragging still works, and the whole thing can be switched off in
-  Settings.
+So paths are no longer buildings at all. They are **derived** from where your
+buildings stand: free, occupying no tile, and you can build straight over one —
+it simply reroutes around the new wall. Every building traces a route to the
+castle gate, worn ground is cheap to walk so routes braid into shared lanes,
+and each tile counts how many routes cross it, so ground near the keep wears
+into a broad lane while the outskirts stay a thin trail. Kingdoms saved while
+roads were still placeable have them pulled up and the stone handed back.
 
-The decision survives — compact building is cheaper to connect, sprawl costs
-stone — while the busywork is gone. This is also the first working piece of the
-spatial rework: *connectivity* is now a real property of a building, which is
-the foundation the catchment and reach systems are built on.
+The connectivity bonus went with them. Once every building is joined for free,
+"connected" distinguishes nothing, and a flat +14% on everything is not a
+mechanic. What replaced it is better: **a market earns more where the lanes
+converge.** Traffic near a stall is a cheap stand-in for the goods passing it,
+which is a first step towards markets earning from real catchment, and it means
+a market in the middle of town genuinely beats one stuck out on its own.
 
-**Still to do here:** connectivity currently gives a flat bonus. Once reach
-lands it should govern haulage properly — distance to the stores mattering,
-mud in autumn slowing unpaved routes, and market catchment following the road
-network rather than a radius.
+The lesson worth keeping: *when something is annoying, ask whether it is the
+wrong shape before you make it more rewarding.* Adding a bonus to roads made
+them worth tolerating. Making them not be objects made them right.
+
+**Still to do here:** paths are cosmetic plus a market signal. Once reach lands
+they should carry haulage properly — distance to the stores mattering, autumn
+mud slowing unpaved ground, and paving as an actual upgrade you choose for the
+lanes that matter.
 
 ---
 
@@ -499,6 +501,115 @@ to threaten short of war.
 
 ---
 
+## The biggest missing content: things made from other things
+
+Every resource in the game is raw. You dig stone, you spend stone. There are no
+intermediate goods, which is why the economy is wide but shallow — eleven
+producers all feeding one pile. Production chains are the single largest depth
+win available after the spatial rework, and they make almost every other system
+better at the same time.
+
+- **Grain → flour → bread.** A mill and a bakery between the farm and the
+  mouth. Bread feeds people better than grain, so the chain is worth building,
+  and now a farm without a mill nearby is a *worse* farm — which gives the
+  spatial system something to bite on.
+- **Wool → cloth.** Pasture and sheep, a weaver, cloth as a trade good worth
+  far more than the wool. Gives the grassland a use besides farms.
+- **Iron → tools.** Fixes the dead resource the audit found: a blacksmith
+  making tools that workplaces consume for a throughput bonus turns the whole
+  mining chain into an economic one rather than a military prerequisite.
+- **Clay → brick, timber → planks.** Better building materials that make
+  higher tiers of housing possible.
+
+Why this matters beyond variety: chains give **markets something to trade**,
+give **caravans something to carry**, give **hauling distance a reason to
+matter**, and turn "build one of everything" into "decide what your kingdom
+makes". It is also the natural home for the trade rework — you should be able
+to get rich exporting cloth.
+
+## Housing that improves with its neighbourhood
+
+A cottage is a cottage forever. It should be able to become a townhouse, and
+then a fine house, when the ground it stands on deserves it — well served by
+amenities, near a market, not next door to a tannery. Higher tiers hold more
+people, pay more tax, and demand more (bread rather than grain, cloth rather
+than nothing).
+
+This is the feedback loop the game is missing. Right now you build housing and
+population appears. With this, you *improve* a quarter and watch it visibly
+become finer — new sprites, more people, more income — which turns the spatial
+system from a constraint into a reward, and gives you something to aim at other
+than a bigger number.
+
+## The year should have a rhythm
+
+Seasons pass, but nothing marks them. A calendar of recurring occasions gives
+the year a shape you can plan around:
+- **Harvest festival** in autumn — spend food for a large contentment lift.
+- **Midwinter** — the hungry month; stores are checked and a poor showing costs
+  you.
+- **Spring fair** — traders arrive with better prices for a limited window.
+- **A muster** — an annual review of your army; neglect it and troops decay.
+
+Recurring, foreseeable events are much better than random ones, because you can
+*prepare*, and preparing is the decision.
+
+## Wonders
+
+One enormous thing per kingdom, taking many seasons and a large share of your
+economy: a cathedral, a great library, a harbour mole. Visible from anywhere on
+the map, permanently altering how the realm works, and a plausible win
+condition. Games need a monument you can point at, and the current castle tiers
+are too cheap and too automatic to be one.
+
+## Make it yours
+
+- **Name your kingdom** and your capital. Name a villager and follow them.
+- **Choose your banner colour**, and see it on your buildings and your troops.
+- **A chronicle worth reading** — the log becomes an illustrated history with
+  the events that mattered, which you can scroll back through at the end.
+- **Export a picture of your realm** to share. On a phone this is how a game
+  like this actually travels.
+- **Choose your island before you commit** — reroll the map, or pick from three
+  starts with different terrain and difficulty.
+
+## Tell me what needs attention
+
+The game currently reports problems as toasts that scroll away. It should keep
+a standing list: *unstaffed workplaces, buildings with nobody in reach, food
+running out in two seasons, an army below capacity, a research finished.* Tap
+one and the camera goes there. On a phone, where you cannot see the whole
+kingdom at once, this is the difference between feeling in control and feeling
+lost.
+
+## Statistics worth looking at
+
+Population, income, food and contentment plotted over the years, so you can see
+the shape of your reign — the winter that nearly ended you, the decade of
+plenty. Cheap to build, and it makes the long game satisfying in a way that a
+current-value HUD never can.
+
+## More map, and more kinds of map
+
+- **Rivers and bridges.** A river cutting the island in two is the single best
+  generator of interesting layout problems, and bridges give paths somewhere
+  meaningful to go.
+- **Map types** — archipelago, highland valley, river delta, a hard cold north.
+- **Generation options** — island size, resource richness, how close Brannoch
+  starts.
+- **A parchment overview** you can zoom out to, showing the whole realm drawn
+  as a map rather than a rendered scene.
+
+## Scenarios and sandbox
+
+- **Set challenges** with a fixed island and a goal: survive ten winters, feed
+  a hundred people, break Brannoch by year twenty. Short, replayable, and they
+  teach the systems better than a tutorial.
+- **Sandbox mode** with resources unlimited, for the player who just wants to
+  build a beautiful town.
+- **Achievements** tied to the interesting corners of the systems, not to
+  grinding.
+
 ## Deeper decisions
 
 - **Edicts and laws.** Standing policies with genuine trade-offs: tax rate
@@ -577,9 +688,9 @@ The spatial rework comes first because most other complaints are downstream of
 it, and because several later systems (districts, fire, disease, riots, local
 markets) are impossible without it.
 
-0. ~~**Road connectivity.**~~ Done — buildings joined to the castle produce
-   +14%, roads lay themselves, and connectivity is now a real property to
-   build catchment on.
+0. ~~**Footpaths.**~~ Done — free, spaceless, derived from your layout, and
+   markets earn from the traffic passing them. The first spatial signal in the
+   game that is not a terrain adjacency rule.
 1. **Reach, and local contentment.** The next slice of the spatial rework:
    amenities serve who they can reach, contentment is an average over
    households. Ships the overlay work with it.
@@ -594,6 +705,11 @@ markets) are impossible without it.
    provisions fall naturally out of campaign time.
 7. **The balance harness**, before the systems grow any further.
 8. **Exclusive tech branches.** Cheap, and a large gain in replay value.
+8b. **Production chains** — grain to bread, wool to cloth, iron to tools. The
+   largest depth win available, and it gives markets, caravans and hauling
+   something real to move.
+8c. **Housing that improves with its neighbourhood.** The reward half of the
+   spatial system, and the feedback loop the game is missing.
 9. **Depletion, weather with teeth, fire and disease.**
 10. **The border map with holdings**, and war as a phased state.
 11. **Chapters and an ending.**

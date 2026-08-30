@@ -169,11 +169,13 @@ var DATA = (function () {
       terrain: ['grass', 'meadow', 'sand', 'hill'], max: 3,
       desc: 'Scholars. Required for advanced research; speeds all study.'
     },
+    /* Kept only so kingdoms saved before footpaths still load; roads are no
+       longer placeable. Paths are derived from where your buildings stand. */
     road: {
-      id: 'road', name: 'Road', cat: 'civic', ic: '🛤️',
-      cost: { stone: 3 }, build: 1, jobs: 0, isRoad: true,
+      id: 'road', name: 'Footpath', cat: 'civic', ic: '🛤️',
+      cost: { stone: 3 }, build: 1, jobs: 0, isRoad: true, legacy: true,
       terrain: ['grass', 'meadow', 'sand', 'forest', 'hill'],
-      desc: 'Joins buildings to the castle. Anything on the network produces +14%, villagers move far faster, and markets earn more.'
+      desc: 'Paths wear themselves in between your buildings. They cost nothing and take no space.'
     },
     barracks: {
       id: 'barracks', name: 'Barracks', cat: 'military', ic: '🛡️',
