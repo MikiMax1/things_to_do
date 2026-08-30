@@ -32,10 +32,10 @@ var W = (function () {
         else {
           var rocky = n2(x * 0.17 + 40, y * 0.17 + 40, 3);
           var wet = n3(x * 0.15 - 20, y * 0.15 - 20, 3);
-          if (h > 0.44 && rocky > 0.60) t = 'rock';
-          else if (h > 0.33 && rocky > 0.47) t = 'hill';
-          else if (wet > 0.60) t = 'forest';
-          else if (wet > 0.50) t = 'meadow';
+          if (h > 0.50 && rocky > 0.72) t = 'rock';
+          else if (h > 0.40 && rocky > 0.60) t = 'hill';
+          else if (wet > 0.55) t = 'forest';
+          else if (wet > 0.46) t = 'meadow';
           else t = 'grass';
         }
         tiles.push({

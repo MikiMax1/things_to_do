@@ -109,7 +109,7 @@ var UI = (function () {
     people: { title: 'People', tabs: function () { return [{ key: 'overview', name: 'Realm' }, { key: 'jobs', name: 'Work' }, { key: 'quests', name: 'Charters' }]; }, body: peopleBody },
     army: { title: 'Army', tabs: function () { return [{ key: 'roster', name: 'Roster' }, { key: 'muster', name: 'Muster' }, { key: 'war', name: 'War' }]; }, body: armyBody },
     tech: { title: 'Research', tabs: function () { return [{ key: 1, name: 'Tier I' }, { key: 2, name: 'Tier II' }, { key: 3, name: 'Tier III' }]; }, body: techBody },
-    world: { title: 'The Realm', tabs: function () { return [{ key: 'castle', name: 'Castle' }, { key: 'chronicle', name: 'Chronicle' }, { key: 'settings', name: 'Settings' }]; }, body: worldBody }
+    world: { title: 'The Realm', tabs: function () { return [{ key: 'castle', name: 'Castle' }, { key: 'trade', name: 'Trade' }, { key: 'chronicle', name: 'Chronicle' }, { key: 'settings', name: 'Settings' }]; }, body: worldBody }
   };
 
   function renderSheet(rebuildTabs) {
@@ -207,7 +207,7 @@ var UI = (function () {
     }
 
     if (tab === 'jobs') {
-      box.appendChild(h('<p class="hint">Every workplace gets one villager before any gets a second, so spreading too thin runs everything at half speed. Pause a building to free its workers.</p>'));
+      box.appendChild(h('<p class="hint"><b>High</b> priority buildings are staffed to the brim first; everything else shares what is left, one villager each before any gets a second. Upgrading a building raises its output without needing more hands.</p>'));
       var working = G.buildings.filter(function (b) { return b.built && SIM.jobsOf(b) > 0; });
       if (!working.length) box.appendChild(h('<p class="hint">No workplaces yet.</p>'));
       working.sort(function (a, b) { return a.def.cat.localeCompare(b.def.cat) || a.uid - b.uid; });
@@ -218,9 +218,16 @@ var UI = (function () {
         var card = h('<div class="card"><div class="card-row">' +
           '<div class="card-ic"></div>' +
           '<div class="card-main"><h4>' + b.def.name + ' <span style="opacity:.5;font-weight:400">(' + b.x + ',' + b.y + ')</span></h4>' +
-          '<p>' + b.workers + '/' + SIM.jobsOf(b) + ' workers · ' + outTxt + '/s</p></div>' +
+          '<p>' + b.workers + '/' + SIM.jobsOf(b) + ' workers' + ((b.level || 1) > 1 ? ' · Lv ' + b.level : '') + ' · ' + outTxt + '/s</p></div>' +
           '</div></div>');
         card.querySelector('.card-ic').appendChild(ART.icon(b.id, 40));
+        var prow2 = h('<div class="pill-row"></div>');
+        ['Low', 'Normal', 'High'].forEach(function (lab, i) {
+          var pl = h('<button class="pill' + ((b.prio === undefined ? 1 : b.prio) === i ? ' on' : '') + '">' + lab + '</button>');
+          pl.addEventListener('click', function () { b.prio = i; U.sfx.tap(); renderSheet(); });
+          prow2.appendChild(pl);
+        });
+        card.appendChild(prow2);
         var row = h('<div style="display:flex;gap:6px;margin-top:8px"></div>');
         var pb = h('<button class="btn sec" style="flex:1">' + (b.paused ? '▶ Resume' : '⏸ Pause') + '</button>');
         pb.addEventListener('click', function () { b.paused = !b.paused; renderSheet(); });
@@ -262,14 +269,17 @@ var UI = (function () {
         '<div class="stat-line" style="margin-top:8px"><span>Smithy bonus</span><b>+' + Math.round((sb.atk - 1) * 100) + '% attack, +' + Math.round((sb.def - 1) * 100) + '% defence</b></div>' +
         '<div class="stat-line"><span>Home defence</span><b>+' + SIM.defenseScore() + '</b></div>' +
         '<div class="stat-line"><span>Upkeep</span><b>' + (SIM.armySlots() * 0.014).toFixed(2) + ' g/s · ' + (SIM.armySlots() * 0.012).toFixed(2) + ' food/s</b></div>' +
+        '<div class="stat-line"><span>Formation</span><b>' + (DATA.FORMATIONS[G.formation] || DATA.FORMATIONS.line).name + '</b></div>' +
         '</div>'));
+      box.appendChild(h('<p class="hint">Soldiers who survive a victory become <b>veterans</b> — +22% health and +20% attack next time out. Lose a battle and only the veterans who walked away keep the rank.</p>'));
       var keys = Object.keys(G.army);
       if (!keys.length) box.appendChild(h('<p class="hint">You have no soldiers. Muster some before Brannoch comes calling.</p>'));
       keys.forEach(function (k) {
         var u = DATA.UNITS[k];
         var card = h('<div class="card"><div class="card-row">' +
           '<div class="card-ic" style="font-size:22px">' + u.ic + '</div>' +
-          '<div class="card-main"><h4>' + u.name + ' ×' + G.army[k] + '</h4>' +
+          '<div class="card-main"><h4>' + u.name + ' ×' + G.army[k] +
+          (((G.vets || {})[k]) ? ' <span style="color:#e0b23c;font-weight:400">· ' + G.vets[k] + ' veteran</span>' : '') + '</h4>' +
           '<p>' + u.hp + ' hp · ' + u.atk + ' atk · ' + u.def + ' def' + (u.rng > 40 ? ' · ranged' : '') + '</p></div>' +
           '</div></div>');
         var db = h('<button class="btn sec wide">Disband one (villager returns)</button>');
@@ -324,6 +334,17 @@ var UI = (function () {
         '<div class="stat-line"><span>Next raid on you</span><b>~' + Math.max(0, Math.round(r.nextRaid / DATA.SEASON_LEN * 10) / 10) + ' seasons</b></div>' +
         '<div class="stat-line"><span>Battles won / lost</span><b>' + G.stats.wins + ' / ' + G.stats.losses + '</b></div>' +
         '</div>'));
+      box.appendChild(h('<p class="sect-label">Formation</p>'));
+      Object.keys(DATA.FORMATIONS).forEach(function (fk) {
+        var f = DATA.FORMATIONS[fk];
+        var on = (G.formation || 'line') === fk;
+        var c = h('<div class="card" style="' + (on ? 'border-color:#e0b23c' : '') + '"><div class="card-row">' +
+          '<div class="card-ic" style="font-size:20px">' + f.ic + '</div>' +
+          '<div class="card-main"><h4>' + f.name + (on ? ' ✓' : '') + '</h4><p>' + f.desc + '</p></div></div></div>');
+        c.addEventListener('click', function () { G.formation = fk; U.sfx.tap(); renderSheet(); });
+        box.appendChild(c);
+      });
+
       var raid = h('<button class="btn wide">⚔️ March on Brannoch</button>');
       raid.disabled = SIM.armyCount() < 3;
       if (SIM.armyCount() < 3) raid.textContent = 'You need at least 3 soldiers';
@@ -468,6 +489,42 @@ var UI = (function () {
         '</div>'));
     }
 
+    if (tab === 'trade') {
+      if (!SIM.canTrade()) {
+        box.appendChild(h('<p class="hint">Merchants will not deal with a realm that has no market. Build one, and you can sell what you have spare and buy what you lack.</p>'));
+      } else {
+        var sp = SIM.tradeSpread();
+        box.appendChild(h('<p class="hint">Traded in lots of ' + DATA.TRADE_LOT + '. Trade Charter, Guilds, Banking and upgraded markets all narrow the spread. Currently selling at ' +
+          Math.round(sp.sell * 100) + '% and buying at ' + Math.round(sp.buy * 100) + '% of worth.</p>'));
+        Object.keys(DATA.TRADE).forEach(function (k) {
+          var t = DATA.TRADE[k], pr = SIM.priceOf(k);
+          var card = h('<div class="card"><div class="card-row">' +
+            '<div class="card-ic" style="font-size:20px">' + t.ic + '</div>' +
+            '<div class="card-main"><h4>' + t.name + '</h4>' +
+            '<p>You hold ' + Math.floor(G.res[k]) + ' · sell ' + DATA.TRADE_LOT + ' for ' + pr.sell +
+            'g · buy ' + DATA.TRADE_LOT + ' for ' + pr.buy + 'g</p></div></div></div>');
+          var row = h('<div style="display:flex;gap:6px;margin-top:8px"></div>');
+          var sb2 = h('<button class="btn sec" style="flex:1">Sell ' + DATA.TRADE_LOT + '</button>');
+          sb2.disabled = G.res[k] < DATA.TRADE_LOT;
+          sb2.addEventListener('click', function () {
+            var r = SIM.sell(k, 1);
+            if (!r.ok) toast(r.why, 'bad'); else toast('Sold ' + r.amount + ' ' + k + ' for ' + r.gain + ' gold.', 'good');
+            renderSheet(); refreshHUD();
+          });
+          var bb2 = h('<button class="btn" style="flex:1">Buy ' + DATA.TRADE_LOT + '</button>');
+          bb2.disabled = G.res.gold < pr.buy;
+          bb2.addEventListener('click', function () {
+            var r = SIM.buy(k, 1);
+            if (!r.ok) toast(r.why, 'bad'); else toast('Bought ' + r.amount + ' ' + k + ' for ' + r.cost + ' gold.', 'good');
+            renderSheet(); refreshHUD();
+          });
+          row.appendChild(sb2); row.appendChild(bb2);
+          card.appendChild(row);
+          box.appendChild(card);
+        });
+      }
+    }
+
     if (tab === 'chronicle') {
       if (!G.log.length) box.appendChild(h('<p class="hint">Nothing has happened yet.</p>'));
       box.appendChild(h('<div class="card">' + G.log.slice(0, 40).map(function (l) {
@@ -544,6 +601,10 @@ var UI = (function () {
     } else {
       U.sfx.err();
       toast(r.why, 'bad');
+      if (/Not enough/.test(r.why)) {
+        if (SIM.canTrade()) toast('Short of materials? Sell what you have spare in The Realm → Trade.', 'war');
+        else if (/wood/.test(r.why)) toast('Tap any woodland tile and fell it for timber — it grows back.', 'war');
+      }
     }
     return r.ok;
   }
@@ -569,7 +630,7 @@ var UI = (function () {
     if (selected.b) {
       var b = selected.b, def = b.def;
       ic.appendChild(ART.icon(b.id, 40));
-      el('insp-name').textContent = def.name;
+      el('insp-name').textContent = def.name + ((b.level || 1) > 1 ? '  ·  Lv ' + b.level : '');
       el('insp-sub').textContent = b.built
         ? (SIM.jobsOf(b) ? b.workers + '/' + SIM.jobsOf(b) + ' workers' : 'no workers needed') + (b.paused ? ' · paused' : '')
         : 'Under construction — ' + Math.round(b.prog * 100) + '%';
@@ -591,7 +652,33 @@ var UI = (function () {
       }
       body.innerHTML = lines.join('') || '<p style="font-size:12px;color:#bda98a;margin:0">' + def.desc + '</p>';
 
+      if (b.built && SIM.canUpgrade(b)) {
+        var uc = SIM.upgradeCost(b);
+        body.innerHTML += '<div class="sect-label" style="margin:10px 0 4px">Upgrade to level ' + (b.level + 1) +
+          ' — +' + Math.round(DATA.UPGRADE.gain * 100) + '% output, no extra workers</div>' +
+          '<div class="cost">' + costPills(uc) + '</div>';
+        var ub2 = h('<button class="btn">⬆ Upgrade</button>');
+        ub2.disabled = !SIM.canAfford(uc);
+        ub2.addEventListener('click', function () {
+          var r = SIM.upgradeBuilding(b);
+          if (!r.ok) { toast(r.why, 'bad'); U.sfx.err(); }
+          else { RENDER.puff(b.x + .5, b.y + .5, '#f0d98a', 10); RENDER.floater(b.x + .5, b.y - .1, 'Level ' + b.level, '#f0d98a'); }
+          renderInspector(); refreshHUD();
+        });
+        acts.appendChild(ub2);
+      } else if (b.built && (b.level || 1) >= DATA.UPGRADE.max && b.id !== 'castle' && !b.def.isRoad && !b.def.isWall) {
+        body.innerHTML += '<div class="stat-line"><span>Level</span><b>' + b.level + ' — fully upgraded</b></div>';
+      }
+
       if (b.built && SIM.jobsOf(b) > 0) {
+        body.innerHTML += '<div class="sect-label" style="margin:10px 0 4px">Worker priority</div>';
+        var prow = h('<div class="pill-row" style="margin:0 0 2px"></div>');
+        ['Low', 'Normal', 'High'].forEach(function (lab, i) {
+          var pl = h('<button class="pill' + ((b.prio === undefined ? 1 : b.prio) === i ? ' on' : '') + '">' + lab + '</button>');
+          pl.addEventListener('click', function () { b.prio = i; U.sfx.tap(); renderInspector(); });
+          prow.appendChild(pl);
+        });
+        body.appendChild(prow);
         var pb = h('<button class="btn sec">' + (b.paused ? '▶ Resume' : '⏸ Pause') + '</button>');
         pb.addEventListener('click', function () { b.paused = !b.paused; renderInspector(); });
         acts.appendChild(pb);
@@ -626,6 +713,18 @@ var UI = (function () {
         '<div class="stat-line"><span>Neighbours</span><b>' +
           ['forest', 'hill', 'rock', 'water'].filter(function (k) { return near[k]; })
             .map(function (k) { return near[k] + ' ' + k; }).join(', ') || 'open ground' + '</b></div>';
+      if (SIM.canFell(t)) {
+        var fb = h('<button class="btn">🪓 Fell the trees (+12 wood)</button>');
+        fb.addEventListener('click', function () {
+          var r = SIM.fell(t);
+          if (!r.ok) { toast(r.why, 'bad'); return; }
+          U.sfx.place(); U.vibrate(10);
+          RENDER.puff(t.x + .5, t.y + .6, '#8a6b45', 8);
+          RENDER.floater(t.x + .5, t.y, '+' + r.gain + ' wood', '#c9a86a');
+          clearSelection(); refreshHUD();
+        });
+        acts.appendChild(fb);
+      }
       if (terr.build) {
         var bb = h('<button class="btn">Build here</button>');
         bb.addEventListener('click', function () { clearSelection(); openSheet('build'); });
@@ -784,6 +883,19 @@ var UI = (function () {
     if (SIM.G.log.length > 60) SIM.G.log.pop();
   }
 
+  /* nobody should ever be stuck with nothing and no way to earn */
+  function reliefEvent() {
+    if (modalBusy || BATTLE.isOpen()) { eventQueue.push('relief'); return; }
+    showEvent({
+      art: '🕯️', title: 'The Steward Opens the Vault',
+      text: 'Your steward finds you staring at empty stores. "There is a little put by for exactly this, my lord. Silver plate, a few barrels, some seasoned timber. It will get us moving again."',
+      choices: [
+        { label: 'Take it and rebuild', sub: '+120 gold, +60 wood, +40 stone', apply: { gold: 120, wood: 60, stone: 40 } },
+        { label: 'Take it and sell the rest', sub: '+220 gold', apply: { gold: 220 } }
+      ]
+    });
+  }
+
   function fireEvent() {
     if (modalBusy || BATTLE.isOpen()) { return; }
     var G = SIM.G;
@@ -914,6 +1026,7 @@ var UI = (function () {
       if (kind === 'toast') { toast(payload.msg, payload.kind); chronicle(payload.msg); }
       if (kind === 'event') eventQueue.push('event');
       if (kind === 'raid-incoming') eventQueue.push('raid');
+      if (kind === 'relief') eventQueue.push('relief');
       if (kind === 'season') { chronicle(payload.name + ' comes to Ashveil.'); }
       if (kind === 'completed') {
         RENDER.puff(payload.x + .5, payload.y + .6, '#e8dcb5', 10);
@@ -935,6 +1048,7 @@ var UI = (function () {
     if (modalBusy || BATTLE.isOpen() || !eventQueue.length) return;
     var next = eventQueue.shift();
     if (next === 'raid') incomingRaid();
+    else if (next === 'relief') reliefEvent();
     else fireEvent();
   }
 

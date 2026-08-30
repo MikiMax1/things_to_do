@@ -48,10 +48,10 @@ var BATTLE = (function () {
   /* ---------------- roster building ---------------- */
   function mkUnit(side, key, def, x, y, bonus) {
     return {
-      side: side, key: key, name: def.name,
+      side: side, key: key, name: def.name, vet: !!bonus.vet,
       hp: def.hp * (bonus.hp || 1), maxHp: def.hp * (bonus.hp || 1),
       atk: def.atk * (bonus.atk || 1), def: def.def + (bonus.def || 0),
-      spd: def.spd, rng: def.rng, rate: def.rate, splash: def.splash || 0,
+      spd: def.spd * (bonus.spd || 1), rng: def.rng, rate: def.rate, splash: def.splash || 0,
       x: x, y: y, tx: x, ty: y, cd: Math.random() * def.rate,
       target: null, dead: false, flash: 0, bob: Math.random() * 6.28,
       fade: 1, state: 'advance'
@@ -61,6 +61,8 @@ var BATTLE = (function () {
   function buildOurs() {
     var G = SIM.G, sb = SIM.smithBonus();
     var defBonus = kind === 'defend' ? SIM.defenseScore() / 18 : 0;
+    var fm = DATA.FORMATIONS[G.formation] || DATA.FORMATIONS.line;
+    var vets = G.vets || {};
     var arr = [], i, n = 0;
     var keys = Object.keys(G.army);
     keys.forEach(function (k) { n += G.army[k]; });
@@ -74,8 +76,15 @@ var BATTLE = (function () {
         var back = (d.rng > 40) ? 26 : 0;
         var x = FW * 0.15 - col * 17 - back + (Math.random() - .5) * 5;
         var y = FH / 2 + (row - (perCol - 1) / 2) * (FH * 0.66 / perCol) + (Math.random() - .5) * 6;
-        arr.push(mkUnit('ours', k, d, U.clamp(x, 12, FW * 0.38), U.clamp(y, 26, FH - 26),
-          { atk: sb.atk, def: defBonus, hp: 1 + (G.happy - 50) / 400 }));
+        // veterans of a won battle fight noticeably harder
+        var isVet = i < (vets[k] || 0);
+        arr.push(mkUnit('ours', k, d, U.clamp(x, 12, FW * 0.38), U.clamp(y, 26, FH - 26), {
+          vet: isVet,
+          atk: sb.atk * fm.atk * (isVet ? 1.20 : 1),
+          def: defBonus + fm.def + (isVet ? 2 : 0),
+          hp: (1 + (G.happy - 50) / 400) * fm.hp * (isVet ? 1.22 : 1),
+          spd: fm.spd
+        }));
         slot++;
       }
     });
@@ -145,6 +154,9 @@ var BATTLE = (function () {
       : 'Your banners cross the border.');
     if (kind === 'defend' && SIM.defenseScore() > 0)
       say('Your walls and towers steady the line (+' + SIM.defenseScore() + ' defence).');
+    var fmNow = DATA.FORMATIONS[SIM.G.formation] || DATA.FORMATIONS.line;
+    var vetCount = units.filter(function (u) { return u.side === 'ours' && u.vet; }).length;
+    say('Formation: ' + fmNow.name + (vetCount ? ' · ' + vetCount + ' veteran' + (vetCount > 1 ? 's' : '') + ' in the line' : ''));
     U.sfx.horn();
     U.vibrate(40);
   }
@@ -464,6 +476,15 @@ var BATTLE = (function () {
       g.lineTo(p.x + facing * (u.state === 'fight' ? 8 : 5.5) * s, p.y - 11 * s + bobY);
       g.stroke();
     }
+    // veteran chevron
+    if (u.vet) {
+      g.strokeStyle = '#e0b23c'; g.lineWidth = 1.3 * s;
+      g.beginPath();
+      g.moveTo(p.x - 2.6 * s, p.y - 15.4 * s + bobY);
+      g.lineTo(p.x, p.y - 17.2 * s + bobY);
+      g.lineTo(p.x + 2.6 * s, p.y - 15.4 * s + bobY);
+      g.stroke();
+    }
     // health pip
     if (u.hp < u.maxHp) {
       var wpx = 9 * s, hp = U.clamp(u.hp / u.maxHp, 0, 1);
@@ -542,6 +563,15 @@ var BATTLE = (function () {
     var foesLeft = alive('foes');
     var won = foesLeft === 0 || (alive('ours') > 0 && routing.foes);
     var title, body = '';
+
+    // veterans: win and everyone who walked off the field is blooded;
+    // lose and you keep only the veterans who survived
+    G.vets = G.vets || {};
+    var newVets = {};
+    Object.keys(survivors).forEach(function (k) {
+      newVets[k] = won ? survivors[k] : Math.min(G.vets[k] || 0, survivors[k]);
+    });
+    G.vets = newVets;
 
     if (won) {
       G.stats.wins++;
