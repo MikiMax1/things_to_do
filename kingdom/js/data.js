@@ -173,7 +173,7 @@ var DATA = (function () {
       id: 'road', name: 'Road', cat: 'civic', ic: '🛤️',
       cost: { stone: 3 }, build: 1, jobs: 0, isRoad: true,
       terrain: ['grass', 'meadow', 'sand', 'forest', 'hill'],
-      desc: 'Villagers move much faster on roads, and markets earn more.'
+      desc: 'Joins buildings to the castle. Anything on the network produces +14%, villagers move far faster, and markets earn more.'
     },
     barracks: {
       id: 'barracks', name: 'Barracks', cat: 'military', ic: '🛡️',

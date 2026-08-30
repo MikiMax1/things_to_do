@@ -299,7 +299,7 @@ committed to.)*
 **Roads become the skeleton.** Once reach governs jobs, amenities, markets and
 haulage, the road network is the actual structure of your kingdom rather than a
 cosmetic path. This is the change that makes the humble road the most important
-building in the game.
+building in the game. **The first slice of this is already built** — see below.
 
 **Desirability creates zoning.** Houses near amenities are pleasant; houses
 beside a smithy, a mine or a tannery are not. Industry pushes contentment down
@@ -322,6 +322,41 @@ because a rule told you to, but because the simulation rewards it.
   rebuild. Essential once position carries weight.
 - **A build queue.** Plan a district, let the builders work through it in
   order, instead of placing one building at a time and waiting.
+
+### Roads: shipped, and the reasoning behind it
+Roads were pointless busywork. They cost 3 stone, gave a small market bonus,
+and made villagers walk faster — which changed nothing, because production
+never depended on walking. On a phone, dragging them out by hand was tedious
+for no return.
+
+There were two ways to read that complaint, and they lead to opposite designs.
+"Roads are tedious" argues for removing them. "Roads do nothing" argues for
+making them matter. Deleting the decision would have been the wrong fix,
+because the spatial rework above needs the road network to be the skeleton of
+the kingdom — free, automatic, weightless roads would gut it before it was
+built.
+
+So: **automatic placement, but a real cost and a real benefit.**
+- Placing a building lays the cheapest run of road joining it to the network,
+  reusing existing road where it can, and charges the stone.
+- A building joined to the castle by road produces **+14%**. A bonus for being
+  connected, never a penalty for not being — so no existing kingdom got worse
+  the day this shipped.
+- It is all-or-nothing: if you cannot afford the whole run, no road is laid and
+  the building still goes up, unconnected, with the shortfall visible in its
+  inspector. Placement never fails because of it.
+- Manual dragging still works, and the whole thing can be switched off in
+  Settings.
+
+The decision survives — compact building is cheaper to connect, sprawl costs
+stone — while the busywork is gone. This is also the first working piece of the
+spatial rework: *connectivity* is now a real property of a building, which is
+the foundation the catchment and reach systems are built on.
+
+**Still to do here:** connectivity currently gives a flat bonus. Once reach
+lands it should govern haulage properly — distance to the stores mattering,
+mud in autumn slowing unpaved routes, and market catchment following the road
+network rather than a radius.
 
 ---
 
@@ -542,8 +577,11 @@ The spatial rework comes first because most other complaints are downstream of
 it, and because several later systems (districts, fire, disease, riots, local
 markets) are impossible without it.
 
-1. **Reach, and local contentment.** The smallest useful slice of the spatial
-   rework: amenities serve who they can reach, contentment is an average over
+0. ~~**Road connectivity.**~~ Done — buildings joined to the castle produce
+   +14%, roads lay themselves, and connectivity is now a real property to
+   build catchment on.
+1. **Reach, and local contentment.** The next slice of the spatial rework:
+   amenities serve who they can reach, contentment is an average over
    households. Ships the overlay work with it.
 2. **Markets earn from goods in their catchment**, and jobs become local.
    Together with (1) this is the point at which the map starts to matter.

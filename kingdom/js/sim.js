@@ -31,7 +31,7 @@ var SIM = (function () {
       stats: { wins: 0, losses: 0, built: 0, raidsSurvived: 0, techDone: 0, upgrades: 0, traded: 0 },
       vets: {}, formation: 'line',
       eventTimer: DATA.SEASON_LEN * 1.6,
-      growTimer: 6, reliefTimer: 30, reliefCooldown: 0,
+      growTimer: 6, reliefTimer: 30, reliefCooldown: 0, autoRoads: true,
       speed: 1,
       log: []
     };
@@ -40,12 +40,17 @@ var SIM = (function () {
     castle.built = true; castle.prog = 1;
     commit(castle);
     // a couple of starter cottages so villagers exist from the first second
+    var starters = [];
     [[-2, 0], [3, 1]].forEach(function (o) {
       var x = spot.x + o[0], y = spot.y + o[1];
       if (W.canPlace('house', x, y).ok) {
         var h = mkBuilding('house', x, y); h.built = true; h.prog = 1; commit(h);
+        starters.push(h);
       }
     });
+    refreshCounts();
+    // and a lane joining them to the castle, so the realm starts joined up
+    starters.forEach(function (h) { autoConnect(h); });
     refreshCounts();
     AGENTS.reset();
     emit('newgame');
@@ -65,6 +70,7 @@ var SIM = (function () {
     };
   }
   function commit(b) {
+    markNetDirty();
     G.buildings.push(b);
     W.footprint(b.def, b.x, b.y).forEach(function (c) {
       var t = W.at(c.x, c.y);
@@ -104,6 +110,133 @@ var SIM = (function () {
     emit('change');
     checkQuests();
     return { ok: true };
+  }
+
+  /* ---------------------------------------------------------
+     Roads: which buildings are actually joined to the castle?
+     A building counts as connected if any tile touching it is a road
+     that traces back to the castle. Cached, recomputed when the map
+     changes rather than every tick.
+     --------------------------------------------------------- */
+  var _netDirty = true;
+  function markNetDirty() { _netDirty = true; }
+
+  function rebuildNetwork() {
+    _netDirty = false;
+    var seen = {}, queue = [], i;
+    // seed from every road touching the castle
+    var castle = G.buildings[0];
+    if (!castle) return;
+    W.footprint(castle.def, castle.x, castle.y).forEach(function (c) {
+      [[1,0],[-1,0],[0,1],[0,-1]].forEach(function (d) {
+        var t = W.at(c.x + d[0], c.y + d[1]);
+        if (t && t.road && !seen[t.x + ',' + t.y]) { seen[t.x + ',' + t.y] = 1; queue.push(t); }
+      });
+    });
+    while (queue.length) {
+      var t0 = queue.pop();
+      [[1,0],[-1,0],[0,1],[0,-1]].forEach(function (d) {
+        var n = W.at(t0.x + d[0], t0.y + d[1]);
+        if (n && n.road && !seen[n.x + ',' + n.y]) { seen[n.x + ',' + n.y] = 1; queue.push(n); }
+      });
+    }
+    G._net = seen;
+    G.buildings.forEach(function (b) {
+      if (b.id === 'castle') { b.connected = true; return; }
+      if (b.def.isRoad) { b.connected = !!seen[b.x + ',' + b.y]; return; }
+      b.connected = false;
+      W.footprint(b.def, b.x, b.y).forEach(function (c) {
+        [[1,0],[-1,0],[0,1],[0,-1]].forEach(function (d) {
+          if (seen[(c.x + d[0]) + ',' + (c.y + d[1])]) b.connected = true;
+        });
+      });
+    });
+  }
+  function network() { if (_netDirty) rebuildNetwork(); return G._net || {}; }
+  function isConnected(b) { network(); return !!b.connected || b.id === 'castle'; }
+
+  /* Goods from a building joined to the castle by road reach the stores
+     faster. A bonus for being connected, never a penalty for not being. */
+  var ROAD_BONUS = 0.14;
+
+  /* Cheapest run of new road joining a building to the network.
+     Existing road is free to traverse; empty ground costs one tile of road. */
+  function routeToNetwork(b) {
+    network();
+    var startCells = [];
+    W.footprint(b.def, b.x, b.y).forEach(function (c) {
+      [[1,0],[-1,0],[0,1],[0,-1]].forEach(function (d) {
+        var t = W.at(c.x + d[0], c.y + d[1]);
+        if (t) startCells.push(t);
+      });
+    });
+    var best = null, seen = {}, open = [];
+    startCells.forEach(function (t) {
+      var k = t.x + ',' + t.y;
+      if (seen[k]) return;
+      if (t.bld && !t.bld.def.isRoad) return;
+      if (!t.road && DATA.B.road.terrain.indexOf(t.terr) < 0) return;
+      seen[k] = 0;
+      open.push({ t: t, cost: t.road ? 0 : 1, prev: null });
+    });
+    var guard = 0;
+    while (open.length && guard++ < 2600) {
+      var bi = 0;
+      for (var i = 1; i < open.length; i++) if (open[i].cost < open[bi].cost) bi = i;
+      var cur = open.splice(bi, 1)[0];
+      if (G._net[cur.t.x + ',' + cur.t.y] || touchesCastle(cur.t)) { best = cur; break; }
+      if (cur.cost > 16) continue;                       // don't lay half the island
+      [[1,0],[-1,0],[0,1],[0,-1]].forEach(function (d) {
+        var n = W.at(cur.t.x + d[0], cur.t.y + d[1]);
+        if (!n) return;
+        if (n.bld && !n.bld.def.isRoad) return;
+        if (!n.road && DATA.B.road.terrain.indexOf(n.terr) < 0) return;
+        var c2 = cur.cost + (n.road ? 0 : 1);
+        var k2 = n.x + ',' + n.y;
+        if (seen[k2] !== undefined && seen[k2] <= c2) return;
+        seen[k2] = c2;
+        open.push({ t: n, cost: c2, prev: cur });
+      });
+    }
+    if (!best) return null;
+    var run = [];
+    while (best) { if (!best.t.road) run.push(best.t); best = best.prev; }
+    return run;
+  }
+  /* Must match how rebuildNetwork() seeds itself: orthogonally touching the
+     castle footprint. A diagonal corner is not a connection — accepting one
+     here while the scan rejected it left whole towns reading as unconnected. */
+  function touchesCastle(t) {
+    var c = G.buildings[0];
+    if (!c) return false;
+    var hit = false;
+    W.footprint(c.def, c.x, c.y).forEach(function (cell) {
+      if (Math.abs(cell.x - t.x) + Math.abs(cell.y - t.y) === 1) hit = true;
+    });
+    return hit;
+  }
+
+  /* lay that run, as far as the stone stretches */
+  function autoConnect(b) {
+    if (!G.autoRoads) return 0;
+    if (b.def.isRoad || b.def.isWall || b.id === 'castle') return 0;
+    if (isConnected(b)) return 0;
+    var run = routeToNetwork(b);
+    if (!run || !run.length) return 0;
+    var each = costOf('road').stone || 3;
+    var afford = Math.floor(G.res.stone / each);
+    if (afford < run.length) return 0;                   // all or nothing
+    var laid = 0;
+    run.forEach(function (t) {
+      if (t.road || t.bld) return;
+      G.res.stone -= each;
+      var r = mkBuilding('road', t.x, t.y);
+      r.built = true; r.prog = 1;
+      commit(r);
+      laid++;
+    });
+    if (laid) { markNetDirty(); refreshCounts(); }
+    return laid;
   }
 
   function costOf(id) {
@@ -149,8 +282,10 @@ var SIM = (function () {
     commit(b);
     G.stats.built++;
     refreshCounts();
+    var laid = autoConnect(b);
+    if (laid) emit('roads', { b: b, laid: laid });
     emit('build', b);
-    return { ok: true, b: b };
+    return { ok: true, b: b, roads: laid };
   }
 
   function short(cost) {
@@ -162,6 +297,7 @@ var SIM = (function () {
     var i = G.buildings.indexOf(b);
     if (i < 0) return false;
     G.buildings.splice(i, 1);
+    markNetDirty();
     W.footprint(b.def, b.x, b.y).forEach(function (c) {
       var t = W.at(c.x, c.y);
       if (!t) return;
@@ -449,7 +585,7 @@ var SIM = (function () {
     if (!b.built || b.paused) return out;
     var ratio = staffRatio(b);
     if (ratio <= 0 && jobsOf(b) > 0) return out;
-    var eff = efficiency() * ratio * auraFor(b) * lvlMul(b);
+    var eff = efficiency() * ratio * auraFor(b) * lvlMul(b) * (isConnected(b) ? 1 + ROAD_BONUS : 1);
     if (b.def.produces) {
       Object.keys(b.def.produces).forEach(function (k) {
         var v = b.def.produces[k] * eff * techMul(k);
@@ -876,7 +1012,7 @@ var SIM = (function () {
       time: G.time, res: G.res, pop: G.pop, happy: G.happy,
       castle: G.castle, tech: G.tech, research: G.research,
       army: G.army, rival: G.rival, quests: G.quests, stats: G.stats,
-      vets: G.vets || {}, formation: G.formation || 'line',
+      vets: G.vets || {}, formation: G.formation || 'line', autoRoads: G.autoRoads !== false,
       eventTimer: G.eventTimer, speed: G.speed,
       buildings: G.buildings.map(function (b) {
         return [b.id, b.x, b.y, b.built ? 1 : 0, Number(b.prog.toFixed(3)),
@@ -899,7 +1035,7 @@ var SIM = (function () {
       castle: d.castle || 0, army: d.army || {}, rival: d.rival,
       quests: d.quests || {}, stats: st, eventTimer: d.eventTimer,
       vets: d.vets || {}, formation: d.formation || 'line',
-      growTimer: 6, reliefTimer: 30, reliefCooldown: 0,
+      growTimer: 6, reliefTimer: 30, reliefCooldown: 0, autoRoads: true,
       speed: d.speed || 1, log: []
     };
     d.buildings.forEach(function (a) {
@@ -933,6 +1069,8 @@ var SIM = (function () {
     nextCastle: nextCastle, upgradeCastle: upgradeCastle,
     lvlMul: lvlMul, canUpgrade: canUpgrade, upgradeCost: upgradeCost, upgradeBuilding: upgradeBuilding,
     canFell: canFell, fell: fell,
+    isConnected: isConnected, autoConnect: autoConnect, markNetDirty: markNetDirty,
+    ROAD_BONUS: ROAD_BONUS,
     canTrade: canTrade, priceOf: priceOf, sell: sell, buy: buy, tradeSpread: tradeSpread,
     techAvailable: techAvailable, startResearch: startResearch,
     unitAvailable: unitAvailable, recruit: recruit, disband: disband,
