@@ -325,7 +325,9 @@ var UI = (function () {
     if (tab === 'war') {
       var r = G.rival;
       var attackOdds = estimateOdds(r.str, 'raid');
-      var defendOdds = estimateOdds(r.str * 0.85, 'defend');
+      var incoming = SIM.raidPower();
+      var defendOdds = estimateOdds(incoming, 'defend');
+      var grace = SIM.graceLeft();
       function col(o) { return o > 60 ? '#8fd06a' : o > 38 ? '#e0b23c' : '#e0795f'; }
       box.appendChild(h('<div class="card">' +
         '<h4 style="font-family:var(--font);font-size:15px">Brannoch</h4>' +
@@ -334,7 +336,8 @@ var UI = (function () {
         '<div class="stat-line"><span>Your field strength</span><b>' + Math.round(fieldStrength()) + '</b></div>' +
         '<div class="stat-line"><span>Odds if you attack</span><b style="color:' + col(attackOdds) + '">' + attackOdds + '%</b></div>' +
         '<div class="stat-line"><span>Odds if they raid you</span><b style="color:' + col(defendOdds) + '">' + defendOdds + '%</b></div>' +
-        '<div class="stat-line"><span>Next raid on you</span><b>~' + Math.max(0, Math.round(r.nextRaid / DATA.SEASON_LEN * 10) / 10) + ' seasons</b></div>' +
+        '<div class="stat-line"><span>Strength of their next raid</span><b>' + Math.round(incoming) + '</b></div>' +
+        '<div class="stat-line"><span>Next raid on you</span><b>' + (grace > 0 ? 'at peace for ' + grace + ' more season' + (grace > 1 ? 's' : '') : '~' + Math.max(0, Math.round(r.nextRaid / DATA.SEASON_LEN * 10) / 10) + ' seasons') + '</b></div>' +
         '<div class="stat-line"><span>Battles won / lost</span><b>' + G.stats.wins + ' / ' + G.stats.losses + '</b></div>' +
         '</div>'));
       box.appendChild(h('<p class="sect-label">Formation</p>'));
@@ -378,26 +381,18 @@ var UI = (function () {
         renderSheet();
       });
       box.appendChild(tribute);
-      box.appendChild(h('<p class="hint">Walls and watchtowers only help when you are <b>defending</b>. Attacking is won by numbers, archers and smithies.</p>'));
+      box.appendChild(h('<p class="hint">Brannoch sizes each raid against <b>your</b> strength, so you will not be jumped by an army ten times your own — but leave yourself defenceless and they will still take your stores. Walls and watchtowers only help when <b>defending</b>. Attacking is won by numbers, archers and smithies.</p>'));
     }
   }
 
-  function unitStrength(hp, atk, def) { return (hp * 0.25 + atk * 1.6 + def * 0.8) / 3.1; }
+  function fieldStrength(extraDef) { return SIM.fieldStrength(extraDef); }
 
-  function fieldStrength(extraDef) {
-    var G = SIM.G, sb = SIM.smithBonus(), s = 0;
-    Object.keys(G.army).forEach(function (k) {
-      var u = DATA.UNITS[k];
-      s += G.army[k] * unitStrength(u.hp, u.atk * sb.atk, u.def + (extraDef || 0));
-    });
-    return s;
-  }
   /* score the enemy the same way, from the army they would actually field */
   function foeStrength(power, flavour) {
     var spec = BATTLE.foeArmy(power, flavour), s = 0;
     Object.keys(spec).forEach(function (k) {
       var u = DATA.FOE_UNITS[k];
-      s += spec[k] * unitStrength(u.hp, u.atk, u.def);
+      s += spec[k] * SIM.unitStrength(u.hp, u.atk, u.def);
     });
     return s;
   }
@@ -405,7 +400,7 @@ var UI = (function () {
   function estimateOdds(power, kind, flavour) {
     var mine = fieldStrength(kind === 'defend' ? SIM.defenseScore() / 18 : 0);
     var theirs = foeStrength(power, flavour);
-    if (mine <= 0) return 2;
+    if (mine <= 0) return theirs <= 0 ? 50 : 2;
     if (theirs <= 0) return 98;
     return U.clamp(Math.round(mine * mine / (mine * mine + theirs * theirs) * 100), 2, 98);
   }
@@ -986,7 +981,7 @@ var UI = (function () {
   function incomingRaid() {
     if (modalBusy || BATTLE.isOpen()) return;
     var G = SIM.G;
-    var power = G.rival.str * U.range(Math.random, 0.7, 1.0);
+    var power = SIM.raidPower() * U.range(Math.random, 0.86, 1.06);
     var ev = {
       art: '📯', title: 'Brannoch Rides on Ashveil',
       text: 'Smoke on the eastern road. A war band of roughly ' + Math.round(power / 9) +
@@ -994,7 +989,7 @@ var UI = (function () {
             ' to the line, and your captains rate the fight at about ' + estimateOdds(power, 'defend') + '%.',
       choices: [
         { label: '⚔️ Meet them in the field', sub: 'Fight — your walls and towers help', battle: true },
-        { label: '💰 Buy them off', sub: '−' + Math.round(80 + power * 2) + ' gold', buy: Math.round(80 + power * 2) }
+        { label: '💰 Buy them off', sub: '−' + Math.round(35 + power * 1.5) + ' gold', buy: Math.round(35 + power * 1.5) }
       ]
     };
     modalBusy = true;

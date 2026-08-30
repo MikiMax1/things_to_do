@@ -111,6 +111,43 @@ event catches anyone who still manages to end up with nothing.
 3. **Growth must be self-limiting.** Any loop that expands consumption needs a
    brake tied to supply, or it ends in a death spiral.
 
+### War balance — a temporary heuristic, not the final answer
+Brannoch used to attack on a fixed schedule with a strength that climbed on
+its own clock, ignoring the player completely: the first raid landed around
+season 3 at strength 34, which a starting force of four militia cannot beat.
+You could reach year 7 with no army and simply be farmed for your stores.
+
+The stop-gap now in place:
+- **Six seasons of peace** at the start, and longer gaps between raids for the
+  first two years after that.
+- **Raids are sized against your army**, ramping from a scouting party to at
+  most Brannoch's true strength — so a defenceless village gets a handful of
+  raiders, not a war host, and a kingdom with knights gets a real war.
+- **Scaled against your army only**, never your walls, so fortifying is always
+  a pure gain.
+- **A season's warning** before they ride, so you can muster or save the coin.
+- **Tribute is much cheaper** (35 + 1.5× the raid, was 80 + 2×).
+- Light raiders make up small war bands; axemen, hounds and champions only
+  appear as the raids grow.
+
+This is a heuristic, and it wants replacing with something with real
+motivation behind it:
+- **Give Brannoch a war economy.** Their strength should come from holdings
+  and seasons of peace they have spent building, visible to a scout, rather
+  than a number that ticks upward invisibly.
+- **Model their intent, not just their power.** Raiding because their harvest
+  failed, or because you insulted their envoy, or because you look weak and
+  rich — with the reason stated when they come.
+- **Make peace a real state.** Tribute, alliance, royal marriage and a border
+  treaty, each with a duration and a cost to breaking it.
+- **Difficulty settings**, since some players want the early pressure that
+  others do not.
+- **Let losing be interesting.** Losing a defence should cost you a building or
+  a season of unrest rather than a flat tax on your stores, and losing badly
+  should be survivable.
+- **Retreat.** A way to pull out of a battle that is going wrong and keep the
+  survivors, instead of fighting every fight to the end.
+
 ### Phase 2.5 — economy resilience (next)
 Refinements that came directly out of playing it:
 - **Event previews.** Show what an event will cost against what you hold, so a
