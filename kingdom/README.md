@@ -19,8 +19,10 @@ straight over one and it reroutes. Every building traces a route to the castle
 gate, routes braid together into shared lanes, and the ground near the keep
 wears into a broad road while the outskirts stay a thin trail.
 
-That traffic is worth money: a **market set among the lanes earns far more**
-than one stuck out on its own, so where you put your market matters.
+Paths are decoration — they cost nothing and change nothing. **Markets take a
+cut of everything your kingdom produces**, wherever they stand, so the more you
+make the more they earn. Each further market takes a smaller cut, so a second
+pays and a tenth does not.
 
 **Move around.** Drag to pan, pinch to zoom, tap a tile or building to
 inspect it, long-press for the same thing without selecting. The 🎯 button

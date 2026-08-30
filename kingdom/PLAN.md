@@ -1,22 +1,40 @@
 # Kingdom of Ashveil — the redesign plan
 
+## A settled decision: the kingdom is a pool, not a map of places
+
+**Contentment and trade are realm-wide, and they stay that way.** Amenities and
+markets raise the kingdom's stats according to how many you have and what they
+are, not according to where you put them. A well helps everyone. A market
+trades the realm's goods wherever it stands.
+
+This overrides the "everything works through reach" design earlier drafts built
+towards, and the sections below are revised to match. The reasoning: this is a
+phone game played in short sittings, and optimising catchments is a desk
+activity. Placement should turn on things that read at a glance — terrain,
+adjacency, room to grow — not a hidden logistics puzzle needing overlays to see.
+
+What still depends on position, and should:
+- **Terrain adjacency** — lumber wants woodland, quarries the hills, mines a
+  crag, fisheries the water.
+- **Soil** — farms do better on rich ground, worse on sand.
+- **Auras** — a windmill lifts the farms around it, a sawmill the lumber camps.
+
+Everything else is a pool. Footpaths are purely decorative: free, spaceless,
+and they no longer affect income.
+
 ## Start here next session
 
-**Next task: reach, and local contentment.** The smallest useful slice of the
-spatial rework, and everything else in the plan is queued behind it.
+The spatial rework is off the table, so the queue is led by depth, not
+geography:
 
-- **Do:** each dwelling is served only by the amenities that can reach it;
-  realm contentment becomes the average across households instead of a global
-  pool. `happyTarget()` in `sim.js` is the function to change.
-- **Ship with it:** a contentment overlay. Without a way to *see* which houses
-  are served, this makes the game more opaque, not less. That is not optional.
-- **Known trap:** existing kingdoms were built when placement did not matter,
-  so switching this on will hurt them. Either apply it to new games only, or
-  give a grace period with a clear explanation and cheap building moves.
-- **Also fix while there:** the inspector currently says "+4 realm-wide" for
-  amenities. That line becomes wrong the moment this lands.
-- **Then:** markets earning from goods in their catchment, which reuses the
-  same reach code.
+1. **Production chains** — grain → flour → bread, wool → cloth, iron → tools.
+   The largest depth win left, and it feeds the market system that now exists:
+   more goods made means more trade, with no catchments needed.
+2. **Exclusive tech branches** — pairs where you give one up. Cheap, big gain
+   in replay value.
+3. **Campaign time and stated causes** for the war — the two cheapest changes
+   that fix the most.
+4. **A standing list of what needs attention**, tappable to jump there.
 
 Everything below is context and the longer plan. The balance audit is the part
 worth re-reading — it is measured from the build, not guessed.
@@ -242,8 +260,9 @@ one function.
 **5. There is no opportunity cost on land.** A generated island has around 453
 buildable tiles; a complete kingdom needs roughly 40 buildings. Space is free,
 so there is never a hard choice about *where* — only about *when*.
-*Fix:* the spatial rework below makes placement matter everywhere at once; a
-smaller, more contested island would sharpen it further.
+*Fix:* with the pool decision made, the answer is not to make every system
+spatial but to make the **land itself** worth competing for — a smaller island,
+rivers cutting it up, sharper terrain differences — so good ground is limited.
 
 **6. Technology is sixteen flat multipliers.** Every tech is "+X% to Y",
 permanent, and eventually you research all of them. There is no branch you
@@ -256,93 +275,24 @@ having built a *particular* kingdom, not the only kingdom.
 
 ---
 
-## The change that matters most: a kingdom is a place, not a pool
+## Superseded: the spatial rework
 
-Position is read by exactly four things in the current build: the windmill and
-sawmill auras, terrain adjacency for farms, lumber camps, quarries, mines and
-fisheries, the soil under a farm, and a small road bonus for markets.
+Earlier drafts planned to route jobs, contentment, storage and market income
+through walking distance. That is **off the table** by decision — see the note
+at the top. Kept here because the finding behind it still stands:
 
-Everything else is a global sum. Housing, storage, troop capacity, defence,
-contentment, jobs and market income are all computed by adding a number over
-every building in the realm, wherever it stands. A well on the far shore
-comforts the town square. A market in an empty field earns as much as one in a
-crowded street. A villager in the north works a quarry in the south with no
-walk. Roads are decoration.
+> Position is read by four things — windmill and sawmill auras, terrain
+> adjacency on the extraction buildings, and soil under a farm. Everything else
+> is a global sum. Making reach govern jobs and amenities would have made the
+> map matter everywhere at once, at the cost of needing overlays to be legible
+> and of turning a phone game into a logistics puzzle.
 
-So the map is wallpaper. You are not planning a town, you are filling in a
-list, and the only real placement decisions are the handful of adjacency rules
-on extraction buildings. This is the single biggest thing holding the game
-back, and almost every other complaint traces to it.
-
-### The fix: everything works through reach
-
-One idea underneath all of it — **can a villager get there and back?** Reach is
-measured in walking steps along the ground, and roads make steps cheap. From
-that single rule, every system below becomes spatial without inventing new
-vocabulary for the player.
-
-**Jobs become local.** A villager lives in a house and works somewhere within
-reach of it. A workplace beyond the reach of any housing cannot be staffed at
-all, and a distant one is staffed at reduced efficiency because half the day is
-spent walking. Suddenly housing has to follow industry, or roads have to close
-the gap. The villagers already walk these routes on screen — the simulation
-should mean it.
-
-**Contentment becomes local.** Each dwelling is served only by the amenities
-that reach it. The realm's contentment is the average across its households,
-so the HUD number stops being an abstraction and becomes a summary of real
-places. A quarter with a well, a chapel and a tavern is content; the row of
-cottages you threw up beside the mine is not — and you can see which is which.
-This also makes every radius circle the map already draws finally mean
-something.
-
-**Markets earn from goods, not from people.** A market's income becomes the
-value of what is actually produced within its catchment, times its cut:
-
-```
-income = Σ over producers in catchment:
-           value(output per second) × rate × connection quality
-```
-
-Roads extend the catchment and raise connection quality; two markets covering
-the same producers split the take rather than stacking. A market in an empty
-field earns nearly nothing. A market sitting between your farms and your
-housing, on a road, is superb. That converts the strongest building in the game
-from a no-brainer into the most interesting placement decision on the map — and
-it fixes market spam without nerfing markets.
-
-**Storage becomes a catchment too.** Producers deliver to the nearest granary
-or warehouse in range; beyond that range, output backs up. Warehouses stop
-being a global number and become depots you site deliberately.
-*(Optional — this one risks fiddliness, and should be prototyped before it is
-committed to.)*
-
-**Roads become the skeleton.** Once reach governs jobs, amenities, markets and
-haulage, the road network is the actual structure of your kingdom rather than a
-cosmetic path. This is the change that makes the humble road the most important
-building in the game. **The first slice of this is already built** — see below.
-
-**Desirability creates zoning.** Houses near amenities are pleasant; houses
-beside a smithy, a mine or a tannery are not. Industry pushes contentment down
-locally, amenities push it up, so you naturally end up separating them — not
-because a rule told you to, but because the simulation rewards it.
-
-### What this requires alongside it
-- **Overlays are mandatory, not optional.** The moment space matters, the
-  player must be able to *see* it: toggles for job reach, market catchment, a
-  contentment heatmap, road connectivity, and unserved buildings. Without them
-  this rework makes the game more opaque, not less.
-- **Show catchment while placing.** The build ghost should draw the reach of
-  what you are holding, and highlight which buildings it would serve, before
-  you commit.
-- **A migration path.** Existing kingdoms were built with placement that did
-  not matter, so switching this on will hurt them. Options: apply it only to
-  new games, or give a one-off grace period with a clear explanation and a
-  "reorganise" tool that lets you move buildings cheaply for a while.
-- **Move a building** for a fraction of its cost, rather than demolish and
-  rebuild. Essential once position carries weight.
-- **A build queue.** Plan a district, let the builders work through it in
-  order, instead of placing one building at a time and waiting.
+Worth keeping from it without going spatial:
+- **Markets earning from goods** — done, realm-wide: a market takes a cut of
+  everything the kingdom produces, each further market taking a smaller cut, so
+  a second market pays and a tenth does not.
+- **Move a building** and a **build queue** — quality of life on any design.
+- **Land worth competing for** — smaller islands, rivers, sharper terrain.
 
 ### Footpaths: shipped, and a design I got wrong first
 Roads were pointless busywork — 3 stone for a small market bonus and faster
@@ -709,16 +659,13 @@ The spatial rework comes first because most other complaints are downstream of
 it, and because several later systems (districts, fire, disease, riots, local
 markets) are impossible without it.
 
-0. ~~**Footpaths.**~~ Done — free, spaceless, derived from your layout, and
-   markets earn from the traffic passing them. The first spatial signal in the
-   game that is not a terrain adjacency rule.
-1. **Reach, and local contentment.** The next slice of the spatial rework:
-   amenities serve who they can reach, contentment is an average over
-   households. Ships the overlay work with it.
-2. **Markets earn from goods in their catchment**, and jobs become local.
-   Together with (1) this is the point at which the map starts to matter.
-3. **Move a building, a build queue, and placement overlays.** The tools that
-   make a spatial game bearable to play.
+0. ~~**Footpaths and market income.**~~ Done — paths are free, spaceless and
+   decorative; markets take a cut of everything the realm produces, wherever
+   they stand, with diminishing returns on each extra market.
+1. **Production chains.** Grain to bread, wool to cloth, iron to tools — the
+   largest depth win left, and it feeds the market system already in place.
+2. **Exclusive tech branches.** Cheap, large gain in replay value.
+3. **Move a building, and a build queue.** Quality of life on any design.
 4. **Campaign time and stated causes** — the two cheapest changes that fix the
    most about the war.
 5. **Battle input** — ground, deployment, reserve, retreat.

@@ -378,7 +378,7 @@ var RENDER = (function () {
       g.globalAlpha = 1;
     }
     // show the aura / requirement radius
-    if (def.radius) {
+    if (def.radius && def.aura) {
       g.strokeStyle = 'rgba(240,220,140,.55)';
       g.lineWidth = 2; g.setLineDash([6, 5]);
       g.beginPath();
@@ -394,7 +394,7 @@ var RENDER = (function () {
     g.strokeStyle = 'rgba(240,210,120,' + pulse.toFixed(2) + ')';
     g.lineWidth = 3;
     g.strokeRect(s.x + 1, s.y + 1, wT * z - 2, hT * z - 2);
-    if (b.def.radius) {
+    if (b.def.radius && b.def.aura) {
       g.strokeStyle = 'rgba(240,220,140,.4)';
       g.setLineDash([6, 5]); g.lineWidth = 2;
       g.beginPath(); g.arc(s.x + wT * z / 2, s.y + hT * z / 2, (b.def.radius + .5) * z, 0, 6.3);

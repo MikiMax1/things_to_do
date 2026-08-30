@@ -637,8 +637,9 @@ var UI = (function () {
       if (def.armyCap) lines.push('<div class="stat-line"><span>troop capacity</span><b>+' + def.armyCap + '</b></div>');
       if (def.aura) lines.push('<div class="stat-line"><span>aura</span><b>+' + Math.round(Object.values(def.aura)[0] * 100) + '% nearby</b></div>');
       if (b.built && def.trade && b.id !== 'castle') {
-        lines.push('<div class="stat-line"><span>Passing trade</span><b>' + SIM.traffic(b.x, b.y, 2) +
-          ' (busier ground earns more)</b></div>');
+        lines.push('<div class="stat-line"><span>Realm produces</span><b>' + SIM.goodsValue().toFixed(2) + ' g/s of goods</b></div>');
+        lines.push('<div class="stat-line"><span>This market\'s cut</span><b>' +
+          Math.round(SIM.marketCut(b._mIdx || 0) * 100) + '% (market #' + ((b._mIdx || 0) + 1) + ')</b></div>');
       }
       if (b.built && def.scaleNear) {
         var n = W.nearCount(b.x, b.y, def.scaleNear.terrain, 1);
