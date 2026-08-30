@@ -50,8 +50,8 @@ var DATA = (function () {
     castle: {
       id: 'castle', name: 'Castle', cat: 'civic', ic: '🏰', w: 2, h: 2,
       cost: {}, build: 0, jobs: 0, housing: 6, store: { gold: 400, food: 200, wood: 200, stone: 200, iron: 100 },
-      terrain: ['grass', 'meadow', 'sand', 'hill'], unique: true,
-      desc: 'The heart of your realm. Upgrade it to unlock greater works.'
+      terrain: ['grass', 'meadow', 'sand', 'hill'], unique: true, trade: 0.009,
+      desc: 'The heart of your realm. Collects a small tax from every villager, so coin always trickles in. Upgrade it to unlock greater works.'
     },
     house: {
       id: 'house', name: 'Cottage', cat: 'housing', ic: '🏠',
@@ -274,6 +274,29 @@ var DATA = (function () {
     champion:  { name: 'Champion', hp: 84, atk: 17, def: 12, spd: 20, rng: 9, rate: 1.2 }
   };
 
+  /* ---------------- trade ----------------
+     Base worth in gold. You sell below it and buy above it; the spread
+     narrows with Trade Charter, Guilds and Banking. Needs a market. */
+  var TRADE = {
+    food:  { base: 1.00, ic: '🌾', name: 'Food' },
+    wood:  { base: 1.30, ic: '🪵', name: 'Wood' },
+    stone: { base: 1.85, ic: '🪨', name: 'Stone' },
+    iron:  { base: 3.60, ic: '⛓️', name: 'Iron' }
+  };
+  var TRADE_LOT = 25;
+
+  /* ---------------- building upgrades ----------------
+     An upgrade multiplies what a building gives WITHOUT needing more
+     villagers — the answer to a big town and too few hands. */
+  var UPGRADE = { max: 3, costPow: 1.75, gain: 0.5 };
+
+  /* ---------------- battle formations ---------------- */
+  var FORMATIONS = {
+    line:       { name: 'Line',       ic: '▬', desc: 'Balanced. No bonus, no penalty.',                 atk: 1.00, def: 0, hp: 1.00, spd: 1.00 },
+    wedge:      { name: 'Wedge',      ic: '▲', desc: '+20% attack and faster, but −15% defence.',        atk: 1.20, def: -1.5, hp: 1.00, spd: 1.18 },
+    shieldwall: { name: 'Shieldwall', ic: '⛨', desc: '+4 defence and +10% health, but advances slowly.', atk: 0.94, def: 4, hp: 1.10, spd: 0.72 }
+  };
+
   /* ---------------- objectives ---------------- */
   var QUESTS = [
     { id: 'q_house',  label: 'Raise 3 cottages',        need: { bld: { house: 3 } },   reward: { gold: 60 } },
@@ -390,6 +413,7 @@ var DATA = (function () {
   return {
     SEASON_LEN: SEASON_LEN, SEASONS: SEASONS, TERRAIN: TERRAIN, RES: RES,
     B: B, CATS: CATS, CASTLE: CASTLE, TECH: TECH, UNITS: UNITS, FOE_UNITS: FOE_UNITS,
-    QUESTS: QUESTS, EVENTS: EVENTS
+    QUESTS: QUESTS, EVENTS: EVENTS,
+    TRADE: TRADE, TRADE_LOT: TRADE_LOT, UPGRADE: UPGRADE, FORMATIONS: FORMATIONS
   };
 })();

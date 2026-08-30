@@ -28,10 +28,14 @@ var U = (function () {
   function makeNoise(seed) {
     var r = mulberry(seed), g = [];
     for (var i = 0; i < 256; i++) g.push(r());
+    /* integer hash — every step stays in int32 (Math.imul, >>>) so the
+       result is actually uniform. Plain * and >> overflow to floats and
+       collapse the distribution, which flattens the whole map. */
     function at(x, y) {
-      var n = (x * 374761393 + y * 668265263) ^ seed;
-      n = (n ^ (n >> 13)) * 1274126177;
-      return ((n ^ (n >> 16)) >>> 0) / 4294967296;
+      var n = (Math.imul(x | 0, 374761393) + Math.imul(y | 0, 668265263)) ^ seed;
+      n = Math.imul(n ^ (n >>> 13), 1274126177);
+      n = Math.imul(n ^ (n >>> 16), 1103515245);
+      return ((n ^ (n >>> 15)) >>> 0) / 4294967296;
     }
     function smooth(x, y) {
       var xi = Math.floor(x), yi = Math.floor(y), xf = x - xi, yf = y - yi;

@@ -59,17 +59,36 @@ cost you your kingdom.
 
 ## Roadmap
 
-### Phase 2 — depth in what already exists
-- **Building levels.** Upgrade a farm or market in place for stone and gold
-  instead of only building more of them.
-- **Worker priorities.** A three-way priority per building (low/normal/high)
-  so the round-robin can be steered without pausing things.
-- **Trade.** Sell surplus stone for gold, buy food in a bad winter, at prices
-  that move with what you have.
-- **Formations before battle.** Choose line, wedge or reserve, and place
-  archers, rather than the auto-deployment.
-- **Unit veterancy.** Survivors gain a rank and fight better next time, which
-  makes keeping an army alive matter.
+### Phase 2 — done
+- **Building levels.** ✅ Every building upgrades to level 3, +50% output per
+  level, with no extra villagers — the answer to a town bigger than its
+  workforce.
+- **Worker priorities.** ✅ Low / Normal / High per building. High is staffed
+  to the brim first; the rest share what's left.
+- **Trade.** ✅ Sell surplus and buy shortfalls at a market, at a spread that
+  narrows with Trade Charter, Guilds, Banking and market level.
+- **Formations.** ✅ Line, Wedge and Shieldwall, chosen in Army → War.
+- **Unit veterancy.** ✅ Survivors of a victory get +22% health and +20%
+  attack, and wear a chevron on the field.
+
+### The dead ends that got fixed alongside it
+The game could strand you, in three separate ways:
+- **Gold only came from markets, and a market cost gold.** Spend to zero with
+  no market and no amount of play would ever earn another coin. The castle now
+  collects a small tax from every villager.
+- **Timber was finite.** Clearing woodland was permanent. Woodland is now
+  fellable directly from any tile, and cleared ground regrows — spreading from
+  any surviving tree, and reseeding from nothing if the island is stripped bare.
+- **The map barely had any terrain on it.** The worst of the three. The value-noise
+  hash overflowed to floats instead of staying in int32, which collapsed its
+  distribution: a typical island had 9 woodland tiles, 8 hills, 4 crags and *no*
+  rich soil across ~300 land tiles — a near-empty grass plain that simply could
+  not support an economy. Fixed with a proper integer hash and retuned
+  thresholds; a map now averages roughly 28% woodland, 18% rich soil, 11% hills
+  and 2% crags, with at least 95% of land buildable on every seed tested.
+
+A market lets you trade your way out of any imbalance, and a steward's relief
+event catches anyone who still manages to end up with nothing.
 
 ### Phase 3 — the world beyond Ashveil
 - **A world map.** Ashveil as one holding among several, with neighbours to

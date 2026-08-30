@@ -28,8 +28,10 @@ var SIM = (function () {
       army: { militia: 4 },
       rival: { str: 34, anger: 0, nextRaid: DATA.SEASON_LEN * 3.2 },
       quests: {}, questShown: [],
-      stats: { wins: 0, losses: 0, built: 0, raidsSurvived: 0, techDone: 0 },
+      stats: { wins: 0, losses: 0, built: 0, raidsSurvived: 0, techDone: 0, upgrades: 0, traded: 0 },
+      vets: {}, formation: 'line',
       eventTimer: DATA.SEASON_LEN * 1.6,
+      growTimer: 6, reliefTimer: 30, reliefCooldown: 0,
       speed: 1,
       log: []
     };
@@ -58,7 +60,7 @@ var SIM = (function () {
     var def = DATA.B[id];
     return {
       uid: uid++, id: id, def: def, x: x, y: y,
-      built: false, prog: 0, workers: 0, paused: false,
+      built: false, prog: 0, workers: 0, paused: false, prio: 1,
       t: Math.random() * 6.28, level: 1
     };
   }
@@ -73,6 +75,35 @@ var SIM = (function () {
         t.bld = b;
       }
     });
+  }
+
+  /* what an upgraded building is worth, per level */
+  function lvlMul(b) { return 1 + DATA.UPGRADE.gain * ((b.level || 1) - 1); }
+
+  function upgradeCost(b) {
+    if (!canUpgrade(b)) return null;
+    var base = costOf(b.id), out = {}, mult = Math.pow(DATA.UPGRADE.costPow, b.level || 1);
+    Object.keys(base).forEach(function (k) { out[k] = Math.max(5, Math.round(base[k] * mult)); });
+    if (!Object.keys(out).length) out.gold = 60 * (b.level || 1);
+    return out;
+  }
+  function canUpgrade(b) {
+    if (!b.built) return false;
+    if (b.def.isRoad || b.def.isWall || b.id === 'castle') return false;
+    return (b.level || 1) < DATA.UPGRADE.max;
+  }
+  function upgradeBuilding(b) {
+    if (!canUpgrade(b)) return { ok: false, why: 'This cannot be upgraded further' };
+    var cost = upgradeCost(b);
+    if (!canAfford(cost)) return { ok: false, why: 'Not enough ' + short(cost) };
+    pay(cost);
+    b.level = (b.level || 1) + 1;
+    G.stats.upgrades = (G.stats.upgrades || 0) + 1;
+    U.sfx.build();
+    emit('toast', { msg: b.def.name + ' upgraded to level ' + b.level, kind: 'good' });
+    emit('change');
+    checkQuests();
+    return { ok: true };
   }
 
   function costOf(id) {
@@ -162,7 +193,7 @@ var SIM = (function () {
   function cap(res) {
     var v = BASE_STORE[res] || 0;
     G.buildings.forEach(function (b) {
-      if (b.built && b.def.store && b.def.store[res]) v += b.def.store[res];
+      if (b.built && b.def.store && b.def.store[res]) v += b.def.store[res] * lvlMul(b);
     });
     if (res === 'gold' && G.tech.banking) v += 200;
     return v;
@@ -170,14 +201,14 @@ var SIM = (function () {
 
   function housing() {
     var h = 0;
-    G.buildings.forEach(function (b) { if (b.built && b.def.housing) h += b.def.housing; });
+    G.buildings.forEach(function (b) { if (b.built && b.def.housing) h += b.def.housing * lvlMul(b); });
     h += castleBonus().housing || 0;
     return h;
   }
 
   function armyCap() {
     var v = 8 + (castleBonus().armyCap || 0);
-    G.buildings.forEach(function (b) { if (b.built && b.def.armyCap) v += b.def.armyCap; });
+    G.buildings.forEach(function (b) { if (b.built && b.def.armyCap) v += Math.round(b.def.armyCap * lvlMul(b)); });
     return v;
   }
   function armySlots() {
@@ -194,14 +225,14 @@ var SIM = (function () {
   function defenseScore() {
     var d = castleBonus().defense || 0;
     var mul = G.tech.fortification ? 1.6 : 1;
-    G.buildings.forEach(function (b) { if (b.built && b.def.defense) d += b.def.defense * mul; });
+    G.buildings.forEach(function (b) { if (b.built && b.def.defense) d += b.def.defense * mul * lvlMul(b); });
     return Math.round(d);
   }
 
   function smithBonus() {
     var atk = 0, def = 0;
     G.buildings.forEach(function (b) {
-      if (b.built && b.id === 'smith' && staffRatio(b) > 0.2) { atk += b.def.armyAtk; def += b.def.armyDef; }
+      if (b.built && b.id === 'smith' && staffRatio(b) > 0.2) { atk += b.def.armyAtk * lvlMul(b); def += b.def.armyDef * lvlMul(b); }
     });
     if (G.tech.iron_weapons) atk += 0.10;
     return { atk: 1 + Math.min(atk, 0.6), def: 1 + Math.min(def, 0.5) };
@@ -218,17 +249,28 @@ var SIM = (function () {
       return a.uid - b.uid;
     });
     list.forEach(function (b) { b.workers = 0; });
-    // round-robin: one worker to each workplace, then a second, and so on.
-    // Keeps a new quarry staffed instead of the farms swallowing everybody.
-    var guard = 0;
-    while (avail > 0 && guard++ < 12) {
-      var gave = false;
-      for (var i = 0; i < list.length && avail > 0; i++) {
-        var b = list[i];
-        if (b.workers < jobsOf(b)) { b.workers++; avail--; gave = true; }
-      }
-      if (!gave) break;
+
+    // High priority is staffed to the brim first. Everything else shares what
+    // is left round-robin, so a new quarry still gets a pair of hands instead
+    // of the farms swallowing the whole village.
+    var high = list.filter(function (b) { return b.prio === 2; });
+    for (var i = 0; i < high.length && avail > 0; i++) {
+      var give = Math.min(jobsOf(high[i]), avail);
+      high[i].workers = give; avail -= give;
     }
+    [1, 0].forEach(function (tier) {
+      var tierList = list.filter(function (b) { return (b.prio === undefined ? 1 : b.prio) === tier; });
+      var guard = 0;
+      while (avail > 0 && guard++ < 12) {
+        var gave = false;
+        for (var j = 0; j < tierList.length && avail > 0; j++) {
+          var b = tierList[j];
+          if (b.workers < jobsOf(b)) { b.workers++; avail--; gave = true; }
+        }
+        if (!gave) break;
+      }
+    });
+
     G.buildings.forEach(function (b) { if (b.paused || jobsOf(b) === 0) b.workers = 0; });
     G.idle = avail;
     G.builders = Math.min(6, Math.max(1, Math.floor(avail * 0.5) + 1));
@@ -293,7 +335,7 @@ var SIM = (function () {
     if (!b.built || b.paused) return out;
     var ratio = staffRatio(b);
     if (ratio <= 0 && jobsOf(b) > 0) return out;
-    var eff = efficiency() * ratio * auraFor(b);
+    var eff = efficiency() * ratio * auraFor(b) * lvlMul(b);
     if (b.def.produces) {
       Object.keys(b.def.produces).forEach(function (k) {
         var v = b.def.produces[k] * eff * techMul(k);
@@ -322,7 +364,7 @@ var SIM = (function () {
     }
     if (b.def.consumes) {
       Object.keys(b.def.consumes).forEach(function (k) {
-        out[k] = (out[k] || 0) - b.def.consumes[k] * ratio;
+        out[k] = (out[k] || 0) - b.def.consumes[k] * ratio * lvlMul(b);
       });
     }
     return out;
@@ -352,7 +394,7 @@ var SIM = (function () {
     G.buildings.forEach(function (b) {
       if (!b.built || !b.def.happy) return;
       if (jobsOf(b) > 0 && staffRatio(b) < 0.5) return;
-      capacity += b.def.happy * 6;
+      capacity += b.def.happy * 6 * lvlMul(b);
     });
     var coverage = G.pop > 0 ? U.clamp(capacity / G.pop, 0, 1.35) : 1;
     var t = 34 + coverage * 46;
@@ -420,7 +462,7 @@ var SIM = (function () {
     if (G.research) {
       var rate = 0.34;
       G.buildings.forEach(function (b) {
-        if (b.built && b.def.research) rate += b.def.research * staffRatio(b);
+        if (b.built && b.def.research) rate += b.def.research * staffRatio(b) * lvlMul(b);
       });
       G.research.prog += rate * dt;
       if (G.research.prog >= DATA.TECH[G.research.id].time) {
@@ -440,6 +482,9 @@ var SIM = (function () {
       emit('raid-incoming');
     }
 
+    regrow(dt);
+    checkRelief(dt);
+
     // random events
     G.eventTimer -= dt;
     if (G.eventTimer <= 0) {
@@ -453,6 +498,122 @@ var SIM = (function () {
     }
 
     checkQuests();
+  }
+
+  /* ---------------------------------------------------------
+     woodland: always fellable, and it grows back
+     --------------------------------------------------------- */
+  function canFell(t) { return !!t && t.terr === 'forest' && !t.bld && !t.road; }
+  function fell(t) {
+    if (!canFell(t)) return { ok: false, why: 'Nothing to fell here' };
+    t.terr = 'grass'; t.cleared = true;
+    var gain = (DATA.TERRAIN.forest.clearGain || { wood: 12 }).wood;
+    G.res.wood = Math.min(cap('wood'), G.res.wood + gain);
+    emit('felled', { t: t, gain: gain });
+    checkQuests();
+    return { ok: true, gain: gain };
+  }
+
+  /* cleared ground beside standing woodland slowly turns back to forest,
+     so timber is renewable and you can never strip the island for good */
+  function regrow(dt) {
+    G.growTimer -= dt;
+    if (G.growTimer > 0) return;
+    G.growTimer = 3.0;
+    var tiles = W.tiles, forestN = 0;
+    for (var f = 0; f < tiles.length; f++) if (tiles[f].terr === 'forest') forestN++;
+    for (var i = 0; i < 40; i++) {
+      var t = tiles[Math.floor(Math.random() * tiles.length)];
+      if (!t || t.bld || t.road) continue;
+      if (t.terr !== 'grass' && t.terr !== 'meadow') continue;
+      var near = W.nearCount(t.x, t.y, ['forest'], 1);
+      if (near > 0) {
+        // spreads outward from standing woodland — the more trees around a
+        // patch, the faster it takes. One neighbour is enough, so a single
+        // surviving tree can reseed the whole island given time.
+        if (Math.random() < Math.min(0.30, 0.07 * near)) { t.terr = 'forest'; t.cleared = true; }
+      } else if (forestN < 6) {
+        // stripped bare: seedlings blow in, so timber is never gone for good
+        if (Math.random() < 0.04) { t.terr = 'forest'; t.cleared = true; }
+      }
+    }
+  }
+
+  /* ---------------------------------------------------------
+     trade — sell surplus, buy what you lack. Needs a market.
+     --------------------------------------------------------- */
+  function tradeSpread() {
+    var s2 = 0.62, b2 = 1.62;
+    if (G.tech.trade_charter) { s2 += 0.06; b2 -= 0.10; }
+    if (G.tech.guilds)        { s2 += 0.06; b2 -= 0.10; }
+    if (G.tech.banking)       { s2 += 0.08; b2 -= 0.12; }
+    var lvl = 0;
+    G.buildings.forEach(function (b) { if (b.built && b.id === 'market') lvl += lvlMul(b); });
+    s2 += Math.min(0.10, lvl * 0.02);
+    b2 -= Math.min(0.14, lvl * 0.03);
+    return { sell: s2, buy: Math.max(1.05, b2) };
+  }
+  function canTrade() { return (G.count.market || 0) > 0; }
+  function priceOf(res) {
+    var t = DATA.TRADE[res];
+    if (!t) return null;
+    var sp = tradeSpread();
+    return {
+      sell: Math.max(1, Math.round(t.base * sp.sell * DATA.TRADE_LOT)),
+      buy: Math.max(2, Math.round(t.base * sp.buy * DATA.TRADE_LOT))
+    };
+  }
+  function sell(res, lots) {
+    lots = lots || 1;
+    if (!canTrade()) return { ok: false, why: 'You need a market to trade' };
+    var amount = DATA.TRADE_LOT * lots;
+    if (G.res[res] < amount) return { ok: false, why: 'Not enough ' + res + ' to sell' };
+    var gain = priceOf(res).sell * lots;
+    if (G.res.gold + gain > cap('gold') + 1) {
+      return { ok: false, why: 'Your treasury is full — spend some gold first' };
+    }
+    G.res[res] -= amount;
+    G.res.gold = Math.min(cap('gold'), G.res.gold + gain);
+    G.stats.traded = (G.stats.traded || 0) + 1;
+    U.sfx.coin();
+    emit('change');
+    return { ok: true, gain: gain, amount: amount };
+  }
+  function buy(res, lots) {
+    lots = lots || 1;
+    if (!canTrade()) return { ok: false, why: 'You need a market to trade' };
+    var price = priceOf(res).buy * lots;
+    if (G.res.gold < price) return { ok: false, why: 'Not enough gold' };
+    var amount = DATA.TRADE_LOT * lots;
+    if (G.res[res] + amount > cap(res) + 1) {
+      return { ok: false, why: 'No room to store more ' + res + ' — build a warehouse' };
+    }
+    G.res.gold -= price;
+    G.res[res] = Math.min(cap(res), G.res[res] + amount);
+    G.stats.traded = (G.stats.traded || 0) + 1;
+    U.sfx.coin();
+    emit('change');
+    return { ok: true, cost: price, amount: amount };
+  }
+
+  /* ---------------------------------------------------------
+     last-resort relief: you should never be able to get stuck
+     --------------------------------------------------------- */
+  function destitute() {
+    if (G.res.gold >= 40 || G.res.wood >= 20 || G.res.stone >= 20) return false;
+    var net = ledger();
+    // broke, with nothing coming in but the castle's thin trickle of tax
+    return net.gold <= 0.35 && net.wood <= 0.02 && net.stone <= 0.02;
+  }
+  function checkRelief(dt) {
+    if (G.reliefCooldown > 0) G.reliefCooldown -= dt;
+    G.reliefTimer -= dt;
+    if (G.reliefTimer > 0) return;
+    G.reliefTimer = 20;
+    if (G.reliefCooldown > 0) return;
+    if (!destitute()) return;
+    G.reliefCooldown = DATA.SEASON_LEN * 2.5;
+    emit('relief');
   }
 
   /* ---------------------------------------------------------
@@ -532,6 +693,7 @@ var SIM = (function () {
     if (n.castle && G.castle < n.castle) return false;
     if (n.tech && G.stats.techDone < n.tech) return false;
     if (n.wins && G.stats.wins < n.wins) return false;
+    if (n.upgrades && (G.stats.upgrades || 0) < n.upgrades) return false;
     if (n.bld) {
       for (var k in n.bld) if ((G.count[k] || 0) < n.bld[k]) return false;
     }
@@ -573,13 +735,15 @@ var SIM = (function () {
   function save() {
     if (!G) return false;
     var d = {
-      v: 2, world: W.serialize(),
+      v: 3, world: W.serialize(),
       time: G.time, res: G.res, pop: G.pop, happy: G.happy,
       castle: G.castle, tech: G.tech, research: G.research,
       army: G.army, rival: G.rival, quests: G.quests, stats: G.stats,
+      vets: G.vets || {}, formation: G.formation || 'line',
       eventTimer: G.eventTimer, speed: G.speed,
       buildings: G.buildings.map(function (b) {
-        return [b.id, b.x, b.y, b.built ? 1 : 0, Number(b.prog.toFixed(3)), b.paused ? 1 : 0];
+        return [b.id, b.x, b.y, b.built ? 1 : 0, Number(b.prog.toFixed(3)),
+                b.paused ? 1 : 0, b.level || 1, b.prio === undefined ? 1 : b.prio];
       })
     };
     return U.save(d);
@@ -587,19 +751,26 @@ var SIM = (function () {
   function hasSave() { return !!U.load(); }
   function loadGame() {
     var d = U.load();
-    if (!d || d.v !== 2) return false;
+    if (!d || !(d.v === 2 || d.v === 3)) return false;   // v2 saves still load
     W.deserialize(d.world);
+    var st = d.stats || {};
+    if (st.upgrades === undefined) st.upgrades = 0;
+    if (st.traded === undefined) st.traded = 0;
     G = {
       seed: d.world.seed, time: d.time, res: d.res, pop: d.pop, happy: d.happy,
       buildings: [], tech: d.tech || {}, research: d.research || null,
       castle: d.castle || 0, army: d.army || {}, rival: d.rival,
-      quests: d.quests || {}, stats: d.stats, eventTimer: d.eventTimer,
+      quests: d.quests || {}, stats: st, eventTimer: d.eventTimer,
+      vets: d.vets || {}, formation: d.formation || 'line',
+      growTimer: 6, reliefTimer: 30, reliefCooldown: 0,
       speed: d.speed || 1, log: []
     };
     d.buildings.forEach(function (a) {
       if (!DATA.B[a[0]]) return;
       var b = mkBuilding(a[0], a[1], a[2]);
       b.built = !!a[3]; b.prog = a[4]; b.paused = !!a[5];
+      b.level = a[6] || 1;
+      b.prio = a[7] === undefined ? 1 : a[7];
       commit(b);
     });
     refreshCounts();
@@ -621,6 +792,9 @@ var SIM = (function () {
     jobsOf: jobsOf, staffRatio: staffRatio, efficiency: efficiency,
     season: season, seasonIndex: seasonIndex, year: year, seasonProgress: seasonProgress,
     nextCastle: nextCastle, upgradeCastle: upgradeCastle,
+    lvlMul: lvlMul, canUpgrade: canUpgrade, upgradeCost: upgradeCost, upgradeBuilding: upgradeBuilding,
+    canFell: canFell, fell: fell,
+    canTrade: canTrade, priceOf: priceOf, sell: sell, buy: buy, tradeSpread: tradeSpread,
     techAvailable: techAvailable, startResearch: startResearch,
     unitAvailable: unitAvailable, recruit: recruit, disband: disband,
     activeQuests: activeQuests, applyEffects: applyEffects, checkQuests: checkQuests,

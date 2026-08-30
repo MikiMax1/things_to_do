@@ -23,6 +23,17 @@ one villager before any gets a second, so twenty buildings and ten people
 means everything runs at half speed. Build fewer, better things — or pause a
 building (in the inspector, or **People → Work**) to free its workers.
 
+**You can never get permanently stuck.** Your castle collects a small tax, so
+coin always trickles in. Any woodland tile can be felled for timber by tapping
+it — and cleared ground grows back into forest, so the island can't be stripped
+for good. Once you have a market you can sell surplus and buy what you lack in
+**The Realm → Trade**. And if you somehow end up with nothing at all, your
+steward opens the vault.
+
+**Upgrade rather than sprawl.** Any building can be upgraded up to level 3 for
++50% output per level *without needing more villagers* — usually the right
+answer when your town is bigger than your workforce.
+
 **Terrain matters.**
 - Farms want **rich soil** (+35%) and hate **sand** (−30%)
 - Lumber camps must touch **woodland**, and speed up with more of it
@@ -38,7 +49,12 @@ leave.
 about six people per point of contentment they give. Content villagers work
 faster; miserable ones drift away.
 
-**Fight.** Brannoch raids you every few seasons. Battles are played out on a
+**Steer your workforce.** Set a building to **High** priority and it gets
+staffed to the brim before anything else; everything else shares what's left.
+
+**Fight.** Pick a **formation** in Army → War (Line, Wedge or Shieldwall).
+Soldiers who survive a victory become **veterans** — noticeably tougher next
+time out. Brannoch raids you every few seasons. Battles are played out on a
 field: your actual roster marches out, archers shoot from behind the line,
 and you can order **Charge**, **Hold** or **Volley** on cooldown. Survivors
 come home; the fallen are gone. Walls and watchtowers only help when you are
@@ -62,8 +78,10 @@ arrows to pan, `Esc` to back out.
 | Economy | Gold, food, wood, stone and iron, with storage caps, upkeep and winter spoilage |
 | People | Population, housing, jobs, idle workers, contentment |
 | Tech | 16 technologies over three tiers, gated behind libraries |
+| Trade | Sell surplus and buy shortfalls at a spread that narrows with research and market level |
+| Upgrades | Every building upgradeable to level 3 — more output, same workers |
 | Military | 6 unit types, troop capacity, smithy bonuses, home defence |
-| Battle | Real-time skirmish with morale, routing, projectiles and player orders |
+| Battle | Real-time skirmish with morale, routing, projectiles, formations, veterans and player orders |
 | Life | Villagers walk to work and carry goods home; day/night, four seasons, snow, leaves, petals, chimney smoke |
 | Saving | Autosaves to the device every 8 seconds and whenever you leave the page |
 
