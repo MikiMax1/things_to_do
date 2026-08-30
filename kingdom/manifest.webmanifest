@@ -1,0 +1,18 @@
+{
+  "name": "Kingdom of Ashveil",
+  "short_name": "Ashveil",
+  "description": "Build a living medieval kingdom — economy, research and real battles.",
+  "start_url": "./index.html",
+  "display": "fullscreen",
+  "orientation": "any",
+  "background_color": "#12180f",
+  "theme_color": "#1b2a1e",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='96' fill='%232f5d34'/%3E%3Cpath d='M112 352h288v48H112z' fill='%23d9c89a'/%3E%3Cpath d='M128 192l48 48 40-80 40 80 40-80 40 80 48-48v160H128z' fill='%23e8dcb5'/%3E%3C/svg%3E",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
