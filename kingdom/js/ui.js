@@ -634,7 +634,9 @@ var UI = (function () {
       });
       if (def.upkeep) lines.push('<div class="stat-line"><span>upkeep</span><b>−' + def.upkeep.toFixed(2) + ' g/s</b></div>');
       if (def.housing) lines.push('<div class="stat-line"><span>housing</span><b>+' + def.housing + '</b></div>');
-      if (def.happy) lines.push('<div class="stat-line"><span>contentment</span><b>+' + def.happy + ' (r' + def.radius + ')</b></div>');
+      // NB: contentment is still pooled realm-wide, so don't claim a radius
+      // the simulation does not honour — see "the balance audit" in PLAN.md
+      if (def.happy) lines.push('<div class="stat-line"><span>contentment</span><b>+' + def.happy + ' realm-wide</b></div>');
       if (def.defense) lines.push('<div class="stat-line"><span>defence</span><b>+' + def.defense * (SIM.G.tech.fortification ? 1.6 : 1) + '</b></div>');
       if (def.armyCap) lines.push('<div class="stat-line"><span>troop capacity</span><b>+' + def.armyCap + '</b></div>');
       if (def.aura) lines.push('<div class="stat-line"><span>aura</span><b>+' + Math.round(Object.values(def.aura)[0] * 100) + '% nearby</b></div>');
