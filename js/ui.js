@@ -240,6 +240,16 @@ var UI = (function () {
           Math.round((G.breadCov || 0) * 12) + ' contentment</b></div>' +
         '<div class="stat-line"><span>Season effect on farms</span><b>×' + (SIM.G.tech.irrigation && SIM.season().key === 'winter' ? 0.65 : SIM.season().food) + '</b></div>' +
         '</div>'));
+      var lvls = [1, 2, 3].map(function (l) { return SIM.countHouseTier(l); });
+      box.appendChild(h('<p class="sect-label">Homes</p>'));
+      box.appendChild(h('<div class="card">' +
+        '<div class="stat-line"><span>🏠 Cottages</span><b>' + (lvls[0] - lvls[1]) + '</b></div>' +
+        '<div class="stat-line"><span>🏘️ Townhouses</span><b>' + (lvls[1] - lvls[2]) + '</b></div>' +
+        '<div class="stat-line"><span>🏛️ Fine houses</span><b>' + lvls[2] + '</b></div>' +
+        '<div class="stat-line"><span>Homes can currently reach</span><b>' +
+          (DATA.B.house.tierNames[SIM.houseTierEarned() - 1]) + '</b></div>' +
+        '</div>'));
+      box.appendChild(h('<p class="hint">Homes better themselves when the realm can keep them that way — contentment, bread, and cloth. Better homes hold more people and pay more tax. Let standards slip and they slip back.</p>'));
       box.appendChild(h('<p class="sect-label">What moves contentment</p>'));
       var lines = [];
       var capacity = 0;
@@ -716,7 +726,9 @@ var UI = (function () {
     if (selected.b) {
       var b = selected.b, def = b.def;
       ic.appendChild(ART.icon(b.id, 40));
-      el('insp-name').textContent = def.name + ((b.level || 1) > 1 ? '  ·  Lv ' + b.level : '');
+      var tierName = def.evolves && def.tierNames ? def.tierNames[(b.level || 1) - 1] : null;
+      el('insp-name').textContent = (tierName || def.name) +
+        (!def.evolves && (b.level || 1) > 1 ? '  ·  Lv ' + b.level : '');
       el('insp-sub').textContent = b.built
         ? (SIM.jobsOf(b) ? b.workers + '/' + SIM.jobsOf(b) + ' workers' : 'no workers needed') + (b.paused ? ' · paused' : '')
         : 'Under construction — ' + Math.round(b.prog * 100) + '%';
@@ -741,6 +753,21 @@ var UI = (function () {
       }
       body.innerHTML = lines.join('') || '<p style="font-size:12px;color:#bda98a;margin:0">' + def.desc + '</p>';
 
+      if (b.built && def.evolves) {
+        var earned = SIM.houseTierEarned(), cur = b.level || 1;
+        var nextT = DATA.HOUSE_TIERS[cur];
+        body.innerHTML += '<div class="stat-line"><span>Standing</span><b>' +
+          (def.tierNames[cur - 1]) + '</b></div>';
+        if (nextT) {
+          body.innerHTML += '<div class="stat-line"><span>To become a ' + def.tierNames[cur] + '</span><b style="color:' +
+            (earned > cur ? '#8fd06a' : '#e0b23c') + '">' + nextT.needs + '</b></div>';
+        } else {
+          body.innerHTML += '<div class="stat-line"><span>Standing</span><b>as fine as they come</b></div>';
+        }
+        if (earned < cur) {
+          body.innerHTML += '<div class="stat-line"><span>Warning</span><b style="color:#e0795f">the realm can no longer keep it — it will slip back</b></div>';
+        }
+      }
       if (b.built && SIM.canUpgrade(b)) {
         var uc = SIM.upgradeCost(b);
         body.innerHTML += '<div class="sect-label" style="margin:10px 0 4px">Upgrade to level ' + (b.level + 1) +

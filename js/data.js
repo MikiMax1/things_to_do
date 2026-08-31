@@ -61,7 +61,8 @@ var DATA = (function () {
       id: 'house', name: 'Cottage', cat: 'housing', ic: '🏠',
       cost: { wood: 22, gold: 10 }, build: 5, jobs: 0, housing: 5, upkeep: 0.01,
       terrain: ['grass', 'meadow', 'sand', 'forest', 'hill'],
-      desc: 'Houses 5 villagers. Villagers work your buildings.'
+      evolves: true, tierNames: ['Cottage', 'Townhouse', 'Fine House'],
+      desc: 'Houses 5 villagers — and improves itself into a townhouse and then a fine house as your realm gets richer. Better houses hold more people and pay more tax.'
     },
     manor: {
       id: 'manor', name: 'Manor', cat: 'housing', ic: '🏡', tech: 'sanitation',
@@ -237,6 +238,16 @@ var DATA = (function () {
     { key: 'civic',    name: 'Civic' },
     { key: 'military',  name: 'Military' }
   ];
+
+  /* ---------------- how a home betters itself ----------------
+     Nothing is bought. A house rises when the realm around it can keep
+     it that way, and slips back when it cannot. */
+  var HOUSE_TIERS = [
+    { happy: 0,  bread: 0,    cloth: false, tax: 0,     needs: 'nothing' },
+    { happy: 58, bread: 0.45, cloth: false, tax: 0.020, needs: '58% contentment and bread on the table' },
+    { happy: 72, bread: 0.65, cloth: true,  tax: 0.055, needs: '72% contentment, plenty of bread, and cloth in store' }
+  ];
+  var CLOTH_PER_FINE_HOUSE = 0.0045;
 
   /* ---------------- castle tiers ---------------- */
   var CASTLE = [
@@ -499,6 +510,7 @@ var DATA = (function () {
     SEASON_LEN: SEASON_LEN, SEASONS: SEASONS, TERRAIN: TERRAIN, RES: RES,
     B: B, CATS: CATS, CASTLE: CASTLE, TECH: TECH, UNITS: UNITS, FOE_UNITS: FOE_UNITS,
     QUESTS: QUESTS, EVENTS: EVENTS, RAID_CAUSES: RAID_CAUSES,
-    TRADE: TRADE, TRADE_LOT: TRADE_LOT, UPGRADE: UPGRADE, FORMATIONS: FORMATIONS, GROUNDS: GROUNDS
+    TRADE: TRADE, TRADE_LOT: TRADE_LOT, UPGRADE: UPGRADE, FORMATIONS: FORMATIONS, GROUNDS: GROUNDS,
+    HOUSE_TIERS: HOUSE_TIERS, CLOTH_PER_FINE_HOUSE: CLOTH_PER_FINE_HOUSE
   };
 })();

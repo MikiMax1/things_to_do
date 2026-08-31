@@ -92,6 +92,7 @@ var SIM = (function () {
   }
   function canUpgrade(b) {
     if (!b.built) return false;
+    if (b.def.evolves) return false;          // these rise on their own merit
     if (b.def.isRoad || b.def.isWall || b.id === 'castle') return false;
     return (b.level || 1) < DATA.UPGRADE.max;
   }
@@ -709,6 +710,14 @@ var SIM = (function () {
       net.food += spare * 0.020 * eff * foodSeasonMul();
       net.wood += spare * 0.010 * eff;
     }
+    var fine = 0;
+    G.buildings.forEach(function (b) {
+      if (!b.built || !b.def.evolves) return;
+      var tier = DATA.HOUSE_TIERS[(b.level || 1) - 1];
+      if (tier && tier.tax) net.gold += tier.tax * techMul('gold');
+      if ((b.level || 1) >= 3) fine++;
+    });
+    if (fine) net.cloth -= fine * DATA.CLOTH_PER_FINE_HOUSE;
     net.tools -= toolDemand() * (G.toolCov || 0);
     net.bread -= breadDemand() * (G.breadCov || 0);
     net.food -= G.pop * 0.055 * (1 - BREAD_SAVING * (G.breadCov || 0));
@@ -849,6 +858,7 @@ var SIM = (function () {
     regrow(dt);
     checkRelief(dt);
     tickCampaign(dt);
+    evolveHousing(dt);
 
     // random events
     G.eventTimer -= dt;
@@ -980,6 +990,46 @@ var SIM = (function () {
     if (!destitute()) return;
     G.reliefCooldown = DATA.SEASON_LEN * 2.5;
     emit('relief');
+  }
+
+  /* ---------------------------------------------------------
+     Homes that better themselves.
+     A cottage becomes a townhouse, and then a fine house, when the realm
+     can keep it that way — contentment, bread on the table, cloth in
+     store. Let those slip and the house slips back with them. Nothing is
+     bought: this is what the economy is FOR.
+     --------------------------------------------------------- */
+  function houseTierEarned() {
+    var lvl = 1;
+    for (var i = 1; i < DATA.HOUSE_TIERS.length; i++) {
+      var t = DATA.HOUSE_TIERS[i];
+      if (G.happy < t.happy) break;
+      if ((G.breadCov || 0) < t.bread) break;
+      if (t.cloth && !(G.res.cloth > 0)) break;
+      lvl = i + 1;
+    }
+    return lvl;
+  }
+  function countHouseTier(lvl) {
+    var n = 0;
+    G.buildings.forEach(function (b) {
+      if (b.built && b.def.evolves && (b.level || 1) >= lvl) n++;
+    });
+    return n;
+  }
+  function evolveHousing(dt) {
+    G.evolveTimer = (G.evolveTimer || 0) - dt;
+    if (G.evolveTimer > 0) return;
+    G.evolveTimer = 4;
+    var want = houseTierEarned();
+    var changed = false;
+    G.buildings.forEach(function (b) {
+      if (!b.built || !b.def.evolves) return;
+      var cur = b.level || 1;
+      if (cur < want) { b.level = cur + 1; changed = true; emit('evolved', b); }
+      else if (cur > want) { b.level = cur - 1; changed = true; }
+    });
+    if (changed) { refreshCounts(); emit('change'); }
   }
 
   /* ---------------------------------------------------------
@@ -1139,6 +1189,7 @@ var SIM = (function () {
     if (n.wins && G.stats.wins < n.wins) return false;
     if (n.upgrades && (G.stats.upgrades || 0) < n.upgrades) return false;
     if (n.res) { for (var rk in n.res) if ((G.res[rk] || 0) < n.res[rk]) return false; }
+    if (n.houseTier && countHouseTier(n.houseTier.lvl) < n.houseTier.n) return false;
     if (n.bld) {
       for (var k in n.bld) if ((G.count[k] || 0) < n.bld[k]) return false;
     }
@@ -1344,6 +1395,7 @@ var SIM = (function () {
     season: season, seasonIndex: seasonIndex, year: year, seasonProgress: seasonProgress,
     nextCastle: nextCastle, upgradeCastle: upgradeCastle,
     lvlMul: lvlMul, canUpgrade: canUpgrade, upgradeCost: upgradeCost, upgradeBuilding: upgradeBuilding,
+    houseTierEarned: houseTierEarned, countHouseTier: countHouseTier,
     canFell: canFell, fell: fell,
     ensurePaths: ensurePaths, markPathsDirty: markPathsDirty,
     goodsValue: goodsValue, marketCut: marketCut,
