@@ -33,7 +33,7 @@ var SIM = (function () {
       stats: { wins: 0, losses: 0, built: 0, raidsSurvived: 0, techDone: 0, upgrades: 0, traded: 0 },
       vets: {}, formation: 'line', campaign: null,
       eventTimer: DATA.SEASON_LEN * 1.6,
-      growTimer: 6, reliefTimer: 30, reliefCooldown: 0,
+      growTimer: 6, reliefTimer: 30, reliefCooldown: 0, festivals: {}, fairUntil: -1,
       speed: 1,
       log: []
     };
@@ -641,6 +641,12 @@ var SIM = (function () {
   function season() { return DATA.SEASONS[seasonIndex() % 4]; }
   function year() { return Math.floor(seasonIndex() / 4) + 1; }
   function seasonProgress() { return (G.time % DATA.SEASON_LEN) / DATA.SEASON_LEN; }
+  function nextFestival() {
+    var s2 = DATA.SEASONS[(seasonIndex() + 1) % 4];
+    return { name: DATA.FESTIVALS[s2.key].title, icon: DATA.FESTIVALS[s2.key].art,
+             seasons: 1 - seasonProgress() };
+  }
+  function fairOn() { return G.fairUntil > G.time; }
 
   function foodSeasonMul() {
     var s = season();
@@ -870,6 +876,13 @@ var SIM = (function () {
     if (seasonIndex() !== prevSeason) {
       U.sfx.season();
       emit('season', season());
+      // the season's occasion, once a year, every year
+      var key = season().key, yr = year();
+      if (!G.festivals) G.festivals = {};
+      if (G.festivals[key] !== yr && seasonIndex() > 0) {
+        G.festivals[key] = yr;
+        emit('festival', key);
+      }
     }
 
     checkQuests();
@@ -923,6 +936,7 @@ var SIM = (function () {
     if (G.tech.guilds)        { s2 += 0.06; b2 -= 0.10; }
     if (G.tech.banking)       { s2 += 0.08; b2 -= 0.12; }
     if (G.tech.free_trade)    { s2 += 0.20; b2 -= 0.15; }
+    if (G.fairUntil > G.time) { s2 += 0.25; b2 -= 0.20; }
     var lvl = 0;
     G.buildings.forEach(function (b) { if (b.built && b.id === 'market') lvl += lvlMul(b); });
     s2 += Math.min(0.10, lvl * 0.02);
@@ -999,16 +1013,30 @@ var SIM = (function () {
      store. Let those slip and the house slips back with them. Nothing is
      bought: this is what the economy is FOR.
      --------------------------------------------------------- */
+  /* What a home could climb to from nothing. */
   function houseTierEarned() {
     var lvl = 1;
     for (var i = 1; i < DATA.HOUSE_TIERS.length; i++) {
       var t = DATA.HOUSE_TIERS[i];
       if (G.happy < t.happy) break;
       if ((G.breadCov || 0) < t.bread) break;
-      if (t.cloth && !(G.res.cloth > 0)) break;
+      if (t.cloth > 0 && G.res.cloth < t.cloth) break;
       lvl = i + 1;
     }
     return lvl;
+  }
+  /* Where a home at `cur` should be, allowing for hysteresis: it climbs on
+     the rise bar and only slips through the lower fall bar. */
+  function houseTierFor(cur) {
+    var earned = houseTierEarned();
+    if (earned > cur) return cur + 1;                 // one step at a time
+    if (earned === cur) return cur;
+    var t = DATA.HOUSE_TIERS[cur - 1];                // the bar it must drop through
+    if (!t) return cur;
+    var slipped = G.happy < t.fallHappy ||
+                  (G.breadCov || 0) < t.fallBread ||
+                  (t.fallCloth > 0 && G.res.cloth < t.fallCloth);
+    return slipped ? cur - 1 : cur;
   }
   function countHouseTier(lvl) {
     var n = 0;
@@ -1021,13 +1049,12 @@ var SIM = (function () {
     G.evolveTimer = (G.evolveTimer || 0) - dt;
     if (G.evolveTimer > 0) return;
     G.evolveTimer = 4;
-    var want = houseTierEarned();
     var changed = false;
     G.buildings.forEach(function (b) {
       if (!b.built || !b.def.evolves) return;
-      var cur = b.level || 1;
-      if (cur < want) { b.level = cur + 1; changed = true; emit('evolved', b); }
-      else if (cur > want) { b.level = cur - 1; changed = true; }
+      var cur = b.level || 1, want = houseTierFor(cur);
+      if (want > cur) { b.level = want; changed = true; emit('evolved', b); }
+      else if (want < cur) { b.level = want; changed = true; }
     });
     if (changed) { refreshCounts(); emit('change'); }
   }
@@ -1318,6 +1345,7 @@ var SIM = (function () {
       castle: G.castle, tech: G.tech, research: G.research,
       army: G.army, rival: G.rival, quests: G.quests, stats: G.stats,
       vets: G.vets || {}, formation: G.formation || 'line', seen: G.seen || {}, campaign: G.campaign || null,
+      festivals: G.festivals || {}, fairUntil: G.fairUntil || -1,
       eventTimer: G.eventTimer, speed: G.speed,
       buildings: G.buildings.map(function (b) {
         return [b.id, b.x, b.y, b.built ? 1 : 0, Number(b.prog.toFixed(3)),
@@ -1338,11 +1366,12 @@ var SIM = (function () {
       seed: d.world.seed, time: d.time, res: normaliseRes(d.res), pop: d.pop, happy: d.happy,
       toolCov: 0, breadCov: 0, seen: d.seen || { gold: 1, food: 1, wood: 1, stone: 1 },
       campaign: d.campaign || null,
+      festivals: d.festivals || {}, fairUntil: d.fairUntil || -1,
       buildings: [], tech: d.tech || {}, research: d.research || null,
       castle: d.castle || 0, army: d.army || {}, rival: d.rival,
       quests: d.quests || {}, stats: st, eventTimer: d.eventTimer,
       vets: d.vets || {}, formation: d.formation || 'line',
-      growTimer: 6, reliefTimer: 30, reliefCooldown: 0,
+      growTimer: 6, reliefTimer: 30, reliefCooldown: 0, festivals: {}, fairUntil: -1,
       speed: d.speed || 1, log: []
     };
     d.buildings.forEach(function (a) {
@@ -1393,9 +1422,10 @@ var SIM = (function () {
     jobsOf: jobsOf, staffRatio: staffRatio, efficiency: efficiency,
     scoreOf: scoreOf, priorityLabel: priorityLabel, assignWorkers: assignWorkers,
     season: season, seasonIndex: seasonIndex, year: year, seasonProgress: seasonProgress,
+    nextFestival: nextFestival, fairOn: fairOn,
     nextCastle: nextCastle, upgradeCastle: upgradeCastle,
     lvlMul: lvlMul, canUpgrade: canUpgrade, upgradeCost: upgradeCost, upgradeBuilding: upgradeBuilding,
-    houseTierEarned: houseTierEarned, countHouseTier: countHouseTier,
+    houseTierEarned: houseTierEarned, houseTierFor: houseTierFor, countHouseTier: countHouseTier,
     canFell: canFell, fell: fell,
     ensurePaths: ensurePaths, markPathsDirty: markPathsDirty,
     goodsValue: goodsValue, marketCut: marketCut,

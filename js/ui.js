@@ -241,6 +241,11 @@ var UI = (function () {
         '<div class="stat-line"><span>Season effect on farms</span><b>×' + (SIM.G.tech.irrigation && SIM.season().key === 'winter' ? 0.65 : SIM.season().food) + '</b></div>' +
         '</div>'));
       var lvls = [1, 2, 3].map(function (l) { return SIM.countHouseTier(l); });
+      var nf = SIM.nextFestival();
+      box.appendChild(h('<div class="card"><div class="stat-line"><span>' + nf.icon + ' Next occasion</span><b>' +
+        nf.name + ' — ' + nf.seasons.toFixed(1) + ' seasons</b></div>' +
+        (SIM.fairOn() ? '<div class="stat-line"><span>🎪 The fair is open</span><b>better prices at market</b></div>' : '') +
+        '</div>'));
       box.appendChild(h('<p class="sect-label">Homes</p>'));
       box.appendChild(h('<div class="card">' +
         '<div class="stat-line"><span>🏠 Cottages</span><b>' + (lvls[0] - lvls[1]) + '</b></div>' +
@@ -998,6 +1003,78 @@ var UI = (function () {
     });
   }
 
+  /* The year's occasions. Costs scale with the size of the realm, so a
+     feast bites a village and a kingdom about equally. */
+  function festivalEvent(key) {
+    if (modalBusy || BATTLE.isOpen()) { eventQueue.push({ k: 'festival', key: key }); return; }
+    var G = SIM.G, f = DATA.FESTIVALS[key];
+    var pop = Math.max(4, Math.round(G.pop));
+    var ev = { art: f.art, title: f.title, text: f.text, choices: [] };
+
+    if (key === 'autumn') {
+      var big = Math.round(pop * 1.6), small = Math.round(pop * 0.5);
+      ev.choices = [
+        { label: 'A feast for the whole valley', sub: '−' + big + ' food, +18 contentment', apply: { food: -big, happy: 18 } },
+        { label: 'A modest thanksgiving', sub: '−' + small + ' food, +7 contentment', apply: { food: -small, happy: 7 } },
+        { label: 'No feast — the barns come first', sub: '−6 contentment', apply: { happy: -6 } }
+      ];
+    } else if (key === 'winter') {
+      var wellFed = G.res.food > pop * 8;
+      ev.text += wellFed ? '\n\nThe lofts are full. This will be a comfortable winter.'
+                         : '\n\nThere is not much up there. This will be a lean one.';
+      var open = Math.round(pop * 1.2);
+      ev.choices = [
+        { label: 'Open the stores', sub: '−' + open + ' food, +' + (wellFed ? 14 : 8) + ' contentment',
+          apply: { food: -open, happy: wellFed ? 14 : 8 } },
+        { label: 'Ration hard until spring', sub: '−10 contentment, but the food keeps', apply: { happy: -10 } }
+      ];
+    } else if (key === 'spring') {
+      ev.choices = [
+        { label: 'Throw the gates open to the fair', sub: 'A season of far better prices at market', fair: true },
+        { label: 'Charge them a pitch fee', sub: '+' + Math.round(40 + pop * 3) + ' gold, −5 contentment',
+          apply: { gold: Math.round(40 + pop * 3), happy: -5 } }
+      ];
+    } else {
+      var n = SIM.armyCount(), strong = n >= 8;
+      ev.text += strong ? '\n\n' + n + ' swords answer the call. It is a fine sight, and word of it travels.'
+                        : '\n\nOnly ' + n + ' answer the call. The crowd is quiet.';
+      ev.choices = [
+        { label: strong ? 'Parade them through the town' : 'Muster who you have',
+          sub: strong ? '+12 contentment, and Brannoch hears of it' : '−5 contentment',
+          apply: strong ? { happy: 12, rival: -6 } : { happy: -5 } },
+        { label: 'Skip it this year', sub: '−8 contentment', apply: { happy: -8 } }
+      ];
+    }
+
+    modalBusy = true;
+    var prevSpeed = SIM.G.speed;
+    setSpeed(0);
+    el('ev-art').textContent = ev.art;
+    el('ev-title').textContent = ev.title;
+    el('ev-text').textContent = ev.text;
+    el('ev-text').style.whiteSpace = 'pre-line';
+    var box = el('ev-choices'); box.innerHTML = '';
+    ev.choices.forEach(function (c) {
+      var b = h('<button class="ev-choice">' + c.label + '<small>' + (c.sub || '') + '</small></button>');
+      b.addEventListener('click', function () {
+        el('event-modal').classList.add('hidden');
+        modalBusy = false;
+        chronicle(ev.title + ' — ' + c.label);
+        if (c.fair) {
+          SIM.G.fairUntil = SIM.G.time + DATA.SEASON_LEN;
+          toast('The fair is open — prices are good all season.', 'good');
+        }
+        if (c.apply) SIM.applyEffects(c.apply);
+        setSpeed(prevSpeed || 1);
+        refreshHUD();
+        U.sfx.quest();
+      });
+      box.appendChild(b);
+    });
+    el('event-modal').classList.remove('hidden');
+    U.sfx.season();
+  }
+
   function fireEvent() {
     if (modalBusy || BATTLE.isOpen()) { return; }
     var G = SIM.G;
@@ -1177,6 +1254,7 @@ var UI = (function () {
       }
       if (kind === 'campaign-arrived') eventQueue.push('campaign');
       if (kind === 'relief') eventQueue.push('relief');
+      if (kind === 'festival') eventQueue.push({ k: 'festival', key: payload });
       if (kind === 'season') { chronicle(payload.name + ' comes to Ashveil.'); }
       if (kind === 'completed') {
         RENDER.puff(payload.x + .5, payload.y + .6, '#e8dcb5', 10);
@@ -1197,7 +1275,8 @@ var UI = (function () {
   function pump() {
     if (modalBusy || BATTLE.isOpen() || !eventQueue.length) return;
     var next = eventQueue.shift();
-    if (next && next.k === 'raid') incomingRaid(next.cause);
+    if (next && next.k === 'festival') festivalEvent(next.key);
+    else if (next && next.k === 'raid') incomingRaid(next.cause);
     else if (next === 'raid') incomingRaid('raid');
     else if (next === 'campaign') campaignBattle();
     else if (next === 'relief') reliefEvent();
