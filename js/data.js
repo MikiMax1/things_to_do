@@ -31,7 +31,10 @@ var DATA = (function () {
     { key: 'wood',  name: 'Wood',  ic: '🪵' },
     { key: 'stone', name: 'Stone', ic: '🪨' },
     { key: 'iron',  name: 'Iron',  ic: '⛓️' },
-    { key: 'tools', name: 'Tools', ic: '🔨' }
+    { key: 'tools', name: 'Tools', ic: '🔨' },
+    { key: 'bread', name: 'Bread', ic: '🍞' },
+    { key: 'wool',  name: 'Wool',  ic: '🐑' },
+    { key: 'cloth', name: 'Cloth', ic: '🧵' }
   ];
 
   /* ---------------- buildings ----------------
@@ -80,6 +83,13 @@ var DATA = (function () {
       scaleNear: { terrain: ['water', 'shore'], div: 3 },
       desc: 'Steady food from the water — barely troubled by winter.'
     },
+    bakery: {
+      id: 'bakery', name: 'Bakery', cat: 'food', ic: '🍞', tech: 'crop_rotation',
+      cost: { wood: 35, stone: 20, gold: 40 }, build: 8, jobs: 2,
+      produces: { bread: 0.120 }, consumes: { food: 0.180, wood: 0.040 }, upkeep: 0.04,
+      terrain: ['grass', 'meadow', 'sand', 'hill'],
+      desc: 'Bakes grain and firewood into bread. Bread goes further than raw grain, so a fed realm eats less and is far happier.'
+    },
     windmill: {
       id: 'windmill', name: 'Windmill', cat: 'food', ic: '🌬️', tech: 'windmills',
       cost: { wood: 55, stone: 25, gold: 45 }, build: 10, jobs: 1, upkeep: 0.05,
@@ -100,6 +110,19 @@ var DATA = (function () {
       radius: 3, aura: { lumber: 0.4 },
       terrain: ['grass', 'meadow', 'forest', 'hill'],
       desc: '+40% output from every lumber camp within 3 tiles.'
+    },
+    pasture: {
+      id: 'pasture', name: 'Pasture', cat: 'industry', ic: '🐑',
+      cost: { wood: 28, gold: 30 }, build: 6, jobs: 2, produces: { wool: 0.100 }, upkeep: 0.02,
+      terrain: ['grass', 'meadow'], seasonalWool: true,
+      desc: 'Grazes sheep on open grass for wool. Needs room — it will not thrive on sand or in the hills.'
+    },
+    weaver: {
+      id: 'weaver', name: 'Weaver', cat: 'industry', ic: '🧵', tech: 'trade_charter',
+      cost: { wood: 45, stone: 15, gold: 45 }, build: 8, jobs: 2,
+      produces: { cloth: 0.055 }, consumes: { wool: 0.090 }, upkeep: 0.04,
+      terrain: ['grass', 'meadow', 'sand', 'hill'],
+      desc: 'Spins wool into cloth — the richest thing your realm can make. Cloth is worth far more than the wool it came from, and markets take their cut of it.'
     },
     quarry: {
       id: 'quarry', name: 'Quarry', cat: 'industry', ic: '⛏️',
@@ -125,21 +148,21 @@ var DATA = (function () {
     market: {
       id: 'market', name: 'Market', cat: 'civic', ic: '🏪',
       cost: { wood: 35, gold: 35 }, build: 7, jobs: 2, upkeep: 0.04,
-      trade: 0.021, roadBonus: true,
+      trade: 0.010, roadBonus: true,
       terrain: ['grass', 'meadow', 'sand'],
-      desc: 'Taxes trade: gold scales with your population and nearby roads.'
+      desc: 'Takes a cut of everything your realm produces, plus a little retail from the people. The more your kingdom makes, the more it earns.'
     },
     granary: {
       id: 'granary', name: 'Granary', cat: 'civic', ic: '🛖',
       cost: { wood: 40, stone: 10, gold: 20 }, build: 7, jobs: 1, upkeep: 0.02,
-      store: { food: 450 }, spoil: 0.5,
+      store: { food: 450, bread: 150 }, spoil: 0.5,
       terrain: ['grass', 'meadow', 'sand', 'hill'],
       desc: '+450 food storage and halves winter spoilage.'
     },
     warehouse: {
       id: 'warehouse', name: 'Warehouse', cat: 'civic', ic: '📦',
       cost: { wood: 45, stone: 25, gold: 30 }, build: 8, jobs: 1, upkeep: 0.03,
-      store: { wood: 400, stone: 400, iron: 250, gold: 300, tools: 150 },
+      store: { wood: 400, stone: 400, iron: 250, gold: 300, tools: 150, wool: 200, cloth: 150 },
       terrain: ['grass', 'meadow', 'sand', 'hill'],
       desc: 'Room for far more wood, stone, iron and coin.'
     },
@@ -226,13 +249,13 @@ var DATA = (function () {
   /* ---------------- technology ---------------- */
   var TECH = {
     crop_rotation: { name: 'Crop Rotation', tier: 1, ic: '🌿', cost: { gold: 80, food: 60 }, time: 30,
-      desc: '+25% food from every farm.', req: [] },
+      desc: '+25% food from every farm, and unlocks the Bakery.', req: [] },
     forestry: { name: 'Forestry', tier: 1, ic: '🌲', cost: { gold: 80, wood: 60 }, time: 30,
       desc: '+20% wood, and unlocks the Sawmill.', req: [] },
     masonry: { name: 'Masonry', tier: 1, ic: '🧱', cost: { gold: 100, stone: 40 }, time: 36,
       desc: '+20% stone, unlocks Stone Walls, stone costs −10%.', req: [] },
     trade_charter: { name: 'Trade Charter', tier: 1, ic: '📜', cost: { gold: 120 }, time: 34,
-      desc: '+25% market income.', req: [] },
+      desc: '+25% market income, and unlocks the Weaver.', req: [] },
     irrigation: { name: 'Irrigation', tier: 2, ic: '💧', cost: { gold: 180, stone: 60, wood: 40 }, time: 48,
       desc: 'Winter no longer ruins the harvest (0.25× → 0.65×).', req: ['crop_rotation'], lib: 1 },
     mining: { name: 'Mining', tier: 2, ic: '⛏️', cost: { gold: 160, wood: 80, stone: 40 }, time: 46,
@@ -285,7 +308,10 @@ var DATA = (function () {
     wood:  { base: 1.30, ic: '🪵', name: 'Wood' },
     stone: { base: 1.85, ic: '🪨', name: 'Stone' },
     iron:  { base: 3.60, ic: '⛓️', name: 'Iron' },
-    tools: { base: 5.20, ic: '🔨', name: 'Tools' }
+    tools: { base: 5.20, ic: '🔨', name: 'Tools' },
+    bread: { base: 2.40, ic: '🍞', name: 'Bread' },
+    wool:  { base: 2.10, ic: '🐑', name: 'Wool' },
+    cloth: { base: 6.50, ic: '🧵', name: 'Cloth' }
   };
   var TRADE_LOT = 25;
 

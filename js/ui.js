@@ -43,14 +43,22 @@ var UI = (function () {
     if (!G) return;
     var net = SIM.ledger();
     var strip = el('res-strip');
-    if (!strip.children.length) {
-      DATA.RES.forEach(function (r) {
+    // A chip only appears once the realm has actually seen that resource, so a
+    // new village shows four and a mature one shows nine without ever being a
+    // wall of numbers you have to scroll.
+    var show = DATA.RES.filter(function (r) { return (G.seen && G.seen[r.key]) || G.res[r.key] > 0; });
+    var key = show.map(function (r) { return r.key; }).join(',');
+    if (strip.dataset.keys !== key) {
+      strip.dataset.keys = key;
+      strip.innerHTML = '';
+      show.forEach(function (r) {
         strip.appendChild(h('<div class="res" id="res-' + r.key + '"><span class="ic">' + r.ic +
           '</span><span class="amt">0</span><span class="rate"></span></div>'));
       });
     }
-    DATA.RES.forEach(function (r) {
+    show.forEach(function (r) {
       var box = el('res-' + r.key);
+      if (!box) return;
       var v = G.res[r.key], c = SIM.cap(r.key);
       box.querySelector('.amt').textContent = U.fmt(v);
       var rt = box.querySelector('.rate');
@@ -191,6 +199,10 @@ var UI = (function () {
         '<div class="stat-line"><span>Tools in workers\' hands</span><b style="color:' +
           ((G.toolCov || 0) > 0.66 ? '#8fd06a' : (G.toolCov || 0) > 0.2 ? '#e0b23c' : '#e0795f') + '">' +
           Math.round((G.toolCov || 0) * 100) + '% — +' + Math.round((G.toolCov || 0) * 25) + '% output</b></div>' +
+        '<div class="stat-line"><span>Bread on the table</span><b style="color:' +
+          ((G.breadCov || 0) > 0.66 ? '#8fd06a' : (G.breadCov || 0) > 0.2 ? '#e0b23c' : '#a8967a') + '">' +
+          Math.round((G.breadCov || 0) * 100) + '% — −' + Math.round((G.breadCov || 0) * 35) + '% grain eaten, +' +
+          Math.round((G.breadCov || 0) * 12) + ' contentment</b></div>' +
         '<div class="stat-line"><span>Season effect on farms</span><b>×' + (SIM.G.tech.irrigation && SIM.season().key === 'winter' ? 0.65 : SIM.season().food) + '</b></div>' +
         '</div>'));
       box.appendChild(h('<p class="sect-label">What moves contentment</p>'));
@@ -198,6 +210,7 @@ var UI = (function () {
       var capacity = 0;
       G.buildings.forEach(function (b) { if (b.built && b.def.happy) capacity += b.def.happy * 6; });
       lines.push(['Amenities serve', Math.round(capacity) + ' of ' + Math.floor(G.pop) + ' people']);
+      lines.push(['Bread', (G.breadCov || 0) > 0.05 ? '+' + Math.round((G.breadCov || 0) * 12) : 'none baked']);
       lines.push(['Food stores', G.res.food > G.pop * 10 ? 'plentiful (+8)' : G.res.food <= 0 ? 'empty (−34)' : G.res.food < G.pop * 2 ? 'low (−12)' : 'adequate']);
       lines.push(['Growing?', G.pop >= SIM.housing() ? 'no — out of housing'
         : G.res.food <= G.pop * 1.5 ? 'no — barns too low to feed more mouths'

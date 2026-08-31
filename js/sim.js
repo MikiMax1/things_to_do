@@ -9,7 +9,7 @@ var SIM = (function () {
   function on(fn) { listeners.push(fn); }
   function emit(kind, payload) { listeners.forEach(function (f) { f(kind, payload); }); }
 
-  var BASE_STORE = { gold: 500, food: 400, wood: 350, stone: 300, iron: 150, tools: 120 };
+  var BASE_STORE = { gold: 500, food: 400, wood: 350, stone: 300, iron: 150, tools: 120, bread: 120, wool: 150, cloth: 100 };
 
   /* ---------------------------------------------------------
      new game
@@ -20,8 +20,9 @@ var SIM = (function () {
     G = {
       seed: seed,
       time: 0,                       // seconds of game time
-      res: { gold: 260, food: 220, wood: 160, stone: 70, iron: 0, tools: 0 },
-      toolCov: 0,
+      res: { gold: 260, food: 220, wood: 160, stone: 70, iron: 0, tools: 0, bread: 0, wool: 0, cloth: 0 },
+      seen: { gold: 1, food: 1, wood: 1, stone: 1 },
+      toolCov: 0, breadCov: 0,
       pop: 6, happy: 62,
       buildings: [],
       tech: {}, research: null, researchPts: 0,
@@ -213,7 +214,7 @@ var SIM = (function () {
      of this, so trade grows with what your kingdom actually makes rather than
      with where a stall happens to sit. Cached — output() asks for it once per
      market and it must not walk every building each time. */
-  var GOODS_VALUE = { food: 1.00, wood: 1.30, stone: 1.85, iron: 3.60, tools: 5.20 };
+  var GOODS_VALUE = { food: 1.00, wood: 1.30, stone: 1.85, iron: 3.60, tools: 5.20, bread: 2.40, wool: 2.10, cloth: 6.50 };
   var _goodsCache = 0, _goodsAt = -1e9;
   function goodsValue() {
     if (Math.abs(G.time - _goodsAt) < 0.25) return _goodsCache;
@@ -231,7 +232,7 @@ var SIM = (function () {
 
   /* Each further market takes a smaller cut of the same goods, so a second
      market is worth building and a tenth is not. */
-  function marketCut(index) { return 0.16 * Math.pow(0.68, index); }
+  function marketCut(index) { return 0.35 * Math.pow(0.68, index); }
 
   function costOf(id) {
     var def = DATA.B[id], out = {};
@@ -422,7 +423,7 @@ var SIM = (function () {
   /* how badly the realm wants each resource right now */
   function pressures() {
     var net = ledger(), p = {};
-    ['food', 'wood', 'stone', 'iron', 'gold', 'tools'].forEach(function (k) {
+    ['food', 'wood', 'stone', 'iron', 'gold', 'tools', 'bread', 'wool', 'cloth'].forEach(function (k) {
       var c = cap(k), ratio = c > 0 ? G.res[k] / c : 0;
       var need = 1;
       if (net[k] < 0) need += 1.5;
@@ -437,6 +438,7 @@ var SIM = (function () {
     if (net.food < 0) p.food += 1.0;
     // bare hands slow every trade in the realm, so a smithy is urgent
     if ((G.toolCov || 0) < 0.5 && G.count.smith > 0) p.tools += 1.6;
+    if ((G.breadCov || 0) < 0.6 && G.count.bakery > 0 && G.res.food > G.pop * 4) p.bread += 1.2;
     return p;
   }
 
@@ -576,6 +578,19 @@ var SIM = (function () {
     return U.clamp(G.res.tools / (d * TOOL_BUFFER), 0, 1);
   }
 
+  /* Bread. Baked grain goes further than raw, so a realm eating bread needs
+     less food AND is markedly happier. Same supply model as tools. */
+  var BREAD_PER_HEAD = 0.0040;
+  var BREAD_SAVING = 0.35;     // how much less grain a bread-fed realm eats
+  var BREAD_JOY = 12;          // contentment at full supply
+
+  function breadDemand() { return G.pop * BREAD_PER_HEAD; }
+  function breadCoverage() {
+    var d = breadDemand();
+    if (d <= 0) return 0;
+    return U.clamp(G.res.bread / (d * 8), 0, 1);
+  }
+
   function techMul(res) {
     var m = 1;
     if (res === 'food' && G.tech.crop_rotation) m += 0.25;
@@ -618,6 +633,7 @@ var SIM = (function () {
       Object.keys(b.def.produces).forEach(function (k) {
         var v = b.def.produces[k] * eff * techMul(k);
         if (b.def.seasonal && k === 'food') v *= foodSeasonMul();
+        if (b.def.seasonalWool) v *= (0.55 + season().food * 0.45);
         if (b.def.scaleNear) {
           var n = W.nearCount(b.x, b.y, b.def.scaleNear.terrain, 1);
           v *= U.clamp(n / b.def.scaleNear.div, 0.34, 2.0);
@@ -632,7 +648,7 @@ var SIM = (function () {
     }
     if (b.def.trade) {
       // retail from the people, plus a cut of the realm's goods
-      var g = (b.def.trade * G.pop + 0.30) * eff * techMul('gold');
+      var g = (b.def.trade * G.pop + 0.20) * eff * techMul('gold');
       if (b.id !== 'castle') {
         g += goodsValue() * marketCut(b._mIdx || 0) * eff * techMul('gold') * lvlMul(b);
       }
@@ -648,7 +664,7 @@ var SIM = (function () {
 
   /* full per-second ledger, used by the HUD and the tick */
   function ledger() {
-    var net = { gold: 0, food: 0, wood: 0, stone: 0, iron: 0, tools: 0 };
+    var net = { gold: 0, food: 0, wood: 0, stone: 0, iron: 0, tools: 0, bread: 0, wool: 0, cloth: 0 };
     G.buildings.forEach(function (b) {
       var o = output(b);
       Object.keys(o).forEach(function (k) { net[k] += o[k]; });
@@ -663,7 +679,8 @@ var SIM = (function () {
       net.wood += spare * 0.010 * eff;
     }
     net.tools -= toolDemand() * (G.toolCov || 0);
-    net.food -= G.pop * 0.055;
+    net.bread -= breadDemand() * (G.breadCov || 0);
+    net.food -= G.pop * 0.055 * (1 - BREAD_SAVING * (G.breadCov || 0));
     net.food -= armySlots() * 0.012;
     net.gold -= armySlots() * 0.014;
     if (season().key === 'winter') {
@@ -684,6 +701,7 @@ var SIM = (function () {
     var coverage = G.pop > 0 ? U.clamp(capacity / G.pop, 0, 1.35) : 1;
     var t = 34 + coverage * 46;
     if (G.tech.sanitation) t += 8;
+    t += BREAD_JOY * (G.breadCov || 0);
     if (G.res.food > G.pop * 10) t += 8;
     else if (G.res.food <= 0) t -= 34;
     else if (G.res.food < G.pop * 2) t -= 12;
@@ -720,6 +738,9 @@ var SIM = (function () {
     });
 
     G.toolCov = toolCoverage();
+    G.breadCov = breadCoverage();
+    if (!G.seen) G.seen = { gold: 1, food: 1, wood: 1, stone: 1 };
+    DATA.RES.forEach(function (r) { if (G.res[r.key] > 0) G.seen[r.key] = 1; });
 
     // economy
     var net = ledger();
@@ -1054,7 +1075,7 @@ var SIM = (function () {
       time: G.time, res: G.res, pop: G.pop, happy: G.happy,
       castle: G.castle, tech: G.tech, research: G.research,
       army: G.army, rival: G.rival, quests: G.quests, stats: G.stats,
-      vets: G.vets || {}, formation: G.formation || 'line',
+      vets: G.vets || {}, formation: G.formation || 'line', seen: G.seen || {},
       eventTimer: G.eventTimer, speed: G.speed,
       buildings: G.buildings.map(function (b) {
         return [b.id, b.x, b.y, b.built ? 1 : 0, Number(b.prog.toFixed(3)),
@@ -1073,7 +1094,7 @@ var SIM = (function () {
     if (st.traded === undefined) st.traded = 0;
     G = {
       seed: d.world.seed, time: d.time, res: normaliseRes(d.res), pop: d.pop, happy: d.happy,
-      toolCov: 0,
+      toolCov: 0, breadCov: 0, seen: d.seen || { gold: 1, food: 1, wood: 1, stone: 1 },
       buildings: [], tech: d.tech || {}, research: d.research || null,
       castle: d.castle || 0, army: d.army || {}, rival: d.rival,
       quests: d.quests || {}, stats: st, eventTimer: d.eventTimer,
