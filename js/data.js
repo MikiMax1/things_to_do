@@ -30,7 +30,8 @@ var DATA = (function () {
     { key: 'food',  name: 'Food',  ic: '🌾' },
     { key: 'wood',  name: 'Wood',  ic: '🪵' },
     { key: 'stone', name: 'Stone', ic: '🪨' },
-    { key: 'iron',  name: 'Iron',  ic: '⛓️' }
+    { key: 'iron',  name: 'Iron',  ic: '⛓️' },
+    { key: 'tools', name: 'Tools', ic: '🔨' }
   ];
 
   /* ---------------- buildings ----------------
@@ -114,12 +115,12 @@ var DATA = (function () {
       desc: 'Iron for arms and armour. Needs a crag next door.'
     },
     smith: {
-      id: 'smith', name: 'Blacksmith', cat: 'industry', ic: '🔨', tech: 'iron_weapons',
+      id: 'smith', name: 'Blacksmith', cat: 'industry', ic: '🔨', tech: 'mining',
       cost: { wood: 40, stone: 25, iron: 10, gold: 45 }, build: 10, jobs: 2,
-      consumes: { iron: 0.04, wood: 0.03 }, upkeep: 0.05,
+      produces: { tools: 0.050 }, consumes: { iron: 0.030, wood: 0.020 }, upkeep: 0.05,
       armyAtk: 0.08, armyDef: 0.06,
       terrain: ['grass', 'meadow', 'sand', 'hill'],
-      desc: 'Each smithy grants your soldiers +8% attack and +6% defence.'
+      desc: 'Forges iron and timber into tools. Workers with tools produce far more — and each smithy also grants your soldiers +8% attack and +6% defence.'
     },
     market: {
       id: 'market', name: 'Market', cat: 'civic', ic: '🏪',
@@ -138,7 +139,7 @@ var DATA = (function () {
     warehouse: {
       id: 'warehouse', name: 'Warehouse', cat: 'civic', ic: '📦',
       cost: { wood: 45, stone: 25, gold: 30 }, build: 8, jobs: 1, upkeep: 0.03,
-      store: { wood: 400, stone: 400, iron: 250, gold: 300 },
+      store: { wood: 400, stone: 400, iron: 250, gold: 300, tools: 150 },
       terrain: ['grass', 'meadow', 'sand', 'hill'],
       desc: 'Room for far more wood, stone, iron and coin.'
     },
@@ -235,13 +236,13 @@ var DATA = (function () {
     irrigation: { name: 'Irrigation', tier: 2, ic: '💧', cost: { gold: 180, stone: 60, wood: 40 }, time: 48,
       desc: 'Winter no longer ruins the harvest (0.25× → 0.65×).', req: ['crop_rotation'], lib: 1 },
     mining: { name: 'Mining', tier: 2, ic: '⛏️', cost: { gold: 160, wood: 80, stone: 40 }, time: 46,
-      desc: 'Unlocks the Iron Mine.', req: ['masonry'], lib: 1 },
+      desc: 'Unlocks the Iron Mine and the Blacksmith.', req: ['masonry'], lib: 1 },
     guilds: { name: 'Guilds', tier: 2, ic: '⚖️', cost: { gold: 220 }, time: 50,
       desc: '+1 worker slot in every market and +15% gold.', req: ['trade_charter'], lib: 1 },
     sanitation: { name: 'Sanitation', tier: 2, ic: '🚿', cost: { gold: 190, stone: 70 }, time: 48,
       desc: '+8 contentment realm-wide and unlocks the Manor.', req: [], lib: 1 },
     iron_weapons: { name: 'Iron Weapons', tier: 2, ic: '⚔️', cost: { gold: 200, iron: 40 }, time: 52,
-      desc: 'Unlocks the Blacksmith and Men-at-arms.', req: ['mining'], lib: 1 },
+      desc: 'Unlocks Men-at-arms, and +10% attack for every soldier.', req: ['mining'], lib: 1 },
     archery: { name: 'Archery', tier: 2, ic: '🏹', cost: { gold: 170, wood: 90 }, time: 44,
       desc: 'Unlocks the Archery Range and Archers.', req: [], lib: 1 },
     deep_mining: { name: 'Deep Shafts', tier: 3, ic: '🕳️', cost: { gold: 300, wood: 120, iron: 30 }, time: 62,
@@ -283,7 +284,8 @@ var DATA = (function () {
     food:  { base: 1.00, ic: '🌾', name: 'Food' },
     wood:  { base: 1.30, ic: '🪵', name: 'Wood' },
     stone: { base: 1.85, ic: '🪨', name: 'Stone' },
-    iron:  { base: 3.60, ic: '⛓️', name: 'Iron' }
+    iron:  { base: 3.60, ic: '⛓️', name: 'Iron' },
+    tools: { base: 5.20, ic: '🔨', name: 'Tools' }
   };
   var TRADE_LOT = 25;
 

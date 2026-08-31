@@ -188,6 +188,9 @@ var UI = (function () {
         '<div class="stat-line"><span>Contentment</span><b>' + Math.round(G.happy) + '% → ' + Math.round(target) + '%</b></div>' +
         '<div class="meter"><i class="' + (G.happy < 30 ? 'bad' : G.happy < 55 ? 'warn' : '') + '" style="width:' + G.happy + '%"></i></div>' +
         '<div class="stat-line" style="margin-top:8px"><span>Work efficiency</span><b>' + Math.round(SIM.efficiency() * 100) + '%</b></div>' +
+        '<div class="stat-line"><span>Tools in workers\' hands</span><b style="color:' +
+          ((G.toolCov || 0) > 0.66 ? '#8fd06a' : (G.toolCov || 0) > 0.2 ? '#e0b23c' : '#e0795f') + '">' +
+          Math.round((G.toolCov || 0) * 100) + '% — +' + Math.round((G.toolCov || 0) * 25) + '% output</b></div>' +
         '<div class="stat-line"><span>Season effect on farms</span><b>×' + (SIM.G.tech.irrigation && SIM.season().key === 'winter' ? 0.65 : SIM.season().food) + '</b></div>' +
         '</div>'));
       box.appendChild(h('<p class="sect-label">What moves contentment</p>'));
@@ -206,6 +209,9 @@ var UI = (function () {
       box.appendChild(h('<div class="card">' + lines.map(function (l) {
         return '<div class="stat-line"><span>' + l[0] + '</span><b>' + l[1] + '</b></div>';
       }).join('') + '</div>'));
+      if ((G.toolCov || 0) < 0.66) {
+        box.appendChild(h('<p class="hint">Workers without tools are slow. A <b>Blacksmith</b> turns iron and timber into tools, and a well-stocked realm works <b>25% faster at everything</b>.</p>'));
+      }
       box.appendChild(h('<p class="hint">Build wells, chapels and taverns to keep people content — unhappy villagers work slowly and eventually leave.</p>'));
     }
 

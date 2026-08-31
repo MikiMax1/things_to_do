@@ -9,7 +9,7 @@ var SIM = (function () {
   function on(fn) { listeners.push(fn); }
   function emit(kind, payload) { listeners.forEach(function (f) { f(kind, payload); }); }
 
-  var BASE_STORE = { gold: 500, food: 400, wood: 350, stone: 300, iron: 150 };
+  var BASE_STORE = { gold: 500, food: 400, wood: 350, stone: 300, iron: 150, tools: 120 };
 
   /* ---------------------------------------------------------
      new game
@@ -20,7 +20,8 @@ var SIM = (function () {
     G = {
       seed: seed,
       time: 0,                       // seconds of game time
-      res: { gold: 260, food: 220, wood: 160, stone: 70, iron: 0 },
+      res: { gold: 260, food: 220, wood: 160, stone: 70, iron: 0, tools: 0 },
+      toolCov: 0,
       pop: 6, happy: 62,
       buildings: [],
       tech: {}, research: null, researchPts: 0,
@@ -212,7 +213,7 @@ var SIM = (function () {
      of this, so trade grows with what your kingdom actually makes rather than
      with where a stall happens to sit. Cached — output() asks for it once per
      market and it must not walk every building each time. */
-  var GOODS_VALUE = { food: 1.00, wood: 1.30, stone: 1.85, iron: 3.60 };
+  var GOODS_VALUE = { food: 1.00, wood: 1.30, stone: 1.85, iron: 3.60, tools: 5.20 };
   var _goodsCache = 0, _goodsAt = -1e9;
   function goodsValue() {
     if (Math.abs(G.time - _goodsAt) < 0.25) return _goodsCache;
@@ -421,7 +422,7 @@ var SIM = (function () {
   /* how badly the realm wants each resource right now */
   function pressures() {
     var net = ledger(), p = {};
-    ['food', 'wood', 'stone', 'iron', 'gold'].forEach(function (k) {
+    ['food', 'wood', 'stone', 'iron', 'gold', 'tools'].forEach(function (k) {
       var c = cap(k), ratio = c > 0 ? G.res[k] / c : 0;
       var need = 1;
       if (net[k] < 0) need += 1.5;
@@ -434,6 +435,8 @@ var SIM = (function () {
     if (G.res.food < G.pop * 2) p.food += 2.6;
     else if (G.res.food < G.pop * 5) p.food += 1.1;
     if (net.food < 0) p.food += 1.0;
+    // bare hands slow every trade in the realm, so a smithy is urgent
+    if ((G.toolCov || 0) < 0.5 && G.count.smith > 0) p.tools += 1.6;
     return p;
   }
 
@@ -547,6 +550,32 @@ var SIM = (function () {
     return mul;
   }
 
+  /* ---------------------------------------------------------
+     Tools.
+     A worker with tools does far more than one with bare hands.
+     Every staffed workplace draws on the tool store; the better
+     stocked it is, the bigger the bonus everyone gets. Runs the
+     iron chain — mine to smithy to every trade in the realm.
+     --------------------------------------------------------- */
+  var TOOL_PER_WORKER = 0.0035;   // consumed per second per working pair of hands
+  var TOOL_BONUS = 0.25;          // output multiplier at full supply
+  var TOOL_BUFFER = 8;            // seconds of stock that counts as "fully supplied"
+
+  function toolDemand() {
+    var d = 0;
+    G.buildings.forEach(function (b) {
+      if (!b.built || b.paused || !b.def.produces) return;
+      if (b.id === 'smith') return;                 // the smithy makes them, it does not eat them
+      d += b.workers * TOOL_PER_WORKER;
+    });
+    return d;
+  }
+  function toolCoverage() {
+    var d = toolDemand();
+    if (d <= 0) return G.res.tools > 0 ? 1 : 0;
+    return U.clamp(G.res.tools / (d * TOOL_BUFFER), 0, 1);
+  }
+
   function techMul(res) {
     var m = 1;
     if (res === 'food' && G.tech.crop_rotation) m += 0.25;
@@ -583,7 +612,8 @@ var SIM = (function () {
     if (!b.built || b.paused) return out;
     var ratio = staffRatio(b);
     if (ratio <= 0 && jobsOf(b) > 0) return out;
-    var eff = efficiency() * ratio * auraFor(b) * lvlMul(b);
+    var toolBoost = (b.id === 'smith') ? 1 : 1 + TOOL_BONUS * (G.toolCov || 0);
+    var eff = efficiency() * ratio * auraFor(b) * lvlMul(b) * toolBoost;
     if (b.def.produces) {
       Object.keys(b.def.produces).forEach(function (k) {
         var v = b.def.produces[k] * eff * techMul(k);
@@ -618,7 +648,7 @@ var SIM = (function () {
 
   /* full per-second ledger, used by the HUD and the tick */
   function ledger() {
-    var net = { gold: 0, food: 0, wood: 0, stone: 0, iron: 0 };
+    var net = { gold: 0, food: 0, wood: 0, stone: 0, iron: 0, tools: 0 };
     G.buildings.forEach(function (b) {
       var o = output(b);
       Object.keys(o).forEach(function (k) { net[k] += o[k]; });
@@ -632,6 +662,7 @@ var SIM = (function () {
       net.food += spare * 0.020 * eff * foodSeasonMul();
       net.wood += spare * 0.010 * eff;
     }
+    net.tools -= toolDemand() * (G.toolCov || 0);
     net.food -= G.pop * 0.055;
     net.food -= armySlots() * 0.012;
     net.gold -= armySlots() * 0.014;
@@ -687,6 +718,8 @@ var SIM = (function () {
         emit('completed', b);
       }
     });
+
+    G.toolCov = toolCoverage();
 
     // economy
     var net = ledger();
@@ -964,6 +997,7 @@ var SIM = (function () {
     if (n.tech && G.stats.techDone < n.tech) return false;
     if (n.wins && G.stats.wins < n.wins) return false;
     if (n.upgrades && (G.stats.upgrades || 0) < n.upgrades) return false;
+    if (n.res) { for (var rk in n.res) if ((G.res[rk] || 0) < n.res[rk]) return false; }
     if (n.bld) {
       for (var k in n.bld) if ((G.count[k] || 0) < n.bld[k]) return false;
     }
@@ -1002,6 +1036,17 @@ var SIM = (function () {
   /* ---------------------------------------------------------
      save / load
      --------------------------------------------------------- */
+  /* A save written before a resource existed has no key for it, and
+     undefined + number is NaN — which would poison the whole economy on
+     load. Every resource the game knows about gets a number here. */
+  function normaliseRes(res) {
+    var out = res || {};
+    DATA.RES.forEach(function (r) {
+      if (typeof out[r.key] !== 'number' || !isFinite(out[r.key])) out[r.key] = 0;
+    });
+    return out;
+  }
+
   function save() {
     if (!G) return false;
     var d = {
@@ -1027,7 +1072,8 @@ var SIM = (function () {
     if (st.upgrades === undefined) st.upgrades = 0;
     if (st.traded === undefined) st.traded = 0;
     G = {
-      seed: d.world.seed, time: d.time, res: d.res, pop: d.pop, happy: d.happy,
+      seed: d.world.seed, time: d.time, res: normaliseRes(d.res), pop: d.pop, happy: d.happy,
+      toolCov: 0,
       buildings: [], tech: d.tech || {}, research: d.research || null,
       castle: d.castle || 0, army: d.army || {}, rival: d.rival,
       quests: d.quests || {}, stats: st, eventTimer: d.eventTimer,
