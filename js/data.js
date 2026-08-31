@@ -367,6 +367,30 @@ var DATA = (function () {
     { id: 'q_break',  label: 'Break Brannoch (3 wins)', need: { wins: 3 },             reward: { gold: 500, iron: 120 } }
   ];
 
+  /* ---------------- why Brannoch comes ----------------
+     Every raid has a reason, it is said out loud, and each one has a
+     different answer: feed them, look stronger, make peace, or fight. */
+  var RAID_CAUSES = {
+    hunger: { key: 'hunger', art: '🌾', title: 'Brannoch Comes for Grain', power: 0.85,
+      text: 'Their harvest failed. Riders are coming for your granaries, not your gold — hungry men, but desperate ones.',
+      counter: 'A full granary and a strong wall usually sends them looking elsewhere.' },
+    plunder: { key: 'plunder', art: '💰', title: 'Brannoch Smells Gold', power: 1.0,
+      text: 'Word has reached them of a rich town with a thin garrison. They are coming because you look worth robbing.',
+      counter: 'Soldiers on the walls are the only argument they respect.' },
+    revenge: { key: 'revenge', art: '🩸', title: 'Brannoch Wants Blood', power: 1.15,
+      text: 'They have not forgotten the last time your banners crossed their border. This one is personal.',
+      counter: 'You started this. Finish it or buy your way out.' },
+    opportunity: { key: 'opportunity', art: '🕳️', title: 'They Waited Until You Left', power: 1.2,
+      text: 'Their scouts watched your army march away. They have chosen this exact moment, and they know your walls are all that is left.',
+      counter: 'This is the price of campaigning. Walls and towers are what you have.' },
+    conquest: { key: 'conquest', art: '👑', title: 'Brannoch Means to Take Ashveil', power: 1.1,
+      text: 'This is not a raid. Their lord has decided your realm is weak enough to swallow whole.',
+      counter: 'Only strength will change their mind — or a very large tribute.' },
+    raid: { key: 'raid', art: '📯', title: 'Brannoch Rides on Ashveil', power: 1.0,
+      text: 'Smoke on the eastern road. A war band is coming for your granaries.',
+      counter: '' }
+  };
+
   /* ---------------- random events ---------------- */
   var EVENTS = [
     {
@@ -465,7 +489,7 @@ var DATA = (function () {
   return {
     SEASON_LEN: SEASON_LEN, SEASONS: SEASONS, TERRAIN: TERRAIN, RES: RES,
     B: B, CATS: CATS, CASTLE: CASTLE, TECH: TECH, UNITS: UNITS, FOE_UNITS: FOE_UNITS,
-    QUESTS: QUESTS, EVENTS: EVENTS,
+    QUESTS: QUESTS, EVENTS: EVENTS, RAID_CAUSES: RAID_CAUSES,
     TRADE: TRADE, TRADE_LOT: TRADE_LOT, UPGRADE: UPGRADE, FORMATIONS: FORMATIONS
   };
 })();

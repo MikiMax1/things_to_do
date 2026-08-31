@@ -31,7 +31,7 @@ var SIM = (function () {
       rival: { str: 30, anger: 0, nextRaid: DATA.SEASON_LEN * 6.5, warned: false },
       quests: {}, questShown: [],
       stats: { wins: 0, losses: 0, built: 0, raidsSurvived: 0, techDone: 0, upgrades: 0, traded: 0 },
-      vets: {}, formation: 'line',
+      vets: {}, formation: 'line', campaign: null,
       eventTimer: DATA.SEASON_LEN * 1.6,
       growTimer: 6, reliefTimer: 30, reliefCooldown: 0,
       speed: 1,
@@ -366,14 +366,18 @@ var SIM = (function () {
 
   function unitStrength(hp, atk, def) { return (hp * 0.25 + atk * 1.6 + def * 0.8) / 3.1; }
 
-  function fieldStrength(extraDef) {
+  function rosterStrength(roster, extraDef) {
     var sb = smithBonus(), out = 0;
-    Object.keys(G.army).forEach(function (k) {
+    Object.keys(roster || {}).forEach(function (k) {
       var u = DATA.UNITS[k];
       if (!u) return;
-      out += G.army[k] * unitStrength(u.hp, u.atk * sb.atk, u.def + (extraDef || 0));
+      out += roster[k] * unitStrength(u.hp, u.atk * sb.atk, u.def + (extraDef || 0));
     });
     return out;
+  }
+  function fieldStrength(extraDef) { return rosterStrength(G.army, extraDef); }
+  function totalStrength() {
+    return fieldStrength(0) + (G.campaign ? rosterStrength(G.campaign.army, 0) : 0);
   }
 
   /* Brannoch sends a war band sized against YOU, not against a number that
@@ -385,13 +389,35 @@ var SIM = (function () {
     var ramp = U.clamp((seasons - GRACE_SEASONS) / 14, 0, 1);
     // scaled against your ARMY only — walls and towers must stay a pure
     // advantage, never a reason for Brannoch to send more men
-    var mine = fieldStrength(0);
+    var mine = totalStrength();
     var base = 6 + ramp * 26;
     var target = mine * (0.50 + ramp * 0.60) + base;
     return U.clamp(Math.min(G.rival.str, target), 6, G.rival.str);
   }
 
   function graceLeft() { return Math.max(0, GRACE_SEASONS - seasonIndex()); }
+
+  /* Standing strength should stop a war before it starts. A realm that
+     plainly outmatches them is often simply left alone — which is what
+     makes soldiers and walls worth paying for even in peacetime. */
+  function deterrence() {
+    var mine = totalStrength() + defenseScore() * 0.8;
+    var theirs = Math.max(1, G.rival.str);
+    return mine / theirs;
+  }
+
+  /* the reason they are coming, decided from the state of the world */
+  function raidCause() {
+    var s = season().key;
+    // most specific reason first: a generic hungry-winter raid should never
+    // mask the fact that they are actually here to conquer you
+    if (G.campaign) return 'opportunity';
+    if (G.res.gold > 550 && totalStrength() < G.rival.str * 0.7) return 'plunder';
+    if (G.rival.str > totalStrength() * 1.7 && seasonIndex() > GRACE_SEASONS + 6) return 'conquest';
+    if (G.stats.wins > G.stats.losses && Math.random() < 0.5) return 'revenge';
+    if ((s === 'winter' || s === 'autumn') && Math.random() < 0.55) return 'hunger';
+    return 'raid';
+  }
 
   function defenseScore() {
     var d = castleBonus().defense || 0;
@@ -687,6 +713,7 @@ var SIM = (function () {
     net.bread -= breadDemand() * (G.breadCov || 0);
     net.food -= G.pop * 0.055 * (1 - BREAD_SAVING * (G.breadCov || 0));
     net.food -= armySlots() * 0.012;
+    net.food -= campaignSlots() * PROVISION_PER_SLOT;
     net.gold -= armySlots() * 0.014;
     if (season().key === 'winter') {
       var spoil = G.count.granary > 0 ? 0.03 : 0.06;
@@ -810,13 +837,18 @@ var SIM = (function () {
       G.rival.nextRaid = DATA.SEASON_LEN * gap;
       if (seasonIndex() < GRACE_SEASONS) {
         G.rival.nextRaid = DATA.SEASON_LEN * 2;   // still at peace — try again later
+      } else if (deterrence() > 1.45 && Math.random() < U.clamp((deterrence() - 1.45) * 0.55, 0, 0.88)) {
+        // they looked, and thought better of it
+        G.rival.nextRaid = DATA.SEASON_LEN * (2 + Math.random() * 2.5);
+        emit('toast', { msg: 'Brannoch\'s scouts turned back at the border — Ashveil looks too strong to bother.', kind: 'good' });
       } else {
-        emit('raid-incoming');
+        emit('raid-incoming', { cause: raidCause() });
       }
     }
 
     regrow(dt);
     checkRelief(dt);
+    tickCampaign(dt);
 
     // random events
     G.eventTimer -= dt;
@@ -948,6 +980,79 @@ var SIM = (function () {
     if (!destitute()) return;
     G.reliefCooldown = DATA.SEASON_LEN * 2.5;
     emit('relief');
+  }
+
+  /* ---------------------------------------------------------
+     Campaigns.
+     Marching on Brannoch is no longer instant. The army leaves, takes a
+     season to reach the border, fights, and takes a season to come home.
+     While it is away your walls are all that stand between Brannoch and
+     your granaries — which is the decision the war was missing.
+     --------------------------------------------------------- */
+  var MARCH_SEASONS = 1.0;
+  var PROVISION_PER_SLOT = 0.020;    // food eaten per second on the march
+
+  function campaignSlots() {
+    if (!G.campaign) return 0;
+    var n = 0;
+    Object.keys(G.campaign.army).forEach(function (k) {
+      n += G.campaign.army[k] * (DATA.UNITS[k].slots || 1);
+    });
+    return n;
+  }
+  function awayCount() {
+    if (!G.campaign) return 0;
+    var n = 0;
+    Object.keys(G.campaign.army).forEach(function (k) { n += G.campaign.army[k]; });
+    return n;
+  }
+
+  function launchCampaign(opts) {
+    if (G.campaign) return { ok: false, why: 'Your army is already in the field' };
+    if (armyCount() < 3) return { ok: false, why: 'You need at least 3 soldiers to march' };
+    G.campaign = {
+      phase: 'out', timeLeft: DATA.SEASON_LEN * MARCH_SEASONS,
+      army: G.army, vets: G.vets || {},
+      power: opts.power, name: opts.name || 'Brannoch', flavour: opts.flavour || null
+    };
+    G.army = {}; G.vets = {};
+    emit('army');
+    emit('toast', { msg: 'Your army marches for ' + G.campaign.name + '. Home is held by your walls alone.', kind: 'war' });
+    return { ok: true };
+  }
+
+  /* the battle is over — the survivors turn for home */
+  function campaignResolved(survivors) {
+    if (!G.campaign) return;
+    G.campaign.army = survivors || {};
+    G.campaign.vets = G.vets || {};
+    G.campaign.phase = 'back';
+    G.campaign.timeLeft = DATA.SEASON_LEN * MARCH_SEASONS;
+    if (!awayCount()) { G.campaign = null; emit('army'); }
+  }
+
+  function bringArmyHome() {
+    if (!G.campaign) return;
+    var back = G.campaign.army || {};
+    Object.keys(back).forEach(function (k) { G.army[k] = (G.army[k] || 0) + back[k]; });
+    var v = G.campaign.vets || {};
+    Object.keys(v).forEach(function (k) { G.vets[k] = Math.min(G.army[k] || 0, (G.vets[k] || 0) + v[k]); });
+    G.campaign = null;
+    emit('army');
+    emit('toast', { msg: 'Your army is home.', kind: 'good' });
+  }
+
+  function tickCampaign(dt) {
+    if (!G.campaign) return;
+    if (G.campaign.phase === 'battle') return;      // waiting on the field
+    G.campaign.timeLeft -= dt;
+    if (G.campaign.timeLeft > 0) return;
+    if (G.campaign.phase === 'out') {
+      G.campaign.phase = 'battle';
+      emit('campaign-arrived');
+    } else {
+      bringArmyHome();
+    }
   }
 
   /* ---------------------------------------------------------
@@ -1090,7 +1195,7 @@ var SIM = (function () {
       time: G.time, res: G.res, pop: G.pop, happy: G.happy,
       castle: G.castle, tech: G.tech, research: G.research,
       army: G.army, rival: G.rival, quests: G.quests, stats: G.stats,
-      vets: G.vets || {}, formation: G.formation || 'line', seen: G.seen || {},
+      vets: G.vets || {}, formation: G.formation || 'line', seen: G.seen || {}, campaign: G.campaign || null,
       eventTimer: G.eventTimer, speed: G.speed,
       buildings: G.buildings.map(function (b) {
         return [b.id, b.x, b.y, b.built ? 1 : 0, Number(b.prog.toFixed(3)),
@@ -1110,6 +1215,7 @@ var SIM = (function () {
     G = {
       seed: d.world.seed, time: d.time, res: normaliseRes(d.res), pop: d.pop, happy: d.happy,
       toolCov: 0, breadCov: 0, seen: d.seen || { gold: 1, food: 1, wood: 1, stone: 1 },
+      campaign: d.campaign || null,
       buildings: [], tech: d.tech || {}, research: d.research || null,
       castle: d.castle || 0, army: d.army || {}, rival: d.rival,
       quests: d.quests || {}, stats: st, eventTimer: d.eventTimer,
@@ -1157,8 +1263,11 @@ var SIM = (function () {
     ledger: ledger, output: output, cap: cap, housing: housing,
     armyCap: armyCap, armySlots: armySlots, armyCount: armyCount,
     defenseScore: defenseScore, smithBonus: smithBonus,
-    fieldStrength: fieldStrength, unitStrength: unitStrength,
+    fieldStrength: fieldStrength, unitStrength: unitStrength, totalStrength: totalStrength,
+    launchCampaign: launchCampaign, campaignResolved: campaignResolved,
+    campaignSlots: campaignSlots, awayCount: awayCount, MARCH_SEASONS: MARCH_SEASONS,
     raidPower: raidPower, graceLeft: graceLeft, GRACE_SEASONS: GRACE_SEASONS,
+    deterrence: deterrence, raidCause: raidCause,
     jobsOf: jobsOf, staffRatio: staffRatio, efficiency: efficiency,
     scoreOf: scoreOf, priorityLabel: priorityLabel, assignWorkers: assignWorkers,
     season: season, seasonIndex: seasonIndex, year: year, seasonProgress: seasonProgress,

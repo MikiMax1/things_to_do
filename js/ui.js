@@ -288,8 +288,11 @@ var UI = (function () {
         '<div class="stat-line"><span>Formation</span><b>' + (DATA.FORMATIONS[G.formation] || DATA.FORMATIONS.line).name + '</b></div>' +
         '</div>'));
       box.appendChild(h('<p class="hint">Soldiers who survive a victory become <b>veterans</b> — +22% health and +20% attack next time out. Lose a battle and only the veterans who walked away keep the rank.</p>'));
+      if (G.campaign) {
+        box.appendChild(h('<p class="hint">⚔️ <b>' + SIM.awayCount() + ' soldiers are in the field</b> and are not defending Ashveil. See the War tab.</p>'));
+      }
       var keys = Object.keys(G.army);
-      if (!keys.length) box.appendChild(h('<p class="hint">You have no soldiers. Muster some before Brannoch comes calling.</p>'));
+      if (!keys.length) box.appendChild(h('<p class="hint">You have no soldiers at home. Muster some before Brannoch comes calling.</p>'));
       keys.forEach(function (k) {
         var u = DATA.UNITS[k];
         var card = h('<div class="card"><div class="card-row">' +
@@ -350,6 +353,9 @@ var UI = (function () {
         '<div class="stat-line"><span>Odds if you attack</span><b style="color:' + col(attackOdds) + '">' + attackOdds + '%</b></div>' +
         '<div class="stat-line"><span>Odds if they raid you</span><b style="color:' + col(defendOdds) + '">' + defendOdds + '%</b></div>' +
         '<div class="stat-line"><span>Strength of their next raid</span><b>' + Math.round(incoming) + '</b></div>' +
+        '<div class="stat-line"><span>Do they fear you?</span><b style="color:' +
+          (SIM.deterrence() > 1.45 ? '#8fd06a' : SIM.deterrence() > 0.9 ? '#e0b23c' : '#e0795f') + '">' +
+          (SIM.deterrence() > 1.45 ? 'yes — many raids turn back' : SIM.deterrence() > 0.9 ? 'they are wary' : 'no — you look easy') + '</b></div>' +
         '<div class="stat-line"><span>Next raid on you</span><b>' + (grace > 0 ? 'at peace for ' + grace + ' more season' + (grace > 1 ? 's' : '') : '~' + Math.max(0, Math.round(r.nextRaid / DATA.SEASON_LEN * 10) / 10) + ' seasons') + '</b></div>' +
         '<div class="stat-line"><span>Battles won / lost</span><b>' + G.stats.wins + ' / ' + G.stats.losses + '</b></div>' +
         '</div>'));
@@ -364,14 +370,36 @@ var UI = (function () {
         box.appendChild(c);
       });
 
-      var raid = h('<button class="btn wide">⚔️ March on Brannoch</button>');
-      raid.disabled = SIM.armyCount() < 3;
-      if (SIM.armyCount() < 3) raid.textContent = 'You need at least 3 soldiers';
-      raid.addEventListener('click', function () {
-        closeSheet();
-        startBattle('raid', { power: G.rival.str, name: 'Brannoch' });
-      });
-      box.appendChild(raid);
+      if (G.campaign) {
+        var ph = G.campaign.phase;
+        var seasons = Math.max(0, G.campaign.timeLeft / DATA.SEASON_LEN).toFixed(1);
+        box.appendChild(h('<div class="card" style="border-color:#8a6f45">' +
+          '<h4 style="font-family:var(--font);font-size:15px">⚔️ ' +
+            (ph === 'out' ? 'Marching on ' + G.campaign.name : ph === 'battle' ? 'Battle joined' : 'Marching home') + '</h4>' +
+          '<p style="font-size:12px;color:#c3b18e;margin:4px 0 8px">' +
+            (ph === 'out' ? 'Your army is on the road. Home is held by walls and towers alone.'
+             : ph === 'battle' ? 'They have reached the border.'
+             : 'The survivors are on their way back.') + '</p>' +
+          '<div class="stat-line"><span>Soldiers in the field</span><b>' + SIM.awayCount() + '</b></div>' +
+          (ph === 'battle' ? '' : '<div class="stat-line"><span>Arrives in</span><b>' + seasons + ' seasons</b></div>') +
+          '<div class="stat-line"><span>Provisions</span><b>−' + (SIM.campaignSlots() * 0.02).toFixed(2) + ' food/s</b></div>' +
+          '<div class="stat-line"><span>Defending home</span><b>' + SIM.armyCount() + ' soldiers, +' + SIM.defenseScore() + ' walls</b></div>' +
+          '</div>'));
+      } else {
+        var raid = h('<button class="btn wide">⚔️ March on Brannoch</button>');
+        raid.disabled = SIM.armyCount() < 3;
+        if (SIM.armyCount() < 3) raid.textContent = 'You need at least 3 soldiers';
+        raid.addEventListener('click', function () {
+          var r = SIM.launchCampaign({ power: G.rival.str, name: 'Brannoch' });
+          if (!r.ok) { toast(r.why, 'bad'); U.sfx.err(); return; }
+          U.sfx.horn();
+          chronicle('The army marched for Brannoch.');
+          renderSheet(); refreshHUD();
+        });
+        box.appendChild(raid);
+        box.appendChild(h('<p class="hint">A march takes about ' + SIM.MARCH_SEASONS +
+          ' season each way and eats provisions on the road. While your army is away, only walls and towers defend Ashveil — and Brannoch judges its raids by your whole strength, not by what is left at home.</p>'));
+      }
       var scout = h('<button class="btn sec wide">🔭 Scout their camp (−25 gold)</button>');
       scout.addEventListener('click', function () {
         if (G.res.gold < 25) { toast('Not enough gold', 'bad'); return; }
@@ -980,6 +1008,15 @@ var UI = (function () {
     U.sfx.horn();
   }
 
+  function campaignBattle() {
+    var c = SIM.G.campaign;
+    if (!c || c.phase !== 'battle') return;
+    startBattle('raid', {
+      power: c.power, name: c.name, flavour: c.flavour,
+      roster: c.army, vets: c.vets
+    });
+  }
+
   function startBattle(kind, opts, restoreSpeed) {
     var prev = restoreSpeed !== undefined ? restoreSpeed : SIM.G.speed;
     setSpeed(0);
@@ -992,15 +1029,18 @@ var UI = (function () {
     });
   }
 
-  function incomingRaid() {
+  function incomingRaid(causeKey) {
     if (modalBusy || BATTLE.isOpen()) return;
     var G = SIM.G;
-    var power = SIM.raidPower() * U.range(Math.random, 0.86, 1.06);
+    var cause = DATA.RAID_CAUSES[causeKey] || DATA.RAID_CAUSES.raid;
+    var power = SIM.raidPower() * cause.power * U.range(Math.random, 0.86, 1.06);
     var ev = {
-      art: '📯', title: 'Brannoch Rides on Ashveil',
-      text: 'Smoke on the eastern road. A war band of roughly ' + Math.round(power / 9) +
-            ' fighters is coming for your granaries. Your defences add +' + SIM.defenseScore() +
-            ' to the line, and your captains rate the fight at about ' + estimateOdds(power, 'defend') + '%.',
+      art: cause.art, title: cause.title,
+      text: cause.text + '\n\nRoughly ' + Math.round(power / 9) +
+            ' fighters. Your defences add +' + SIM.defenseScore() +
+            ' to the line, and your captains rate the fight at about ' + estimateOdds(power, 'defend') + '%.' +
+            (SIM.G.campaign ? '\n\nYour army is in the field and cannot get back in time.' : '') +
+            (cause.counter ? '\n\n' + cause.counter : ''),
       choices: [
         { label: '⚔️ Meet them in the field', sub: 'Fight — your walls and towers help', battle: true },
         { label: '💰 Buy them off', sub: '−' + Math.round(35 + power * 1.5) + ' gold', buy: Math.round(35 + power * 1.5) }
@@ -1012,6 +1052,7 @@ var UI = (function () {
     el('ev-art').textContent = ev.art;
     el('ev-title').textContent = ev.title;
     el('ev-text').textContent = ev.text;
+    el('ev-text').style.whiteSpace = 'pre-line';
     var box = el('ev-choices'); box.innerHTML = '';
     ev.choices.forEach(function (c) {
       var b = h('<button class="ev-choice">' + c.label + '<small>' + c.sub + '</small></button>');
@@ -1020,7 +1061,7 @@ var UI = (function () {
         el('event-modal').classList.add('hidden');
         modalBusy = false;
         if (c.battle) {
-          startBattle('defend', { power: power, name: 'Brannoch' }, prevSpeed);
+          startBattle('defend', { power: power, name: 'Brannoch', cause: cause.key }, prevSpeed);
         } else {
           SIM.G.res.gold -= c.buy;
           SIM.G.happy = U.clamp(SIM.G.happy - 6, 0, 100);
@@ -1063,8 +1104,14 @@ var UI = (function () {
 
     SIM.on(function (kind, payload) {
       if (kind === 'toast') { toast(payload.msg, payload.kind); chronicle(payload.msg); }
-      if (kind === 'event') eventQueue.push('event');
-      if (kind === 'raid-incoming') eventQueue.push('raid');
+      if (kind === 'event') { if (eventQueue.length < 3) eventQueue.push('event'); }
+      if (kind === 'raid-incoming') {
+        // never let raids stack up behind a modal — one war band at a time
+        if (!eventQueue.some(function (e) { return e && e.k === 'raid'; })) {
+          eventQueue.push({ k: 'raid', cause: (payload && payload.cause) || 'raid' });
+        }
+      }
+      if (kind === 'campaign-arrived') eventQueue.push('campaign');
       if (kind === 'relief') eventQueue.push('relief');
       if (kind === 'season') { chronicle(payload.name + ' comes to Ashveil.'); }
       if (kind === 'completed') {
@@ -1086,7 +1133,9 @@ var UI = (function () {
   function pump() {
     if (modalBusy || BATTLE.isOpen() || !eventQueue.length) return;
     var next = eventQueue.shift();
-    if (next === 'raid') incomingRaid();
+    if (next && next.k === 'raid') incomingRaid(next.cause);
+    else if (next === 'raid') incomingRaid('raid');
+    else if (next === 'campaign') campaignBattle();
     else if (next === 'relief') reliefEvent();
     else fireEvent();
   }

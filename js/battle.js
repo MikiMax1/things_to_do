@@ -62,15 +62,18 @@ var BATTLE = (function () {
     var G = SIM.G, sb = SIM.smithBonus();
     var defBonus = kind === 'defend' ? SIM.defenseScore() / 18 : 0;
     var fm = DATA.FORMATIONS[G.formation] || DATA.FORMATIONS.line;
-    var vets = G.vets || {};
+    // a campaign fights with the army that marched out, not with whatever
+    // is standing at home
+    var roster = ctx.roster || G.army;
+    var vets = ctx.vets || G.vets || {};
     var arr = [], i, n = 0;
-    var keys = Object.keys(G.army);
-    keys.forEach(function (k) { n += G.army[k]; });
+    var keys = Object.keys(roster);
+    keys.forEach(function (k) { n += roster[k]; });
     var perCol = Math.max(4, Math.ceil(Math.sqrt(n) * 1.1));
     var slot = 0;
     keys.forEach(function (k) {
       var d = DATA.UNITS[k];
-      for (i = 0; i < G.army[k]; i++) {
+      for (i = 0; i < roster[k]; i++) {
         var col = Math.floor(slot / perCol), row = slot % perCol;
         // archers and siege deploy behind the line
         var back = (d.rng > 40) ? 26 : 0;
@@ -554,13 +557,13 @@ var BATTLE = (function () {
       if (u.side !== 'ours' || u.dead) return;
       survivors[u.key] = (survivors[u.key] || 0) + 1;
     });
+    var fought = ctx.roster || G.army;
     var lost = {}, lostTotal = 0;
-    Object.keys(G.army).forEach(function (k) {
-      var l = G.army[k] - (survivors[k] || 0);
+    Object.keys(fought).forEach(function (k) {
+      var l = fought[k] - (survivors[k] || 0);
       if (l > 0) { lost[k] = l; lostTotal += l; }
     });
-    G.army = survivors;
-    Object.keys(G.army).forEach(function (k) { if (!G.army[k]) delete G.army[k]; });
+    Object.keys(survivors).forEach(function (k) { if (!survivors[k]) delete survivors[k]; });
 
     var foesLeft = alive('foes');
     var won = foesLeft === 0 || (alive('ours') > 0 && routing.foes);
@@ -574,6 +577,10 @@ var BATTLE = (function () {
       newVets[k] = won ? survivors[k] : Math.min(G.vets[k] || 0, survivors[k]);
     });
     G.vets = newVets;
+
+    // survivors go back to whoever sent them: the campaign, or the home muster
+    if (ctx.roster) SIM.campaignResolved(survivors);
+    else G.army = survivors;
 
     if (won) {
       G.stats.wins++;
