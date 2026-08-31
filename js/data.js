@@ -342,6 +342,15 @@ var DATA = (function () {
      villagers — the answer to a big town and too few hands. */
   var UPGRADE = { max: 3, costPow: 1.75, gain: 0.5 };
 
+  /* ---------------- ground you choose to fight on ----------------
+     Each is a real trade-off rather than a bonus. Narrow ground blunts a
+     bigger army, broken ground gives bowmen time to work. */
+  var GROUNDS = {
+    open:   { name: 'Open ground', ic: '▭', desc: 'A fair fight, decided by numbers and steel.' },
+    broken: { name: 'Broken ground', ic: '⛰', desc: 'Everyone advances slowly — archers get far more shots in before the lines meet.', spd: 0.55 },
+    narrow: { name: 'Narrow front', ic: '⌗', desc: 'Only so many can fight at once, so the larger army cannot bring its numbers to bear.', narrow: true }
+  };
+
   /* ---------------- battle formations ---------------- */
   var FORMATIONS = {
     line:       { name: 'Line',       ic: '▬', desc: 'Balanced. No bonus, no penalty.',                 atk: 1.00, def: 0, hp: 1.00, spd: 1.00 },
@@ -490,6 +499,6 @@ var DATA = (function () {
     SEASON_LEN: SEASON_LEN, SEASONS: SEASONS, TERRAIN: TERRAIN, RES: RES,
     B: B, CATS: CATS, CASTLE: CASTLE, TECH: TECH, UNITS: UNITS, FOE_UNITS: FOE_UNITS,
     QUESTS: QUESTS, EVENTS: EVENTS, RAID_CAUSES: RAID_CAUSES,
-    TRADE: TRADE, TRADE_LOT: TRADE_LOT, UPGRADE: UPGRADE, FORMATIONS: FORMATIONS
+    TRADE: TRADE, TRADE_LOT: TRADE_LOT, UPGRADE: UPGRADE, FORMATIONS: FORMATIONS, GROUNDS: GROUNDS
   };
 })();

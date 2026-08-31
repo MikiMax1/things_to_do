@@ -294,6 +294,40 @@ h1,h2,h3{font-family:var(--font);margin:0}
 #bt-orders{margin-top:auto;display:flex;gap:6px}
 #bt-orders .btn{flex:1;text-align:center;position:relative;overflow:hidden}
 #bt-orders .btn .cd{position:absolute;inset:0;background:rgba(0,0,0,.55);transform-origin:left}
+#battle-deploy{
+  position:absolute;inset:0;z-index:5;display:flex;align-items:center;justify-content:center;
+  background:rgba(8,11,6,.82);padding:14px;overflow-y:auto;
+}
+.dep-card{
+  width:100%;max-width:430px;
+  background:linear-gradient(180deg,#2a2017,#181209);border:1px solid #6b543a;border-radius:16px;
+  padding:16px;box-shadow:var(--shadow);
+}
+.dep-card h2{font-size:20px;text-align:center}
+#dep-sub{font-size:12.5px;color:#bda98a;text-align:center;margin:4px 0 12px}
+.dep-label{
+  font-size:10.5px;letter-spacing:1.2px;text-transform:uppercase;
+  color:#9a8663;margin:12px 0 6px;font-weight:700;
+}
+.dep-hint{font-size:11.5px;color:#a8967a;line-height:1.45;margin:0 0 8px}
+.ground-opt,.res-opt{
+  display:block;width:100%;text-align:left;margin-bottom:6px;
+  background:rgba(255,255,255,.05);border:1px solid #4b3a28;border-radius:11px;padding:9px 12px;
+}
+.ground-opt.on,.res-opt.on{background:rgba(224,178,60,.16);border-color:var(--gold)}
+.ground-opt b,.res-opt b{display:block;font-size:13px}
+.ground-opt small,.res-opt small{display:block;font-size:11.5px;color:#bda98a;margin-top:2px}
+#dep-reserve{display:flex;gap:6px}
+#dep-reserve .res-opt{text-align:center;margin-bottom:0}
+#dep-summary{
+  font-size:12px;color:#cdbb98;background:rgba(0,0,0,.25);border:1px solid #3d2f21;
+  border-radius:10px;padding:9px 11px;margin-top:12px;line-height:1.5;
+}
+#dep-begin{
+  width:100%;margin-top:12px;padding:13px;border-radius:12px;font-weight:700;font-size:15px;
+  background:linear-gradient(180deg,#5d9a41,#3f6f2c);border:1px solid #7dbb5a;color:#fff;
+}
+#bt-orders .btn.danger{background:linear-gradient(180deg,#a83c2c,#7a2a1e);border-color:#d1614c}
 #bt-result{
   position:absolute;left:14px;right:14px;top:50%;transform:translateY(-50%);
   background:linear-gradient(180deg,#2a2017,#181209);border:1px solid #6b543a;border-radius:16px;

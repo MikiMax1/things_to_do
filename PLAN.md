@@ -42,9 +42,11 @@ All four items from the last queue are built and in the game.
 
 ## Start here next session
 
-1. **Battle input** — ground, deployment, a reserve, and retreat. The battle is
-   still three buttons on a cooldown while you watch, which is now the weakest
-   part of a war that has otherwise been rebuilt.
+1. ~~**Battle input**~~ — done. An order-of-battle screen before the fight
+   (choose the ground, choose a reserve), a reserve you commit mid-fight, and
+   retreat. Still to come here: per-unit orders (hold a flank, target their
+   archers), and battlefield terrain drawn from where the fight happens rather
+   than chosen from a list.
 2. **Housing that improves with its neighbourhood** — the reward half of the
    economy: a cottage becoming a townhouse when it is well served, holding more
    people and demanding bread and cloth. It gives the new production chains

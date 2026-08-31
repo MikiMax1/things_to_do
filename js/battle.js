@@ -16,6 +16,7 @@ var BATTLE = (function () {
   var routing = { ours: false, foes: false };
   var endTimer = 0;
   var speedMul = 1.35;
+  var ground = 'open', reserve = [], reservePct = 0, retreated = false, deploying = false;
 
   var COL = {
     ours: { shirt: '#3f6ea5', shield: '#2d5c96', trim: '#9dc0e8' },
@@ -143,10 +144,12 @@ var BATTLE = (function () {
     resize();
 
     var power = ctx.power || SIM.G.rival.str;
-    units = buildOurs().concat(buildFoes(foeArmy(power, ctx.flavour)));
-    startOurs = units.filter(function (u) { return u.side === 'ours'; }).length;
+    ground = 'open'; reservePct = 0; retreated = false; reserve = [];
+    var ours = buildOurs();
+    units = ours.concat(buildFoes(foeArmy(power, ctx.flavour)));
+    startOurs = ours.length;
     startFoes = units.length - startOurs;
-    shots = []; fx = []; logLines = []; t = 0; done = false; running = true;
+    shots = []; fx = []; logLines = []; t = 0; done = false; running = false;
     routing = { ours: false, foes: false }; endTimer = 0;
 
     el('bt-foe-name').textContent = ctx.name || 'Brannoch';
@@ -154,6 +157,7 @@ var BATTLE = (function () {
     el('bt-phase').textContent = kind === 'defend' ? 'Defending' : 'Attacking';
 
     setupOrders();
+    openDeploy();
     say(kind === 'defend'
       ? 'Horns on the walls — ' + (ctx.name || 'Brannoch') + ' is at the gates!'
       : 'Your banners cross the border.');
@@ -164,6 +168,79 @@ var BATTLE = (function () {
     say('Formation: ' + fmNow.name + (vetCount ? ' · ' + vetCount + ' veteran' + (vetCount > 1 ? 's' : '') + ' in the line' : ''));
     U.sfx.horn();
     U.vibrate(40);
+  }
+
+  /* Pick the ground and decide what to hold back, before a blow is struck. */
+  function openDeploy() {
+    deploying = true;
+    var dep = el('battle-deploy');
+    dep.classList.remove('hidden');
+    el('dep-title').textContent = kind === 'defend' ? 'They Are At The Gate' : 'Order of Battle';
+    el('dep-sub').textContent = kind === 'defend'
+      ? 'Choose where to meet them, and what to keep in hand.'
+      : 'Choose where to force the fight, and what to keep in hand.';
+
+    var gbox = el('dep-ground');
+    gbox.innerHTML = '';
+    Object.keys(DATA.GROUNDS).forEach(function (k) {
+      var g2 = DATA.GROUNDS[k];
+      var b = document.createElement('button');
+      b.className = 'ground-opt' + (ground === k ? ' on' : '');
+      b.innerHTML = '<b>' + g2.ic + '  ' + g2.name + '</b><small>' + g2.desc + '</small>';
+      b.addEventListener('click', function () { ground = k; U.sfx.tap(); openDeploy(); });
+      gbox.appendChild(b);
+    });
+
+    var rbox = el('dep-reserve');
+    rbox.innerHTML = '';
+    [0, 25, 50].forEach(function (pct) {
+      var b = document.createElement('button');
+      b.className = 'res-opt' + (reservePct === pct ? ' on' : '');
+      b.innerHTML = '<b>' + (pct === 0 ? 'None' : pct + '%') + '</b><small>' +
+        (pct === 0 ? 'all in' : Math.round(startOurs * pct / 100) + ' held') + '</small>';
+      b.addEventListener('click', function () { reservePct = pct; U.sfx.tap(); openDeploy(); });
+      rbox.appendChild(b);
+    });
+
+    var held = Math.round(startOurs * reservePct / 100);
+    var gd = DATA.GROUNDS[ground];
+    el('dep-summary').innerHTML =
+      '<b>' + (startOurs - held) + '</b> take the field, <b>' + held + '</b> in reserve, against roughly <b>' +
+      startFoes + '</b>.<br>' + gd.name + ' — ' + gd.desc +
+      (held ? '<br>Reserves that are never committed walk home whatever happens.' : '');
+  }
+
+  function beginFight() {
+    deploying = false;
+    el('battle-deploy').classList.add('hidden');
+    // pull the reserve off the field, back to front so the front line holds
+    var mine = units.filter(function (u) { return u.side === 'ours'; });
+    var held = Math.round(mine.length * reservePct / 100);
+    reserve = [];
+    for (var i = 0; i < held; i++) {
+      var u = mine[mine.length - 1 - i];
+      if (!u) break;
+      reserve.push(u);
+      units.splice(units.indexOf(u), 1);
+    }
+    startOurs = units.filter(function (x) { return x.side === 'ours'; }).length + reserve.length;
+    if (reserve.length) say(reserve.length + ' held back out of the first clash.');
+    if (ground !== 'open') say('You take the fight to ' + DATA.GROUNDS[ground].name.toLowerCase() + '.');
+    running = true;
+    U.sfx.horn();
+  }
+
+  function commitReserve() {
+    if (!reserve.length) return;
+    var edge = FW * 0.10;
+    reserve.forEach(function (u, i) {
+      u.x = edge; u.y = FH * (0.2 + 0.6 * (i / Math.max(1, reserve.length - 1)));
+      u.target = null;
+      units.push(u);
+    });
+    say('The reserve comes on — ' + reserve.length + ' fresh soldiers!');
+    reserve = [];
+    U.sfx.horn(); U.vibrate(20);
   }
 
   function say(line) {
@@ -182,17 +259,23 @@ var BATTLE = (function () {
       { id: 'hold',   label: '🛡️ Hold',   cd: 0, max: 20, dur: 7,
         on: function () { say('Shields up — the line braces.'); } },
       { id: 'volley', label: '🏹 Volley', cd: 0, max: 24, dur: 5,
-        on: function () { say('Loose! Arrows darken the sky.'); U.sfx.arrow(); } }
+        on: function () { say('Loose! Arrows darken the sky.'); U.sfx.arrow(); } },
+      { id: 'reserve', label: '➕ Reserve', cd: 0, max: 0, dur: 0, once: true,
+        on: function () { commitReserve(); } },
+      { id: 'retreat', label: '🏳️ Retreat', cd: 0, max: 0, dur: 0, danger: true,
+        on: function () { retreated = true; say('Sound the retreat — get them out.'); finish(); } }
     ];
     var box = el('bt-orders');
     box.innerHTML = '';
     orders.forEach(function (o) {
       var b = document.createElement('button');
-      b.className = 'btn sec';
+      b.className = 'btn ' + (o.danger ? 'danger' : 'sec');
       b.innerHTML = o.label + '<i class="cd" style="transform:scaleX(0)"></i>';
       b.addEventListener('click', function () {
-        if (o.cd > 0 || done) return;
+        if (o.cd > 0 || done || deploying) return;
+        if (o.id === 'reserve' && !reserve.length) return;
         o.cd = o.max; o.active = o.dur; o.on();
+        if (o.once) o.spent = true;
         U.vibrate(15);
       });
       o.el = b; o.bar = b.querySelector('.cd');
@@ -240,6 +323,16 @@ var BATTLE = (function () {
     return dmg;
   }
 
+  /* On a narrow front the bigger army cannot bring its numbers to bear, so
+     each side's blows are scaled by how badly it outnumbers the other. */
+  function narrowFactor(side) {
+    if (DATA.GROUNDS[ground] && DATA.GROUNDS[ground].narrow) {
+      var mine = alive(side), theirs = alive(side === 'ours' ? 'foes' : 'ours');
+      if (mine > theirs && mine > 0) return Math.max(0.45, theirs / mine);
+    }
+    return 1;
+  }
+
   function step(dt) {
     t += dt;
     var chargeOn = activeOrder('charge'), holdOn = activeOrder('hold'), volleyOn = activeOrder('volley');
@@ -247,8 +340,17 @@ var BATTLE = (function () {
     orders.forEach(function (o) {
       if (o.cd > 0) o.cd = Math.max(0, o.cd - dt);
       if (o.active > 0) o.active -= dt;
-      if (o.bar) o.bar.style.transform = 'scaleX(' + (o.cd / o.max).toFixed(3) + ')';
-      o.el.disabled = o.cd > 0 || done;
+      if (o.bar && o.max) o.bar.style.transform = 'scaleX(' + (o.cd / o.max).toFixed(3) + ')';
+      if (o.id === 'reserve') {
+        o.el.disabled = done || !reserve.length;
+        o.el.innerHTML = reserve.length ? '➕ Reserve (' + reserve.length + ')<i class="cd" style="transform:scaleX(0)"></i>'
+                                        : '➕ Reserve<i class="cd" style="transform:scaleX(0)"></i>';
+        o.bar = o.el.querySelector('.cd');
+      } else if (o.id === 'retreat') {
+        o.el.disabled = done;
+      } else {
+        o.el.disabled = o.cd > 0 || done;
+      }
     });
 
     for (var i = 0; i < units.length; i++) {
@@ -276,6 +378,7 @@ var BATTLE = (function () {
       var wantRange = u.rng;
       var spdMul = (ours && chargeOn) ? 1.7 : (ours && holdOn) ? 0 : 1;
       if (!ours) spdMul = 1;
+      if (DATA.GROUNDS[ground] && DATA.GROUNDS[ground].spd && u.rng <= 40) spdMul *= DATA.GROUNDS[ground].spd;
 
       if (d > wantRange) {
         if (spdMul > 0) {
@@ -300,10 +403,11 @@ var BATTLE = (function () {
           u.cd = u.rate * U.range(Math.random, .85, 1.15);
           if (u.rng > 40) {
             shots.push({ x: u.x, y: u.y, tx: e.x, ty: e.y, t: 0,
-              dur: U.clamp(d / 260, .18, .8), src: u, tgt: e, big: u.splash > 0 });
+              dur: U.clamp(d / 260, .18, .8), src: u, tgt: e, big: u.splash > 0,
+              mult: narrowFactor(u.side) });
             U.sfx.arrow();
           } else {
-            hit(u, e, (ours && chargeOn) ? 1.3 : 1);
+            hit(u, e, ((ours && chargeOn) ? 1.3 : 1) * narrowFactor(u.side));
             if (Math.random() < .35) U.sfx.clash();
           }
         }
@@ -315,7 +419,7 @@ var BATTLE = (function () {
       var p = shots[s];
       p.t += dt;
       if (p.t >= p.dur) {
-        if (!p.tgt.dead) hit(p.src, p.tgt);
+        if (!p.tgt.dead) hit(p.src, p.tgt, p.mult || 1);
         if (p.big) {
           fx.push({ kind: 'boom', x: p.tx, y: p.ty, life: .45 });
           units.forEach(function (o) {
@@ -334,13 +438,13 @@ var BATTLE = (function () {
     if (!routing.foes && af > 0 && af <= Math.max(1, startFoes * 0.22)) {
       routing.foes = true; say('The enemy breaks and runs!');
     }
-    if (!routing.ours && ao > 0 && ao <= Math.max(1, startOurs * 0.20)) {
+    if (!routing.ours && !reserve.length && ao > 0 && ao <= Math.max(1, startOurs * 0.20)) {
       routing.ours = true; say('Your line breaks — sound the retreat!');
     }
 
-    el('bt-our-count').textContent = ao + ' / ' + startOurs;
+    el('bt-our-count').textContent = (ao + reserve.length) + ' / ' + startOurs;
     el('bt-foe-count').textContent = af + ' / ' + startFoes;
-    el('bt-our-bar').style.width = (ao / Math.max(1, startOurs) * 50).toFixed(1) + '%';
+    el('bt-our-bar').style.width = ((ao + reserve.length) / Math.max(1, startOurs) * 50).toFixed(1) + '%';
     el('bt-foe-bar').style.width = (af / Math.max(1, startFoes) * 50).toFixed(1) + '%';
 
     if (!done && (ao === 0 || af === 0 || (routing.foes && af === 0) || t > 150)) {
@@ -557,6 +661,8 @@ var BATTLE = (function () {
       if (u.side !== 'ours' || u.dead) return;
       survivors[u.key] = (survivors[u.key] || 0) + 1;
     });
+    // anyone never committed simply marches home
+    reserve.forEach(function (u) { survivors[u.key] = (survivors[u.key] || 0) + 1; });
     var fought = ctx.roster || G.army;
     var lost = {}, lostTotal = 0;
     Object.keys(fought).forEach(function (k) {
@@ -566,7 +672,7 @@ var BATTLE = (function () {
     Object.keys(survivors).forEach(function (k) { if (!survivors[k]) delete survivors[k]; });
 
     var foesLeft = alive('foes');
-    var won = foesLeft === 0 || (alive('ours') > 0 && routing.foes);
+    var won = !retreated && (foesLeft === 0 || (alive('ours') > 0 && routing.foes));
     var title, body = '';
 
     // veterans: win and everyone who walked off the field is blooded;
@@ -582,7 +688,21 @@ var BATTLE = (function () {
     if (ctx.roster) SIM.campaignResolved(survivors);
     else G.army = survivors;
 
-    if (won) {
+    if (retreated) {
+      G.stats.losses++;
+      G.happy = U.clamp(G.happy - 5, 0, 100);
+      if (kind === 'defend') {
+        var taken = Math.round(Math.min(G.res.food, 30 + startFoes * 4));
+        G.res.food -= taken;
+        body = 'You gave ground rather than your soldiers. They took <b>' + taken +
+               ' food</b> from the outlying stores and rode off.';
+      } else {
+        body = 'You broke off before it turned into a slaughter. Brannoch keeps the field, and their confidence.';
+        G.rival.str += 3;
+      }
+      title = 'Withdrawn';
+      U.sfx.defeat();
+    } else if (won) {
       G.stats.wins++;
       var loot = { gold: 0, food: 0, iron: 0 };
       if (kind === 'defend') {
@@ -636,10 +756,10 @@ var BATTLE = (function () {
     }
 
     el('bt-result-title').textContent = title;
-    el('bt-result-title').style.color = won ? '#8fd06a' : '#e0795f';
+    el('bt-result-title').style.color = won ? '#8fd06a' : retreated ? '#e0b23c' : '#e0795f';
     el('bt-result-body').innerHTML = body;
     el('bt-result').classList.remove('hidden');
-    el('bt-phase').textContent = won ? 'Victory' : 'Defeat';
+    el('bt-phase').textContent = won ? 'Victory' : retreated ? 'Withdrawn' : 'Defeat';
     SIM.checkQuests();
     SIM.emit('army');
     SIM.save();
@@ -653,6 +773,7 @@ var BATTLE = (function () {
   }
 
   function update(dt) {
+    if (deploying) { render(); return; }
     if (!running && !done) return;
     if (running) {
       var d = Math.min(dt, 0.05) * speedMul;
@@ -665,6 +786,8 @@ var BATTLE = (function () {
 
   return {
     init: init, start: start, update: update, resize: resize, close: close,
+    beginFight: function () { if (deploying) beginFight(); },
+    isDeploying: function () { return deploying; },
     isOpen: isOpen, foeArmy: foeArmy
   };
 })();

@@ -69,7 +69,14 @@ leave.
 about six people per point of contentment they give. Content villagers work
 faster; miserable ones drift away.
 
-**Fight.** Pick a **formation** in Army → War (Line, Wedge or Shieldwall).
+**Fight.** Before a blow is struck you choose **the ground** — open, broken
+(slow advance, so archers get far more shots) or a narrow front (the larger
+army cannot bring its numbers to bear) — and how much of your army to hold in
+**reserve**. Reserves sit out the first clash; commit them when it matters, or
+keep them and they walk home whatever happens. Mid-battle you can **retreat**:
+you lose the field but keep your soldiers.
+
+Pick a **formation** in Army → War (Line, Wedge or Shieldwall).
 Soldiers who survive a victory become **veterans** — noticeably tougher next
 time out. Brannoch raids you every few seasons. Battles are played out on a
 field: your actual roster marches out, archers shoot from behind the line,

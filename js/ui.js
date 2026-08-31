@@ -1137,6 +1137,7 @@ var UI = (function () {
       el('spd-' + i).addEventListener('click', function () { setSpeed([0, 1, 2, 4][i]); U.sfx.tap(); });
     });
     el('bt-done').addEventListener('click', function () { BATTLE.close(); });
+    el('dep-begin').addEventListener('click', function () { BATTLE.beginFight(); });
 
     SIM.on(function (kind, payload) {
       if (kind === 'toast') { toast(payload.msg, payload.kind); chronicle(payload.msg); }
