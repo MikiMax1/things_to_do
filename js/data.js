@@ -278,6 +278,28 @@ var DATA = (function () {
       desc: 'Walls and towers give +60% defence.', req: ['masonry'], lib: 2 },
     knighthood: { name: 'Knighthood', tier: 3, ic: '🐎', cost: { gold: 420, iron: 90 }, time: 70,
       desc: 'Unlocks Knights — the hammer of Ashveil.', req: ['iron_weapons'], lib: 2 },
+    /* --- three forks. Taking one closes the other for good. --- */
+    enclosure: { name: 'Enclosure', tier: 1, ic: '🚧', cost: { gold: 140, stone: 40 }, time: 34,
+      desc: '+40% from farms and pastures — but the commons are fenced off, and the people resent it (−10 contentment).',
+      req: [], excludes: 'common_fields', fork: 'The land' },
+    common_fields: { name: 'Common Fields', tier: 1, ic: '🌾', cost: { gold: 110, food: 70 }, time: 34,
+      desc: '+15% from farms and pastures, and the commons stay open to all (+8 contentment).',
+      req: [], excludes: 'enclosure', fork: 'The land' },
+
+    guild_charter: { name: 'Guild Charter', tier: 2, ic: '⚖️', cost: { gold: 260 }, time: 52,
+      desc: '+30% market income — the guilds run the trade, and take their due (−6 contentment).',
+      req: ['trade_charter'], lib: 1, excludes: 'free_trade', fork: 'The market' },
+    free_trade: { name: 'Free Trade', tier: 2, ic: '🤝', cost: { gold: 220 }, time: 52,
+      desc: 'Far better prices when you buy and sell, and an open town (+5 contentment).',
+      req: ['trade_charter'], lib: 1, excludes: 'guild_charter', fork: 'The market' },
+
+    iron_ploughs: { name: 'Iron Ploughs', tier: 3, ic: '🌱', cost: { gold: 300, iron: 70 }, time: 60,
+      desc: 'Tools serve the plough: farms and pastures gain a further +25% while tools are stocked.',
+      req: ['mining'], lib: 2, excludes: 'siege_forges', fork: 'Plough or sword' },
+    siege_forges: { name: 'Siege Forges', tier: 3, ic: '⚒️', cost: { gold: 300, iron: 70 }, time: 60,
+      desc: 'Tools serve the sword: +25% attack and defence for every soldier while tools are stocked.',
+      req: ['mining'], lib: 2, excludes: 'iron_ploughs', fork: 'Plough or sword' },
+
     siege: { name: 'Siege Engines', tier: 3, ic: '🎯', cost: { gold: 400, wood: 200, iron: 60 }, time: 72,
       desc: 'Unlocks Catapults for storming Brannoch.', req: ['iron_weapons'], lib: 2 }
   };

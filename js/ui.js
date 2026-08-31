@@ -437,17 +437,29 @@ var UI = (function () {
       if (t.tier !== tier) return;
       any = true;
       var have = !!G.tech[id];
+      var closed = SIM.techClosed(id);
       var avail = SIM.techAvailable(id);
       var missing = [];
       t.req.forEach(function (r) { if (!G.tech[r]) missing.push(DATA.TECH[r].name); });
       if (t.lib && G.count.library < t.lib) missing.push(t.lib + '× Library');
-      var card = h('<div class="card' + (have || avail ? '' : ' locked') + '">' +
+      var other = t.excludes ? DATA.TECH[t.excludes] : null;
+      var forkNote = '';
+      if (other) {
+        forkNote = closed
+          ? '<p style="color:#8a7a5e;margin-top:5px">✕ Closed — you chose ' + other.name + '</p>'
+          : have
+            ? '<p style="color:#8fd06a;margin-top:5px">✓ Chosen over ' + other.name + '</p>'
+            : '<p style="color:#e0b23c;margin-top:5px">⚠ ' + t.fork + ': taking this closes off <b>' + other.name + '</b> for good</p>';
+      }
+      var card = h('<div class="card' + (have || avail ? '' : ' locked') +
+        (other && !have && !closed ? '" style="border-color:#8a6f45' : '') + '">' +
         '<div class="card-row"><div class="card-ic" style="font-size:20px">' + t.ic + '</div>' +
         '<div class="card-main"><h4>' + t.name + (have ? ' ✓' : '') + '</h4><p>' + t.desc + '</p>' +
-        (have ? '' : '<div class="cost">' + costPills(t.cost) + '<b>⏳ ' + t.time + '</b></div>') +
-        (missing.length ? '<p style="color:#e0b23c;margin-top:5px">🔒 Needs ' + missing.join(', ') + '</p>' : '') +
+        (have || closed ? '' : '<div class="cost">' + costPills(t.cost) + '<b>⏳ ' + t.time + '</b></div>') +
+        (missing.length && !closed ? '<p style="color:#e0b23c;margin-top:5px">🔒 Needs ' + missing.join(', ') + '</p>' : '') +
+        forkNote +
         '</div></div></div>');
-      if (!have) {
+      if (!have && !closed) {
         var b = h('<button class="btn wide">Begin study</button>');
         b.disabled = !avail || !!G.research || !SIM.canAfford(t.cost);
         if (G.research) b.textContent = 'Scholars are busy';

@@ -406,6 +406,7 @@ var SIM = (function () {
       if (b.built && b.id === 'smith' && staffRatio(b) > 0.2) { atk += b.def.armyAtk * lvlMul(b); def += b.def.armyDef * lvlMul(b); }
     });
     if (G.tech.iron_weapons) atk += 0.10;
+    if (G.tech.siege_forges) { atk += 0.25 * (G.toolCov || 0); def += 0.25 * (G.toolCov || 0); }
     return { atk: 1 + Math.min(atk, 0.6), def: 1 + Math.min(def, 0.5) };
   }
 
@@ -594,6 +595,9 @@ var SIM = (function () {
   function techMul(res) {
     var m = 1;
     if (res === 'food' && G.tech.crop_rotation) m += 0.25;
+    if ((res === 'food' || res === 'wool') && G.tech.enclosure) m += 0.40;
+    if ((res === 'food' || res === 'wool') && G.tech.common_fields) m += 0.15;
+    if (res === 'gold' && G.tech.guild_charter) m += 0.30;
     if (res === 'wood' && G.tech.forestry) m += 0.20;
     if (res === 'stone' && G.tech.masonry) m += 0.20;
     if (res === 'iron' && G.tech.deep_mining) m += 0.50;
@@ -628,6 +632,7 @@ var SIM = (function () {
     var ratio = staffRatio(b);
     if (ratio <= 0 && jobsOf(b) > 0) return out;
     var toolBoost = (b.id === 'smith') ? 1 : 1 + TOOL_BONUS * (G.toolCov || 0);
+    if (G.tech.iron_ploughs && (b.def.seasonal || b.def.seasonalWool)) toolBoost += 0.25 * (G.toolCov || 0);
     var eff = efficiency() * ratio * auraFor(b) * lvlMul(b) * toolBoost;
     if (b.def.produces) {
       Object.keys(b.def.produces).forEach(function (k) {
@@ -702,6 +707,10 @@ var SIM = (function () {
     var t = 34 + coverage * 46;
     if (G.tech.sanitation) t += 8;
     t += BREAD_JOY * (G.breadCov || 0);
+    if (G.tech.enclosure) t -= 10;
+    if (G.tech.common_fields) t += 8;
+    if (G.tech.guild_charter) t -= 6;
+    if (G.tech.free_trade) t += 5;
     if (G.res.food > G.pop * 10) t += 8;
     else if (G.res.food <= 0) t -= 34;
     else if (G.res.food < G.pop * 2) t -= 12;
@@ -871,6 +880,7 @@ var SIM = (function () {
     if (G.tech.trade_charter) { s2 += 0.06; b2 -= 0.10; }
     if (G.tech.guilds)        { s2 += 0.06; b2 -= 0.10; }
     if (G.tech.banking)       { s2 += 0.08; b2 -= 0.12; }
+    if (G.tech.free_trade)    { s2 += 0.20; b2 -= 0.15; }
     var lvl = 0;
     G.buildings.forEach(function (b) { if (b.built && b.id === 'market') lvl += lvlMul(b); });
     s2 += Math.min(0.10, lvl * 0.02);
@@ -959,9 +969,14 @@ var SIM = (function () {
   function techAvailable(id) {
     var t = DATA.TECH[id];
     if (G.tech[id]) return false;
+    if (t.excludes && G.tech[t.excludes]) return false;   // you chose the other road
     if (t.req.some(function (r) { return !G.tech[r]; })) return false;
     if (t.lib && G.count.library < t.lib) return false;
     return true;
+  }
+  function techClosed(id) {
+    var t = DATA.TECH[id];
+    return !!(t && t.excludes && G.tech[t.excludes]);
   }
   function startResearch(id) {
     if (G.research) return { ok: false, why: 'Already studying ' + DATA.TECH[G.research.id].name };
@@ -1154,7 +1169,7 @@ var SIM = (function () {
     goodsValue: goodsValue, marketCut: marketCut,
     rebuildPaths: function () { markPathsDirty(); ensurePaths(true); },
     canTrade: canTrade, priceOf: priceOf, sell: sell, buy: buy, tradeSpread: tradeSpread,
-    techAvailable: techAvailable, startResearch: startResearch,
+    techAvailable: techAvailable, techClosed: techClosed, startResearch: startResearch,
     unitAvailable: unitAvailable, recruit: recruit, disband: disband,
     activeQuests: activeQuests, applyEffects: applyEffects, checkQuests: checkQuests,
     happyTarget: happyTarget
