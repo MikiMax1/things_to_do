@@ -1175,6 +1175,77 @@ var SIM = (function () {
   }
 
   /* ---------------------------------------------------------
+     What needs attention.
+     On a phone you cannot see the whole realm at once, so the realm
+     tells you what is wrong instead. Severity 2 is urgent, 1 wants
+     seeing to, 0 is worth knowing.
+     --------------------------------------------------------- */
+  var _issCache = null, _issAt = -1e9;
+  function issues() {
+    if (_issCache && Math.abs(G.time - _issAt) < 0.5) return _issCache;
+    var out = [], net = ledger();
+
+    if (G.res.food <= 0.5 && G.pop > 1) {
+      out.push({ sev: 2, ic: '💀', text: 'Your people are starving', hint: 'Anything that makes food, now' });
+    } else if (net.food < -0.01) {
+      var seasons = G.res.food / (-net.food) / DATA.SEASON_LEN;
+      out.push({ sev: seasons < 1.5 ? 2 : 1, ic: '🌾',
+        text: 'Food is falling — about ' + seasons.toFixed(1) + ' seasons left',
+        hint: 'Build farms, or a fishing hut by the water' });
+    }
+    if (G.pop >= housing() - 0.01) {
+      out.push({ sev: 1, ic: '🏠', text: 'No room to grow — every bed is full', hint: 'Raise more cottages' });
+    }
+    if (G.happy < 30) {
+      out.push({ sev: G.happy < 18 ? 2 : 1, ic: '😠', text: 'The people are miserable (' + Math.round(G.happy) + '%)',
+        hint: 'Wells, chapels, taverns — and keep the barns full' });
+    }
+    G.buildings.forEach(function (b) {
+      if (!b.built) return;
+      if (b.paused) { out.push({ sev: 0, ic: '⏸', text: b.def.name + ' is paused', b: b }); return; }
+      if (jobsOf(b) > 0 && b.workers === 0) {
+        out.push({ sev: 1, ic: '⚠', text: b.def.name + ' has nobody working it', b: b,
+          hint: 'Not enough villagers to go round' });
+      }
+    });
+    if (G.count.smith > 0 && (G.toolCov || 0) < 0.5) {
+      out.push({ sev: 1, ic: '🔨', text: 'Tools are running short — every trade is slower',
+        hint: 'The smithy needs iron and timber' });
+    }
+    if (G.count.bakery > 0 && (G.breadCov || 0) < 0.4) {
+      out.push({ sev: 0, ic: '🍞', text: 'Little bread on the table', hint: 'The bakery needs grain and firewood' });
+    }
+    if (!G.research && G.count.library > 0) {
+      out.push({ sev: 0, ic: '📜', text: 'Your scholars are idle', hint: 'Begin a study in Research' });
+    }
+    DATA.RES.forEach(function (r) {
+      if (G.res[r.key] >= cap(r.key) - 0.5 && net[r.key] > 0.02) {
+        out.push({ sev: 0, ic: r.ic, text: r.name + ' stores are full — the surplus is being wasted',
+          hint: 'Build a warehouse, or sell some at the market' });
+      }
+    });
+    if (G.campaign) {
+      out.push({ sev: G.campaign.phase === 'out' ? 1 : 0, ic: '⚔️',
+        text: G.campaign.phase === 'out' ? 'Your army is away — only walls defend Ashveil'
+             : G.campaign.phase === 'battle' ? 'Your army has reached the border'
+             : 'Your army is marching home',
+        hint: 'See the War tab' });
+    } else if (raidSoon() && armyCount() === 0 && defenseScore() < 10) {
+      out.push({ sev: 2, ic: '📯', text: 'Brannoch rides soon and Ashveil is undefended',
+        hint: 'Muster soldiers, build a tower, or save gold to buy them off' });
+    }
+
+    out.sort(function (a, b2) { return b2.sev - a.sev; });
+    _issCache = out; _issAt = G.time;
+    return out;
+  }
+  function issueCount() {
+    var n = 0;
+    issues().forEach(function (i) { if (i.sev >= 1) n++; });
+    return n;
+  }
+
+  /* ---------------------------------------------------------
      save / load
      --------------------------------------------------------- */
   /* A save written before a resource existed has no key for it, and
@@ -1281,6 +1352,7 @@ var SIM = (function () {
     techAvailable: techAvailable, techClosed: techClosed, startResearch: startResearch,
     unitAvailable: unitAvailable, recruit: recruit, disband: disband,
     activeQuests: activeQuests, applyEffects: applyEffects, checkQuests: checkQuests,
+    issues: issues, issueCount: issueCount,
     happyTarget: happyTarget
   };
 })();

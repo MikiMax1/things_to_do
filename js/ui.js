@@ -81,6 +81,14 @@ var UI = (function () {
     mn.textContent = note;
     mn.className = 'mini dim' + (note ? '' : ' hidden');
 
+    var n = SIM.issueCount();
+    var badge = el('alert-badge'), abtn = el('btn-alerts');
+    badge.textContent = n;
+    badge.classList.toggle('hidden', n === 0);
+    abtn.classList.toggle('calm', n === 0);
+    abtn.textContent = n === 0 ? '🔕' : '🔔';
+    abtn.appendChild(badge);
+
     var s = SIM.season();
     el('season-icon').textContent = s.icon;
     el('season-name').textContent = s.name;
@@ -117,6 +125,7 @@ var UI = (function () {
     people: { title: 'People', tabs: function () { return [{ key: 'overview', name: 'Realm' }, { key: 'jobs', name: 'Work' }, { key: 'quests', name: 'Charters' }]; }, body: peopleBody },
     army: { title: 'Army', tabs: function () { return [{ key: 'roster', name: 'Roster' }, { key: 'muster', name: 'Muster' }, { key: 'war', name: 'War' }]; }, body: armyBody },
     tech: { title: 'Research', tabs: function () { return [{ key: 1, name: 'Tier I' }, { key: 2, name: 'Tier II' }, { key: 3, name: 'Tier III' }]; }, body: techBody },
+    alerts: { title: 'Needs attention', tabs: function () { return [{ key: 'all', name: 'All' }]; }, body: alertsBody },
     world: { title: 'The Realm', tabs: function () { return [{ key: 'castle', name: 'Castle' }, { key: 'trade', name: 'Trade' }, { key: 'chronicle', name: 'Chronicle' }, { key: 'settings', name: 'Settings' }]; }, body: worldBody }
   };
 
@@ -143,6 +152,32 @@ var UI = (function () {
     body.innerHTML = '';
     p.body(body, openTab[openPanel]);
     if (!rebuildTabs) body.scrollTop = st;
+  }
+
+  /* ---------------- ALERTS ---------------- */
+  function alertsBody(box) {
+    var list = SIM.issues();
+    if (!list.length) {
+      box.appendChild(h('<p class="hint">Nothing needs you. The realm is running itself — a good moment to build something, or study.</p>'));
+      return;
+    }
+    box.appendChild(h('<p class="hint">Tap anything with a place attached and the map will take you there.</p>'));
+    list.forEach(function (i) {
+      var row = h('<button class="issue sev' + i.sev + '">' +
+        '<span class="ic">' + i.ic + '</span>' +
+        '<span class="body"><b>' + i.text + '</b>' + (i.hint ? '<small>' + i.hint + '</small>' : '') + '</span>' +
+        (i.b ? '<span class="go">Show ›</span>' : '') +
+        '</button>');
+      if (i.b) {
+        row.addEventListener('click', function () {
+          RENDER.centreOn(i.b.x, i.b.y);
+          closeSheet();
+          select({ b: i.b });
+          U.sfx.tap();
+        });
+      }
+      box.appendChild(row);
+    });
   }
 
   /* ---------------- BUILD ---------------- */
@@ -1095,6 +1130,7 @@ var UI = (function () {
       var c = SIM.G.buildings[0];
       if (c) RENDER.centreOn(c.x, c.y);
     });
+    el('btn-alerts').addEventListener('click', function () { U.sfx.tap(); openSheet('alerts'); });
     el('btn-sound').addEventListener('click', toggleSound);
     el('btn-menu').addEventListener('click', function () { openTab.world = 'settings'; openSheet('world'); });
     [0, 1, 2, 3].forEach(function (i) {
