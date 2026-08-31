@@ -98,6 +98,20 @@
   <!-- ============ BATTLE OVERLAY ============ -->
   <div id="battle" class="hidden">
     <canvas id="battle-canvas"></canvas>
+    <div id="battle-deploy" class="hidden">
+      <div class="dep-card">
+        <h2 id="dep-title">Order of Battle</h2>
+        <p id="dep-sub">Choose your ground and how much to hold back.</p>
+        <p class="dep-label">The ground</p>
+        <div id="dep-ground"></div>
+        <p class="dep-label">Reserve</p>
+        <p class="dep-hint">Held back from the first clash. Commit them when it matters — or keep them and they walk home whatever happens.</p>
+        <div id="dep-reserve"></div>
+        <div id="dep-summary"></div>
+        <button id="dep-begin" type="button">Give the order</button>
+      </div>
+    </div>
+
     <div id="battle-hud">
       <div class="bt-head">
         <div class="bt-side ours"><b id="bt-our-name">Ashveil</b><span id="bt-our-count">0</span></div>

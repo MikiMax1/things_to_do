@@ -61,7 +61,8 @@ var DATA = (function () {
       id: 'house', name: 'Cottage', cat: 'housing', ic: '🏠',
       cost: { wood: 22, gold: 10 }, build: 5, jobs: 0, housing: 5, upkeep: 0.01,
       terrain: ['grass', 'meadow', 'sand', 'forest', 'hill'],
-      desc: 'Houses 5 villagers. Villagers work your buildings.'
+      evolves: true, tierNames: ['Cottage', 'Townhouse', 'Fine House'],
+      desc: 'Houses 5 villagers — and improves itself into a townhouse and then a fine house as your realm gets richer. Better houses hold more people and pay more tax.'
     },
     manor: {
       id: 'manor', name: 'Manor', cat: 'housing', ic: '🏡', tech: 'sanitation',
@@ -238,6 +239,25 @@ var DATA = (function () {
     { key: 'military',  name: 'Military' }
   ];
 
+  /* ---------------- how a home betters itself ----------------
+     Nothing is bought. A house rises when the realm around it can keep
+     it that way, and slips back when it cannot. */
+  /* Rise thresholds are what a home needs to climb; fall thresholds are the
+     lower bar it must drop through to slip back. The gap between them is
+     deliberate — without it a fine house that eats cloth would drive the
+     store to nothing, fall, stop eating, rise again, and flicker forever. */
+  var HOUSE_TIERS = [
+    { happy: 0,  bread: 0,    cloth: 0,  tax: 0,
+      fallHappy: -1, fallBread: -1, fallCloth: -1, needs: 'nothing' },
+    { happy: 58, bread: 0.45, cloth: 0,  tax: 0.020,
+      fallHappy: 50, fallBread: 0.30, fallCloth: -1,
+      needs: '58% contentment and bread on the table' },
+    { happy: 72, bread: 0.65, cloth: 15, tax: 0.055,
+      fallHappy: 64, fallBread: 0.50, fallCloth: 1,
+      needs: '72% contentment, plenty of bread, and 15 cloth in store' }
+  ];
+  var CLOTH_PER_FINE_HOUSE = 0.0045;
+
   /* ---------------- castle tiers ---------------- */
   var CASTLE = [
     { name: 'Wooden Hall',  cost: {},                                   desc: 'Where it began.',                  bonus: {} },
@@ -342,6 +362,15 @@ var DATA = (function () {
      villagers — the answer to a big town and too few hands. */
   var UPGRADE = { max: 3, costPow: 1.75, gain: 0.5 };
 
+  /* ---------------- ground you choose to fight on ----------------
+     Each is a real trade-off rather than a bonus. Narrow ground blunts a
+     bigger army, broken ground gives bowmen time to work. */
+  var GROUNDS = {
+    open:   { name: 'Open ground', ic: '▭', desc: 'A fair fight, decided by numbers and steel.' },
+    broken: { name: 'Broken ground', ic: '⛰', desc: 'Everyone advances slowly — archers get far more shots in before the lines meet.', spd: 0.55 },
+    narrow: { name: 'Narrow front', ic: '⌗', desc: 'Only so many can fight at once, so the larger army cannot bring its numbers to bear.', narrow: true }
+  };
+
   /* ---------------- battle formations ---------------- */
   var FORMATIONS = {
     line:       { name: 'Line',       ic: '▬', desc: 'Balanced. No bonus, no penalty.',                 atk: 1.00, def: 0, hp: 1.00, spd: 1.00 },
@@ -366,6 +395,21 @@ var DATA = (function () {
     { id: 'q_castle3',label: 'Raise the Great Castle',  need: { castle: 2 },           reward: { gold: 400 } },
     { id: 'q_break',  label: 'Break Brannoch (3 wins)', need: { wins: 3 },             reward: { gold: 500, iron: 120 } }
   ];
+
+  /* ---------------- the year's occasions ----------------
+     One per season, every year, in a known order. Unlike a random event
+     you can see these coming and lay something by for them, which is the
+     whole point: preparing is the decision. */
+  var FESTIVALS = {
+    spring: { key: 'spring', art: '🎪', title: 'The Spring Fair',
+      text: 'Traders and tinkers set up along the road for the fair. For a season, coin goes further and goods fetch more.' },
+    summer: { key: 'summer', art: '🎺', title: 'The Summer Muster',
+      text: 'By custom the realm musters in high summer and the lord counts his swords. The whole valley comes to watch.' },
+    autumn: { key: 'autumn', art: '🍂', title: 'The Harvest Festival',
+      text: 'The last sheaf is in. The people are looking at the granary, and at you.' },
+    winter: { key: 'winter', art: '🕯️', title: 'Midwinter',
+      text: 'The dark of the year. Every household counts what is left in the loft and hopes it is enough.' }
+  };
 
   /* ---------------- why Brannoch comes ----------------
      Every raid has a reason, it is said out loud, and each one has a
@@ -489,7 +533,8 @@ var DATA = (function () {
   return {
     SEASON_LEN: SEASON_LEN, SEASONS: SEASONS, TERRAIN: TERRAIN, RES: RES,
     B: B, CATS: CATS, CASTLE: CASTLE, TECH: TECH, UNITS: UNITS, FOE_UNITS: FOE_UNITS,
-    QUESTS: QUESTS, EVENTS: EVENTS, RAID_CAUSES: RAID_CAUSES,
-    TRADE: TRADE, TRADE_LOT: TRADE_LOT, UPGRADE: UPGRADE, FORMATIONS: FORMATIONS
+    QUESTS: QUESTS, EVENTS: EVENTS, RAID_CAUSES: RAID_CAUSES, FESTIVALS: FESTIVALS,
+    TRADE: TRADE, TRADE_LOT: TRADE_LOT, UPGRADE: UPGRADE, FORMATIONS: FORMATIONS, GROUNDS: GROUNDS,
+    HOUSE_TIERS: HOUSE_TIERS, CLOTH_PER_FINE_HOUSE: CLOTH_PER_FINE_HOUSE
   };
 })();

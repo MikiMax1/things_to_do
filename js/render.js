@@ -291,7 +291,9 @@ var RENDER = (function () {
   }
 
   function drawBuilding(b, z, night) {
-    var art = ART.bld[b.id];
+    // a home that has bettered itself looks the part
+    var artId = (b.def.evolves && (b.level || 1) > 1) ? b.id + b.level : b.id;
+    var art = ART.bld[artId] || ART.bld[b.id];
     if (!art) return;
     var wTiles = b.def.w || 1, hTiles = b.def.h || 1;
     var s = toScreen(b.x, b.y);

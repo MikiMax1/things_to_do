@@ -240,6 +240,32 @@ var ART = (function () {
       door(g, cx + 2, b - 16, 12, 16);
       fs(g, P.stoneD, cx + 12, b - 52, 6, 12); // chimney
     },
+    house2: function (g) {          // townhouse — a second storey and a tiled roof
+      var b = BH - 12, cx = BW / 2;
+      shadow(g, 22);
+      box(g, cx - 20, b - 40, 40, 40, P.plaster, '#eee2c6');
+      fs(g, P.woodD, cx - 20, b - 22, 40, 3);
+      fs(g, P.woodD, cx - 20, b - 40, 3, 40); fs(g, P.woodD, cx + 17, b - 40, 3, 40);
+      gableRoof(g, cx - 21, b - 60, 42, 20, P.tileRoof, P.tileRoofD);
+      window_(g, cx - 14, b - 36, 9, 10); window_(g, cx + 4, b - 36, 9, 10);
+      window_(g, cx - 14, b - 17, 9, 9);
+      door(g, cx + 3, b - 16, 12, 16);
+      fs(g, P.stoneD, cx + 12, b - 66, 6, 12);
+    },
+    house3: function (g) {          // fine house — stone, wide, and proud of it
+      var b = BH - 12, cx = BW / 2;
+      shadow(g, 26);
+      box(g, cx - 24, b - 46, 48, 46, '#e6dcc2', '#f2ead4');
+      fs(g, P.stoneD, cx - 24, b - 46, 48, 4);
+      fs(g, P.stoneD, cx - 24, b - 25, 48, 3);
+      gableRoof(g, cx - 25, b - 68, 50, 22, P.slate, P.slateD);
+      [-17, -4, 9].forEach(function (dx) { window_(g, cx + dx, b - 42, 9, 11); });
+      window_(g, cx - 17, b - 20, 9, 10); window_(g, cx + 9, b - 20, 9, 10);
+      door(g, cx - 5, b - 18, 13, 18);
+      fs(g, P.gold, cx - 6, b - 20, 15, 2);
+      fs(g, P.stoneD, cx - 19, b - 76, 7, 14); fs(g, P.stoneD, cx + 13, b - 76, 7, 14);
+      banner(g, cx + 25, b - 62, P.gold);
+    },
     manor: function (g) {
       var b = BH - 12, cx = BW / 2;
       shadow(g, 26);
@@ -558,6 +584,11 @@ var ART = (function () {
     for (var i = 0; i < 4; i++) crops.push(bakeCrop(i));
     scaffold = bakeScaffold();
 
+    ['house2', 'house3'].forEach(function (id) {
+      var c = cv(BW, BH), g = ctxOf(c);
+      DRAW[id](g);
+      bld[id] = { c: c, w: BW, h: BH };
+    });
     Object.keys(DATA.B).forEach(function (id) {
       var big = id === 'castle';
       var w = big ? BW * 2 : BW, h = big ? BH + 40 : BH;

@@ -42,17 +42,33 @@ All four items from the last queue are built and in the game.
 
 ## Start here next session
 
-1. **Battle input** — ground, deployment, a reserve, and retreat. The battle is
-   still three buttons on a cooldown while you watch, which is now the weakest
-   part of a war that has otherwise been rebuilt.
+1. ~~**Battle input**~~ — done. An order-of-battle screen before the fight
+   (choose the ground, choose a reserve), a reserve you commit mid-fight, and
+   retreat. Still to come here: per-unit orders (hold a flank, target their
+   archers), and battlefield terrain drawn from where the fight happens rather
+   than chosen from a list.
 2. **Housing that improves with its neighbourhood** — the reward half of the
    economy: a cottage becoming a townhouse when it is well served, holding more
    people and demanding bread and cloth. It gives the new production chains
    somewhere to land.
-3. **A festival calendar** so the year has a rhythm you can prepare for.
-4. **The balance harness** — payback tables and resource flows from a hundred
-   headless runs, before the systems grow any further. The economy now has
-   nine resources and three supply curves; it needs measuring, not guessing.
+3. ~~**A festival calendar**~~ — done. One occasion per season, every year, in
+   a known order, with costs that scale to the size of the realm.
+4. ~~**The balance harness**~~ — done, at `tools/balance.js`. Payback tables and
+   simulated kingdoms with pass/fail health checks.
+
+## Then start here
+
+1. **Per-unit battle orders** — hold a flank, target their archers, protect the
+   catapults. The order of battle is in; what happens during it is still three
+   global buttons.
+2. **Battlefield terrain drawn from where the fight happens** rather than picked
+   from a list — your own walls when defending, woods if the border is wooded.
+3. **Wonders** — one enormous thing per kingdom, many seasons of economy, a
+   plausible win condition. The economy can now support one.
+4. **Chapters and an ending.** The game still has no end, and now has enough
+   systems to deserve one.
+
+Use `node tools/balance.js` before and after anything that touches numbers.
 
 Watch out for: tools, bread and cloth all use the same coverage model
 (stock measured against eight seconds of demand). If a fourth is added, factor

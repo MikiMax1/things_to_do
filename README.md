@@ -61,6 +61,12 @@ answer when your town is bigger than your workforce.
 - Fishing huts must touch **water**
 - Building on woodland clears it and pays you 12 wood
 
+**The year has a rhythm.** Each season brings its own occasion, always in the
+same order, so you can see them coming and lay something by: the **Spring
+Fair** (a season of far better prices), the **Summer Muster** (parade a real
+army and word reaches Brannoch), the **Harvest Festival** (feast the valley for
+a large lift in spirits) and **Midwinter** (open the stores, or ration hard).
+
 **Seasons bite.** Winter cuts farm output to a quarter until you research
 Irrigation. Stockpile in summer or your people starve — and starving people
 leave.
@@ -69,7 +75,14 @@ leave.
 about six people per point of contentment they give. Content villagers work
 faster; miserable ones drift away.
 
-**Fight.** Pick a **formation** in Army → War (Line, Wedge or Shieldwall).
+**Fight.** Before a blow is struck you choose **the ground** — open, broken
+(slow advance, so archers get far more shots) or a narrow front (the larger
+army cannot bring its numbers to bear) — and how much of your army to hold in
+**reserve**. Reserves sit out the first clash; commit them when it matters, or
+keep them and they walk home whatever happens. Mid-battle you can **retreat**:
+you lose the field but keep your soldiers.
+
+Pick a **formation** in Army → War (Line, Wedge or Shieldwall).
 Soldiers who survive a victory become **veterans** — noticeably tougher next
 time out. Brannoch raids you every few seasons. Battles are played out on a
 field: your actual roster marches out, archers shoot from behind the line,
@@ -146,5 +159,16 @@ PLAN.md                    what changed, the balance audit, and the roadmap
 
 Performance: 60fps on a phone-sized viewport with 130+ buildings and 46
 villagers on screen.
+
+## Measuring the balance
+
+`node tools/balance.js` loads the real game headlessly, builds a scripted
+kingdom two dozen times over forty seasons each, and reports what actually
+happens — payback per building, resource flows, contentment, how much of the
+time a realm spends starving or broke, whether homes climb past cottages, and
+whether house standings settle rather than flicker. It ends with pass/fail
+health checks.
+
+Run it before and after any balance change.
 
 See `PLAN.md` for what changed from the original and where this could go next.
