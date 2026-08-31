@@ -78,8 +78,30 @@ come home; the fallen are gone. Walls and watchtowers only help when you are
 *defending*. **Army → War** shows honest odds for both attacking and being
 attacked.
 
-**Research** at a Library unlocks three tiers of technology — irrigation,
-mining, guilds, knighthood, siege engines and more.
+**Make things from other things.** A blacksmith forges iron and timber into
+**tools**, and a realm with tools in store works up to 25% faster at
+everything. A bakery turns grain and firewood into **bread**, and a
+bread-fed realm eats a third less grain and is far happier. Pastures and a
+weaver turn grass into **cloth**, the richest good you can make. Markets take a
+cut of everything you produce, so an industrious realm's market earns many
+times what a farming village's does.
+
+**Research** at a Library unlocks three tiers of technology — and three
+**forks that close behind you**. Enclosure or Common Fields; Guild Charter or
+Free Trade; Iron Ploughs or Siege Forges. You cannot have both sides, so no two
+kingdoms end the same.
+
+**War takes time now.** Marching on Brannoch takes about a season each way, and
+while your army is on the road only walls and towers defend Ashveil — and
+Brannoch judges its raids by your whole strength, not by what is left at home.
+Every raid comes with a stated reason: they waited until you left, they smell
+gold, they want blood, their harvest failed, or they mean to take Ashveil
+outright. A realm that plainly outmatches them often gets left alone entirely,
+so soldiers and walls are worth paying for even in peace.
+
+**The bell tells you what is wrong.** Tap 🔔 for a live list — starving people,
+workplaces with nobody in them, full stores going to waste, an army in the
+field — and tap any row to fly the camera to it.
 
 Keyboard, if you are at a desk: `B` build, `Space` pause, `1`/`2`/`3` speed,
 arrows to pan, `Esc` to back out.

@@ -43,14 +43,22 @@ var UI = (function () {
     if (!G) return;
     var net = SIM.ledger();
     var strip = el('res-strip');
-    if (!strip.children.length) {
-      DATA.RES.forEach(function (r) {
+    // A chip only appears once the realm has actually seen that resource, so a
+    // new village shows four and a mature one shows nine without ever being a
+    // wall of numbers you have to scroll.
+    var show = DATA.RES.filter(function (r) { return (G.seen && G.seen[r.key]) || G.res[r.key] > 0; });
+    var key = show.map(function (r) { return r.key; }).join(',');
+    if (strip.dataset.keys !== key) {
+      strip.dataset.keys = key;
+      strip.innerHTML = '';
+      show.forEach(function (r) {
         strip.appendChild(h('<div class="res" id="res-' + r.key + '"><span class="ic">' + r.ic +
           '</span><span class="amt">0</span><span class="rate"></span></div>'));
       });
     }
-    DATA.RES.forEach(function (r) {
+    show.forEach(function (r) {
       var box = el('res-' + r.key);
+      if (!box) return;
       var v = G.res[r.key], c = SIM.cap(r.key);
       box.querySelector('.amt').textContent = U.fmt(v);
       var rt = box.querySelector('.rate');
@@ -72,6 +80,14 @@ var UI = (function () {
     if (G.research) note = '📜 ' + Math.round(U.clamp(G.research.prog / DATA.TECH[G.research.id].time, 0, 1) * 100) + '%';
     mn.textContent = note;
     mn.className = 'mini dim' + (note ? '' : ' hidden');
+
+    var n = SIM.issueCount();
+    var badge = el('alert-badge'), abtn = el('btn-alerts');
+    badge.textContent = n;
+    badge.classList.toggle('hidden', n === 0);
+    abtn.classList.toggle('calm', n === 0);
+    abtn.textContent = n === 0 ? '🔕' : '🔔';
+    abtn.appendChild(badge);
 
     var s = SIM.season();
     el('season-icon').textContent = s.icon;
@@ -109,6 +125,7 @@ var UI = (function () {
     people: { title: 'People', tabs: function () { return [{ key: 'overview', name: 'Realm' }, { key: 'jobs', name: 'Work' }, { key: 'quests', name: 'Charters' }]; }, body: peopleBody },
     army: { title: 'Army', tabs: function () { return [{ key: 'roster', name: 'Roster' }, { key: 'muster', name: 'Muster' }, { key: 'war', name: 'War' }]; }, body: armyBody },
     tech: { title: 'Research', tabs: function () { return [{ key: 1, name: 'Tier I' }, { key: 2, name: 'Tier II' }, { key: 3, name: 'Tier III' }]; }, body: techBody },
+    alerts: { title: 'Needs attention', tabs: function () { return [{ key: 'all', name: 'All' }]; }, body: alertsBody },
     world: { title: 'The Realm', tabs: function () { return [{ key: 'castle', name: 'Castle' }, { key: 'trade', name: 'Trade' }, { key: 'chronicle', name: 'Chronicle' }, { key: 'settings', name: 'Settings' }]; }, body: worldBody }
   };
 
@@ -135,6 +152,32 @@ var UI = (function () {
     body.innerHTML = '';
     p.body(body, openTab[openPanel]);
     if (!rebuildTabs) body.scrollTop = st;
+  }
+
+  /* ---------------- ALERTS ---------------- */
+  function alertsBody(box) {
+    var list = SIM.issues();
+    if (!list.length) {
+      box.appendChild(h('<p class="hint">Nothing needs you. The realm is running itself — a good moment to build something, or study.</p>'));
+      return;
+    }
+    box.appendChild(h('<p class="hint">Tap anything with a place attached and the map will take you there.</p>'));
+    list.forEach(function (i) {
+      var row = h('<button class="issue sev' + i.sev + '">' +
+        '<span class="ic">' + i.ic + '</span>' +
+        '<span class="body"><b>' + i.text + '</b>' + (i.hint ? '<small>' + i.hint + '</small>' : '') + '</span>' +
+        (i.b ? '<span class="go">Show ›</span>' : '') +
+        '</button>');
+      if (i.b) {
+        row.addEventListener('click', function () {
+          RENDER.centreOn(i.b.x, i.b.y);
+          closeSheet();
+          select({ b: i.b });
+          U.sfx.tap();
+        });
+      }
+      box.appendChild(row);
+    });
   }
 
   /* ---------------- BUILD ---------------- */
@@ -188,6 +231,13 @@ var UI = (function () {
         '<div class="stat-line"><span>Contentment</span><b>' + Math.round(G.happy) + '% → ' + Math.round(target) + '%</b></div>' +
         '<div class="meter"><i class="' + (G.happy < 30 ? 'bad' : G.happy < 55 ? 'warn' : '') + '" style="width:' + G.happy + '%"></i></div>' +
         '<div class="stat-line" style="margin-top:8px"><span>Work efficiency</span><b>' + Math.round(SIM.efficiency() * 100) + '%</b></div>' +
+        '<div class="stat-line"><span>Tools in workers\' hands</span><b style="color:' +
+          ((G.toolCov || 0) > 0.66 ? '#8fd06a' : (G.toolCov || 0) > 0.2 ? '#e0b23c' : '#e0795f') + '">' +
+          Math.round((G.toolCov || 0) * 100) + '% — +' + Math.round((G.toolCov || 0) * 25) + '% output</b></div>' +
+        '<div class="stat-line"><span>Bread on the table</span><b style="color:' +
+          ((G.breadCov || 0) > 0.66 ? '#8fd06a' : (G.breadCov || 0) > 0.2 ? '#e0b23c' : '#a8967a') + '">' +
+          Math.round((G.breadCov || 0) * 100) + '% — −' + Math.round((G.breadCov || 0) * 35) + '% grain eaten, +' +
+          Math.round((G.breadCov || 0) * 12) + ' contentment</b></div>' +
         '<div class="stat-line"><span>Season effect on farms</span><b>×' + (SIM.G.tech.irrigation && SIM.season().key === 'winter' ? 0.65 : SIM.season().food) + '</b></div>' +
         '</div>'));
       box.appendChild(h('<p class="sect-label">What moves contentment</p>'));
@@ -195,6 +245,7 @@ var UI = (function () {
       var capacity = 0;
       G.buildings.forEach(function (b) { if (b.built && b.def.happy) capacity += b.def.happy * 6; });
       lines.push(['Amenities serve', Math.round(capacity) + ' of ' + Math.floor(G.pop) + ' people']);
+      lines.push(['Bread', (G.breadCov || 0) > 0.05 ? '+' + Math.round((G.breadCov || 0) * 12) : 'none baked']);
       lines.push(['Food stores', G.res.food > G.pop * 10 ? 'plentiful (+8)' : G.res.food <= 0 ? 'empty (−34)' : G.res.food < G.pop * 2 ? 'low (−12)' : 'adequate']);
       lines.push(['Growing?', G.pop >= SIM.housing() ? 'no — out of housing'
         : G.res.food <= G.pop * 1.5 ? 'no — barns too low to feed more mouths'
@@ -206,6 +257,9 @@ var UI = (function () {
       box.appendChild(h('<div class="card">' + lines.map(function (l) {
         return '<div class="stat-line"><span>' + l[0] + '</span><b>' + l[1] + '</b></div>';
       }).join('') + '</div>'));
+      if ((G.toolCov || 0) < 0.66) {
+        box.appendChild(h('<p class="hint">Workers without tools are slow. A <b>Blacksmith</b> turns iron and timber into tools, and a well-stocked realm works <b>25% faster at everything</b>.</p>'));
+      }
       box.appendChild(h('<p class="hint">Build wells, chapels and taverns to keep people content — unhappy villagers work slowly and eventually leave.</p>'));
     }
 
@@ -269,8 +323,11 @@ var UI = (function () {
         '<div class="stat-line"><span>Formation</span><b>' + (DATA.FORMATIONS[G.formation] || DATA.FORMATIONS.line).name + '</b></div>' +
         '</div>'));
       box.appendChild(h('<p class="hint">Soldiers who survive a victory become <b>veterans</b> — +22% health and +20% attack next time out. Lose a battle and only the veterans who walked away keep the rank.</p>'));
+      if (G.campaign) {
+        box.appendChild(h('<p class="hint">⚔️ <b>' + SIM.awayCount() + ' soldiers are in the field</b> and are not defending Ashveil. See the War tab.</p>'));
+      }
       var keys = Object.keys(G.army);
-      if (!keys.length) box.appendChild(h('<p class="hint">You have no soldiers. Muster some before Brannoch comes calling.</p>'));
+      if (!keys.length) box.appendChild(h('<p class="hint">You have no soldiers at home. Muster some before Brannoch comes calling.</p>'));
       keys.forEach(function (k) {
         var u = DATA.UNITS[k];
         var card = h('<div class="card"><div class="card-row">' +
@@ -331,6 +388,9 @@ var UI = (function () {
         '<div class="stat-line"><span>Odds if you attack</span><b style="color:' + col(attackOdds) + '">' + attackOdds + '%</b></div>' +
         '<div class="stat-line"><span>Odds if they raid you</span><b style="color:' + col(defendOdds) + '">' + defendOdds + '%</b></div>' +
         '<div class="stat-line"><span>Strength of their next raid</span><b>' + Math.round(incoming) + '</b></div>' +
+        '<div class="stat-line"><span>Do they fear you?</span><b style="color:' +
+          (SIM.deterrence() > 1.45 ? '#8fd06a' : SIM.deterrence() > 0.9 ? '#e0b23c' : '#e0795f') + '">' +
+          (SIM.deterrence() > 1.45 ? 'yes — many raids turn back' : SIM.deterrence() > 0.9 ? 'they are wary' : 'no — you look easy') + '</b></div>' +
         '<div class="stat-line"><span>Next raid on you</span><b>' + (grace > 0 ? 'at peace for ' + grace + ' more season' + (grace > 1 ? 's' : '') : '~' + Math.max(0, Math.round(r.nextRaid / DATA.SEASON_LEN * 10) / 10) + ' seasons') + '</b></div>' +
         '<div class="stat-line"><span>Battles won / lost</span><b>' + G.stats.wins + ' / ' + G.stats.losses + '</b></div>' +
         '</div>'));
@@ -345,14 +405,36 @@ var UI = (function () {
         box.appendChild(c);
       });
 
-      var raid = h('<button class="btn wide">⚔️ March on Brannoch</button>');
-      raid.disabled = SIM.armyCount() < 3;
-      if (SIM.armyCount() < 3) raid.textContent = 'You need at least 3 soldiers';
-      raid.addEventListener('click', function () {
-        closeSheet();
-        startBattle('raid', { power: G.rival.str, name: 'Brannoch' });
-      });
-      box.appendChild(raid);
+      if (G.campaign) {
+        var ph = G.campaign.phase;
+        var seasons = Math.max(0, G.campaign.timeLeft / DATA.SEASON_LEN).toFixed(1);
+        box.appendChild(h('<div class="card" style="border-color:#8a6f45">' +
+          '<h4 style="font-family:var(--font);font-size:15px">⚔️ ' +
+            (ph === 'out' ? 'Marching on ' + G.campaign.name : ph === 'battle' ? 'Battle joined' : 'Marching home') + '</h4>' +
+          '<p style="font-size:12px;color:#c3b18e;margin:4px 0 8px">' +
+            (ph === 'out' ? 'Your army is on the road. Home is held by walls and towers alone.'
+             : ph === 'battle' ? 'They have reached the border.'
+             : 'The survivors are on their way back.') + '</p>' +
+          '<div class="stat-line"><span>Soldiers in the field</span><b>' + SIM.awayCount() + '</b></div>' +
+          (ph === 'battle' ? '' : '<div class="stat-line"><span>Arrives in</span><b>' + seasons + ' seasons</b></div>') +
+          '<div class="stat-line"><span>Provisions</span><b>−' + (SIM.campaignSlots() * 0.02).toFixed(2) + ' food/s</b></div>' +
+          '<div class="stat-line"><span>Defending home</span><b>' + SIM.armyCount() + ' soldiers, +' + SIM.defenseScore() + ' walls</b></div>' +
+          '</div>'));
+      } else {
+        var raid = h('<button class="btn wide">⚔️ March on Brannoch</button>');
+        raid.disabled = SIM.armyCount() < 3;
+        if (SIM.armyCount() < 3) raid.textContent = 'You need at least 3 soldiers';
+        raid.addEventListener('click', function () {
+          var r = SIM.launchCampaign({ power: G.rival.str, name: 'Brannoch' });
+          if (!r.ok) { toast(r.why, 'bad'); U.sfx.err(); return; }
+          U.sfx.horn();
+          chronicle('The army marched for Brannoch.');
+          renderSheet(); refreshHUD();
+        });
+        box.appendChild(raid);
+        box.appendChild(h('<p class="hint">A march takes about ' + SIM.MARCH_SEASONS +
+          ' season each way and eats provisions on the road. While your army is away, only walls and towers defend Ashveil — and Brannoch judges its raids by your whole strength, not by what is left at home.</p>'));
+      }
       var scout = h('<button class="btn sec wide">🔭 Scout their camp (−25 gold)</button>');
       scout.addEventListener('click', function () {
         if (G.res.gold < 25) { toast('Not enough gold', 'bad'); return; }
@@ -418,17 +500,29 @@ var UI = (function () {
       if (t.tier !== tier) return;
       any = true;
       var have = !!G.tech[id];
+      var closed = SIM.techClosed(id);
       var avail = SIM.techAvailable(id);
       var missing = [];
       t.req.forEach(function (r) { if (!G.tech[r]) missing.push(DATA.TECH[r].name); });
       if (t.lib && G.count.library < t.lib) missing.push(t.lib + '× Library');
-      var card = h('<div class="card' + (have || avail ? '' : ' locked') + '">' +
+      var other = t.excludes ? DATA.TECH[t.excludes] : null;
+      var forkNote = '';
+      if (other) {
+        forkNote = closed
+          ? '<p style="color:#8a7a5e;margin-top:5px">✕ Closed — you chose ' + other.name + '</p>'
+          : have
+            ? '<p style="color:#8fd06a;margin-top:5px">✓ Chosen over ' + other.name + '</p>'
+            : '<p style="color:#e0b23c;margin-top:5px">⚠ ' + t.fork + ': taking this closes off <b>' + other.name + '</b> for good</p>';
+      }
+      var card = h('<div class="card' + (have || avail ? '' : ' locked') +
+        (other && !have && !closed ? '" style="border-color:#8a6f45' : '') + '">' +
         '<div class="card-row"><div class="card-ic" style="font-size:20px">' + t.ic + '</div>' +
         '<div class="card-main"><h4>' + t.name + (have ? ' ✓' : '') + '</h4><p>' + t.desc + '</p>' +
-        (have ? '' : '<div class="cost">' + costPills(t.cost) + '<b>⏳ ' + t.time + '</b></div>') +
-        (missing.length ? '<p style="color:#e0b23c;margin-top:5px">🔒 Needs ' + missing.join(', ') + '</p>' : '') +
+        (have || closed ? '' : '<div class="cost">' + costPills(t.cost) + '<b>⏳ ' + t.time + '</b></div>') +
+        (missing.length && !closed ? '<p style="color:#e0b23c;margin-top:5px">🔒 Needs ' + missing.join(', ') + '</p>' : '') +
+        forkNote +
         '</div></div></div>');
-      if (!have) {
+      if (!have && !closed) {
         var b = h('<button class="btn wide">Begin study</button>');
         b.disabled = !avail || !!G.research || !SIM.canAfford(t.cost);
         if (G.research) b.textContent = 'Scholars are busy';
@@ -949,6 +1043,15 @@ var UI = (function () {
     U.sfx.horn();
   }
 
+  function campaignBattle() {
+    var c = SIM.G.campaign;
+    if (!c || c.phase !== 'battle') return;
+    startBattle('raid', {
+      power: c.power, name: c.name, flavour: c.flavour,
+      roster: c.army, vets: c.vets
+    });
+  }
+
   function startBattle(kind, opts, restoreSpeed) {
     var prev = restoreSpeed !== undefined ? restoreSpeed : SIM.G.speed;
     setSpeed(0);
@@ -961,15 +1064,18 @@ var UI = (function () {
     });
   }
 
-  function incomingRaid() {
+  function incomingRaid(causeKey) {
     if (modalBusy || BATTLE.isOpen()) return;
     var G = SIM.G;
-    var power = SIM.raidPower() * U.range(Math.random, 0.86, 1.06);
+    var cause = DATA.RAID_CAUSES[causeKey] || DATA.RAID_CAUSES.raid;
+    var power = SIM.raidPower() * cause.power * U.range(Math.random, 0.86, 1.06);
     var ev = {
-      art: '📯', title: 'Brannoch Rides on Ashveil',
-      text: 'Smoke on the eastern road. A war band of roughly ' + Math.round(power / 9) +
-            ' fighters is coming for your granaries. Your defences add +' + SIM.defenseScore() +
-            ' to the line, and your captains rate the fight at about ' + estimateOdds(power, 'defend') + '%.',
+      art: cause.art, title: cause.title,
+      text: cause.text + '\n\nRoughly ' + Math.round(power / 9) +
+            ' fighters. Your defences add +' + SIM.defenseScore() +
+            ' to the line, and your captains rate the fight at about ' + estimateOdds(power, 'defend') + '%.' +
+            (SIM.G.campaign ? '\n\nYour army is in the field and cannot get back in time.' : '') +
+            (cause.counter ? '\n\n' + cause.counter : ''),
       choices: [
         { label: '⚔️ Meet them in the field', sub: 'Fight — your walls and towers help', battle: true },
         { label: '💰 Buy them off', sub: '−' + Math.round(35 + power * 1.5) + ' gold', buy: Math.round(35 + power * 1.5) }
@@ -981,6 +1087,7 @@ var UI = (function () {
     el('ev-art').textContent = ev.art;
     el('ev-title').textContent = ev.title;
     el('ev-text').textContent = ev.text;
+    el('ev-text').style.whiteSpace = 'pre-line';
     var box = el('ev-choices'); box.innerHTML = '';
     ev.choices.forEach(function (c) {
       var b = h('<button class="ev-choice">' + c.label + '<small>' + c.sub + '</small></button>');
@@ -989,7 +1096,7 @@ var UI = (function () {
         el('event-modal').classList.add('hidden');
         modalBusy = false;
         if (c.battle) {
-          startBattle('defend', { power: power, name: 'Brannoch' }, prevSpeed);
+          startBattle('defend', { power: power, name: 'Brannoch', cause: cause.key }, prevSpeed);
         } else {
           SIM.G.res.gold -= c.buy;
           SIM.G.happy = U.clamp(SIM.G.happy - 6, 0, 100);
@@ -1023,6 +1130,7 @@ var UI = (function () {
       var c = SIM.G.buildings[0];
       if (c) RENDER.centreOn(c.x, c.y);
     });
+    el('btn-alerts').addEventListener('click', function () { U.sfx.tap(); openSheet('alerts'); });
     el('btn-sound').addEventListener('click', toggleSound);
     el('btn-menu').addEventListener('click', function () { openTab.world = 'settings'; openSheet('world'); });
     [0, 1, 2, 3].forEach(function (i) {
@@ -1032,8 +1140,14 @@ var UI = (function () {
 
     SIM.on(function (kind, payload) {
       if (kind === 'toast') { toast(payload.msg, payload.kind); chronicle(payload.msg); }
-      if (kind === 'event') eventQueue.push('event');
-      if (kind === 'raid-incoming') eventQueue.push('raid');
+      if (kind === 'event') { if (eventQueue.length < 3) eventQueue.push('event'); }
+      if (kind === 'raid-incoming') {
+        // never let raids stack up behind a modal — one war band at a time
+        if (!eventQueue.some(function (e) { return e && e.k === 'raid'; })) {
+          eventQueue.push({ k: 'raid', cause: (payload && payload.cause) || 'raid' });
+        }
+      }
+      if (kind === 'campaign-arrived') eventQueue.push('campaign');
       if (kind === 'relief') eventQueue.push('relief');
       if (kind === 'season') { chronicle(payload.name + ' comes to Ashveil.'); }
       if (kind === 'completed') {
@@ -1055,7 +1169,9 @@ var UI = (function () {
   function pump() {
     if (modalBusy || BATTLE.isOpen() || !eventQueue.length) return;
     var next = eventQueue.shift();
-    if (next === 'raid') incomingRaid();
+    if (next && next.k === 'raid') incomingRaid(next.cause);
+    else if (next === 'raid') incomingRaid('raid');
+    else if (next === 'campaign') campaignBattle();
     else if (next === 'relief') reliefEvent();
     else fireEvent();
   }

@@ -30,7 +30,11 @@ var DATA = (function () {
     { key: 'food',  name: 'Food',  ic: '🌾' },
     { key: 'wood',  name: 'Wood',  ic: '🪵' },
     { key: 'stone', name: 'Stone', ic: '🪨' },
-    { key: 'iron',  name: 'Iron',  ic: '⛓️' }
+    { key: 'iron',  name: 'Iron',  ic: '⛓️' },
+    { key: 'tools', name: 'Tools', ic: '🔨' },
+    { key: 'bread', name: 'Bread', ic: '🍞' },
+    { key: 'wool',  name: 'Wool',  ic: '🐑' },
+    { key: 'cloth', name: 'Cloth', ic: '🧵' }
   ];
 
   /* ---------------- buildings ----------------
@@ -79,6 +83,13 @@ var DATA = (function () {
       scaleNear: { terrain: ['water', 'shore'], div: 3 },
       desc: 'Steady food from the water — barely troubled by winter.'
     },
+    bakery: {
+      id: 'bakery', name: 'Bakery', cat: 'food', ic: '🍞', tech: 'crop_rotation',
+      cost: { wood: 35, stone: 20, gold: 40 }, build: 8, jobs: 2,
+      produces: { bread: 0.120 }, consumes: { food: 0.180, wood: 0.040 }, upkeep: 0.04,
+      terrain: ['grass', 'meadow', 'sand', 'hill'],
+      desc: 'Bakes grain and firewood into bread. Bread goes further than raw grain, so a fed realm eats less and is far happier.'
+    },
     windmill: {
       id: 'windmill', name: 'Windmill', cat: 'food', ic: '🌬️', tech: 'windmills',
       cost: { wood: 55, stone: 25, gold: 45 }, build: 10, jobs: 1, upkeep: 0.05,
@@ -100,6 +111,19 @@ var DATA = (function () {
       terrain: ['grass', 'meadow', 'forest', 'hill'],
       desc: '+40% output from every lumber camp within 3 tiles.'
     },
+    pasture: {
+      id: 'pasture', name: 'Pasture', cat: 'industry', ic: '🐑',
+      cost: { wood: 28, gold: 30 }, build: 6, jobs: 2, produces: { wool: 0.100 }, upkeep: 0.02,
+      terrain: ['grass', 'meadow'], seasonalWool: true,
+      desc: 'Grazes sheep on open grass for wool. Needs room — it will not thrive on sand or in the hills.'
+    },
+    weaver: {
+      id: 'weaver', name: 'Weaver', cat: 'industry', ic: '🧵', tech: 'trade_charter',
+      cost: { wood: 45, stone: 15, gold: 45 }, build: 8, jobs: 2,
+      produces: { cloth: 0.055 }, consumes: { wool: 0.090 }, upkeep: 0.04,
+      terrain: ['grass', 'meadow', 'sand', 'hill'],
+      desc: 'Spins wool into cloth — the richest thing your realm can make. Cloth is worth far more than the wool it came from, and markets take their cut of it.'
+    },
     quarry: {
       id: 'quarry', name: 'Quarry', cat: 'industry', ic: '⛏️',
       cost: { wood: 30, gold: 30 }, build: 8, jobs: 2, produces: { stone: 0.26 }, upkeep: 0.03,
@@ -114,31 +138,31 @@ var DATA = (function () {
       desc: 'Iron for arms and armour. Needs a crag next door.'
     },
     smith: {
-      id: 'smith', name: 'Blacksmith', cat: 'industry', ic: '🔨', tech: 'iron_weapons',
+      id: 'smith', name: 'Blacksmith', cat: 'industry', ic: '🔨', tech: 'mining',
       cost: { wood: 40, stone: 25, iron: 10, gold: 45 }, build: 10, jobs: 2,
-      consumes: { iron: 0.04, wood: 0.03 }, upkeep: 0.05,
+      produces: { tools: 0.050 }, consumes: { iron: 0.030, wood: 0.020 }, upkeep: 0.05,
       armyAtk: 0.08, armyDef: 0.06,
       terrain: ['grass', 'meadow', 'sand', 'hill'],
-      desc: 'Each smithy grants your soldiers +8% attack and +6% defence.'
+      desc: 'Forges iron and timber into tools. Workers with tools produce far more — and each smithy also grants your soldiers +8% attack and +6% defence.'
     },
     market: {
       id: 'market', name: 'Market', cat: 'civic', ic: '🏪',
       cost: { wood: 35, gold: 35 }, build: 7, jobs: 2, upkeep: 0.04,
-      trade: 0.021, roadBonus: true,
+      trade: 0.010, roadBonus: true,
       terrain: ['grass', 'meadow', 'sand'],
-      desc: 'Taxes trade: gold scales with your population and nearby roads.'
+      desc: 'Takes a cut of everything your realm produces, plus a little retail from the people. The more your kingdom makes, the more it earns.'
     },
     granary: {
       id: 'granary', name: 'Granary', cat: 'civic', ic: '🛖',
       cost: { wood: 40, stone: 10, gold: 20 }, build: 7, jobs: 1, upkeep: 0.02,
-      store: { food: 450 }, spoil: 0.5,
+      store: { food: 450, bread: 150 }, spoil: 0.5,
       terrain: ['grass', 'meadow', 'sand', 'hill'],
       desc: '+450 food storage and halves winter spoilage.'
     },
     warehouse: {
       id: 'warehouse', name: 'Warehouse', cat: 'civic', ic: '📦',
       cost: { wood: 45, stone: 25, gold: 30 }, build: 8, jobs: 1, upkeep: 0.03,
-      store: { wood: 400, stone: 400, iron: 250, gold: 300 },
+      store: { wood: 400, stone: 400, iron: 250, gold: 300, tools: 150, wool: 200, cloth: 150 },
       terrain: ['grass', 'meadow', 'sand', 'hill'],
       desc: 'Room for far more wood, stone, iron and coin.'
     },
@@ -225,23 +249,23 @@ var DATA = (function () {
   /* ---------------- technology ---------------- */
   var TECH = {
     crop_rotation: { name: 'Crop Rotation', tier: 1, ic: '🌿', cost: { gold: 80, food: 60 }, time: 30,
-      desc: '+25% food from every farm.', req: [] },
+      desc: '+25% food from every farm, and unlocks the Bakery.', req: [] },
     forestry: { name: 'Forestry', tier: 1, ic: '🌲', cost: { gold: 80, wood: 60 }, time: 30,
       desc: '+20% wood, and unlocks the Sawmill.', req: [] },
     masonry: { name: 'Masonry', tier: 1, ic: '🧱', cost: { gold: 100, stone: 40 }, time: 36,
       desc: '+20% stone, unlocks Stone Walls, stone costs −10%.', req: [] },
     trade_charter: { name: 'Trade Charter', tier: 1, ic: '📜', cost: { gold: 120 }, time: 34,
-      desc: '+25% market income.', req: [] },
+      desc: '+25% market income, and unlocks the Weaver.', req: [] },
     irrigation: { name: 'Irrigation', tier: 2, ic: '💧', cost: { gold: 180, stone: 60, wood: 40 }, time: 48,
       desc: 'Winter no longer ruins the harvest (0.25× → 0.65×).', req: ['crop_rotation'], lib: 1 },
     mining: { name: 'Mining', tier: 2, ic: '⛏️', cost: { gold: 160, wood: 80, stone: 40 }, time: 46,
-      desc: 'Unlocks the Iron Mine.', req: ['masonry'], lib: 1 },
+      desc: 'Unlocks the Iron Mine and the Blacksmith.', req: ['masonry'], lib: 1 },
     guilds: { name: 'Guilds', tier: 2, ic: '⚖️', cost: { gold: 220 }, time: 50,
       desc: '+1 worker slot in every market and +15% gold.', req: ['trade_charter'], lib: 1 },
     sanitation: { name: 'Sanitation', tier: 2, ic: '🚿', cost: { gold: 190, stone: 70 }, time: 48,
       desc: '+8 contentment realm-wide and unlocks the Manor.', req: [], lib: 1 },
     iron_weapons: { name: 'Iron Weapons', tier: 2, ic: '⚔️', cost: { gold: 200, iron: 40 }, time: 52,
-      desc: 'Unlocks the Blacksmith and Men-at-arms.', req: ['mining'], lib: 1 },
+      desc: 'Unlocks Men-at-arms, and +10% attack for every soldier.', req: ['mining'], lib: 1 },
     archery: { name: 'Archery', tier: 2, ic: '🏹', cost: { gold: 170, wood: 90 }, time: 44,
       desc: 'Unlocks the Archery Range and Archers.', req: [], lib: 1 },
     deep_mining: { name: 'Deep Shafts', tier: 3, ic: '🕳️', cost: { gold: 300, wood: 120, iron: 30 }, time: 62,
@@ -254,6 +278,28 @@ var DATA = (function () {
       desc: 'Walls and towers give +60% defence.', req: ['masonry'], lib: 2 },
     knighthood: { name: 'Knighthood', tier: 3, ic: '🐎', cost: { gold: 420, iron: 90 }, time: 70,
       desc: 'Unlocks Knights — the hammer of Ashveil.', req: ['iron_weapons'], lib: 2 },
+    /* --- three forks. Taking one closes the other for good. --- */
+    enclosure: { name: 'Enclosure', tier: 1, ic: '🚧', cost: { gold: 140, stone: 40 }, time: 34,
+      desc: '+40% from farms and pastures — but the commons are fenced off, and the people resent it (−10 contentment).',
+      req: [], excludes: 'common_fields', fork: 'The land' },
+    common_fields: { name: 'Common Fields', tier: 1, ic: '🌾', cost: { gold: 110, food: 70 }, time: 34,
+      desc: '+15% from farms and pastures, and the commons stay open to all (+8 contentment).',
+      req: [], excludes: 'enclosure', fork: 'The land' },
+
+    guild_charter: { name: 'Guild Charter', tier: 2, ic: '⚖️', cost: { gold: 260 }, time: 52,
+      desc: '+30% market income — the guilds run the trade, and take their due (−6 contentment).',
+      req: ['trade_charter'], lib: 1, excludes: 'free_trade', fork: 'The market' },
+    free_trade: { name: 'Free Trade', tier: 2, ic: '🤝', cost: { gold: 220 }, time: 52,
+      desc: 'Far better prices when you buy and sell, and an open town (+5 contentment).',
+      req: ['trade_charter'], lib: 1, excludes: 'guild_charter', fork: 'The market' },
+
+    iron_ploughs: { name: 'Iron Ploughs', tier: 3, ic: '🌱', cost: { gold: 300, iron: 70 }, time: 60,
+      desc: 'Tools serve the plough: farms and pastures gain a further +25% while tools are stocked.',
+      req: ['mining'], lib: 2, excludes: 'siege_forges', fork: 'Plough or sword' },
+    siege_forges: { name: 'Siege Forges', tier: 3, ic: '⚒️', cost: { gold: 300, iron: 70 }, time: 60,
+      desc: 'Tools serve the sword: +25% attack and defence for every soldier while tools are stocked.',
+      req: ['mining'], lib: 2, excludes: 'iron_ploughs', fork: 'Plough or sword' },
+
     siege: { name: 'Siege Engines', tier: 3, ic: '🎯', cost: { gold: 400, wood: 200, iron: 60 }, time: 72,
       desc: 'Unlocks Catapults for storming Brannoch.', req: ['iron_weapons'], lib: 2 }
   };
@@ -283,7 +329,11 @@ var DATA = (function () {
     food:  { base: 1.00, ic: '🌾', name: 'Food' },
     wood:  { base: 1.30, ic: '🪵', name: 'Wood' },
     stone: { base: 1.85, ic: '🪨', name: 'Stone' },
-    iron:  { base: 3.60, ic: '⛓️', name: 'Iron' }
+    iron:  { base: 3.60, ic: '⛓️', name: 'Iron' },
+    tools: { base: 5.20, ic: '🔨', name: 'Tools' },
+    bread: { base: 2.40, ic: '🍞', name: 'Bread' },
+    wool:  { base: 2.10, ic: '🐑', name: 'Wool' },
+    cloth: { base: 6.50, ic: '🧵', name: 'Cloth' }
   };
   var TRADE_LOT = 25;
 
@@ -316,6 +366,30 @@ var DATA = (function () {
     { id: 'q_castle3',label: 'Raise the Great Castle',  need: { castle: 2 },           reward: { gold: 400 } },
     { id: 'q_break',  label: 'Break Brannoch (3 wins)', need: { wins: 3 },             reward: { gold: 500, iron: 120 } }
   ];
+
+  /* ---------------- why Brannoch comes ----------------
+     Every raid has a reason, it is said out loud, and each one has a
+     different answer: feed them, look stronger, make peace, or fight. */
+  var RAID_CAUSES = {
+    hunger: { key: 'hunger', art: '🌾', title: 'Brannoch Comes for Grain', power: 0.85,
+      text: 'Their harvest failed. Riders are coming for your granaries, not your gold — hungry men, but desperate ones.',
+      counter: 'A full granary and a strong wall usually sends them looking elsewhere.' },
+    plunder: { key: 'plunder', art: '💰', title: 'Brannoch Smells Gold', power: 1.0,
+      text: 'Word has reached them of a rich town with a thin garrison. They are coming because you look worth robbing.',
+      counter: 'Soldiers on the walls are the only argument they respect.' },
+    revenge: { key: 'revenge', art: '🩸', title: 'Brannoch Wants Blood', power: 1.15,
+      text: 'They have not forgotten the last time your banners crossed their border. This one is personal.',
+      counter: 'You started this. Finish it or buy your way out.' },
+    opportunity: { key: 'opportunity', art: '🕳️', title: 'They Waited Until You Left', power: 1.2,
+      text: 'Their scouts watched your army march away. They have chosen this exact moment, and they know your walls are all that is left.',
+      counter: 'This is the price of campaigning. Walls and towers are what you have.' },
+    conquest: { key: 'conquest', art: '👑', title: 'Brannoch Means to Take Ashveil', power: 1.1,
+      text: 'This is not a raid. Their lord has decided your realm is weak enough to swallow whole.',
+      counter: 'Only strength will change their mind — or a very large tribute.' },
+    raid: { key: 'raid', art: '📯', title: 'Brannoch Rides on Ashveil', power: 1.0,
+      text: 'Smoke on the eastern road. A war band is coming for your granaries.',
+      counter: '' }
+  };
 
   /* ---------------- random events ---------------- */
   var EVENTS = [
@@ -415,7 +489,7 @@ var DATA = (function () {
   return {
     SEASON_LEN: SEASON_LEN, SEASONS: SEASONS, TERRAIN: TERRAIN, RES: RES,
     B: B, CATS: CATS, CASTLE: CASTLE, TECH: TECH, UNITS: UNITS, FOE_UNITS: FOE_UNITS,
-    QUESTS: QUESTS, EVENTS: EVENTS,
+    QUESTS: QUESTS, EVENTS: EVENTS, RAID_CAUSES: RAID_CAUSES,
     TRADE: TRADE, TRADE_LOT: TRADE_LOT, UPGRADE: UPGRADE, FORMATIONS: FORMATIONS
   };
 })();

@@ -22,19 +22,41 @@ What still depends on position, and should:
 Everything else is a pool. Footpaths are purely decorative: free, spaceless,
 and they no longer affect income.
 
+## Done: the four that were queued
+
+All four items from the last queue are built and in the game.
+
+1. ~~**Production chains**~~ — iron → tools (a realm-wide +25% output while
+   stocked), grain → bread (35% less grain eaten, +12 contentment), wool →
+   cloth (the richest good in the game). Markets were rebalanced so goods are
+   the majority of their income once a realm industrialises.
+2. ~~**Exclusive tech branches**~~ — three forks that close behind you:
+   Enclosure or Common Fields, Guild Charter or Free Trade, Iron Ploughs or
+   Siege Forges.
+3. ~~**Campaign time and stated causes**~~ — marching takes a season each way
+   and your army is genuinely away; every raid now has a reason said out loud;
+   and standing strength deters raids outright (a strong realm was raided 8
+   times in 60 attempts against a weak realm's 60).
+4. ~~**A standing list of what needs attention**~~ — a bell with a badge, and
+   rows you can tap to fly the camera to the problem.
+
 ## Start here next session
 
-The spatial rework is off the table, so the queue is led by depth, not
-geography:
+1. **Battle input** — ground, deployment, a reserve, and retreat. The battle is
+   still three buttons on a cooldown while you watch, which is now the weakest
+   part of a war that has otherwise been rebuilt.
+2. **Housing that improves with its neighbourhood** — the reward half of the
+   economy: a cottage becoming a townhouse when it is well served, holding more
+   people and demanding bread and cloth. It gives the new production chains
+   somewhere to land.
+3. **A festival calendar** so the year has a rhythm you can prepare for.
+4. **The balance harness** — payback tables and resource flows from a hundred
+   headless runs, before the systems grow any further. The economy now has
+   nine resources and three supply curves; it needs measuring, not guessing.
 
-1. **Production chains** — grain → flour → bread, wool → cloth, iron → tools.
-   The largest depth win left, and it feeds the market system that now exists:
-   more goods made means more trade, with no catchments needed.
-2. **Exclusive tech branches** — pairs where you give one up. Cheap, big gain
-   in replay value.
-3. **Campaign time and stated causes** for the war — the two cheapest changes
-   that fix the most.
-4. **A standing list of what needs attention**, tappable to jump there.
+Watch out for: tools, bread and cloth all use the same coverage model
+(stock measured against eight seconds of demand). If a fourth is added, factor
+it out rather than copying it a fourth time.
 
 Everything below is context and the longer plan. The balance audit is the part
 worth re-reading — it is measured from the build, not guessed.

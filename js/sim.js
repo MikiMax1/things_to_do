@@ -9,7 +9,7 @@ var SIM = (function () {
   function on(fn) { listeners.push(fn); }
   function emit(kind, payload) { listeners.forEach(function (f) { f(kind, payload); }); }
 
-  var BASE_STORE = { gold: 500, food: 400, wood: 350, stone: 300, iron: 150 };
+  var BASE_STORE = { gold: 500, food: 400, wood: 350, stone: 300, iron: 150, tools: 120, bread: 120, wool: 150, cloth: 100 };
 
   /* ---------------------------------------------------------
      new game
@@ -20,7 +20,9 @@ var SIM = (function () {
     G = {
       seed: seed,
       time: 0,                       // seconds of game time
-      res: { gold: 260, food: 220, wood: 160, stone: 70, iron: 0 },
+      res: { gold: 260, food: 220, wood: 160, stone: 70, iron: 0, tools: 0, bread: 0, wool: 0, cloth: 0 },
+      seen: { gold: 1, food: 1, wood: 1, stone: 1 },
+      toolCov: 0, breadCov: 0,
       pop: 6, happy: 62,
       buildings: [],
       tech: {}, research: null, researchPts: 0,
@@ -29,7 +31,7 @@ var SIM = (function () {
       rival: { str: 30, anger: 0, nextRaid: DATA.SEASON_LEN * 6.5, warned: false },
       quests: {}, questShown: [],
       stats: { wins: 0, losses: 0, built: 0, raidsSurvived: 0, techDone: 0, upgrades: 0, traded: 0 },
-      vets: {}, formation: 'line',
+      vets: {}, formation: 'line', campaign: null,
       eventTimer: DATA.SEASON_LEN * 1.6,
       growTimer: 6, reliefTimer: 30, reliefCooldown: 0,
       speed: 1,
@@ -212,7 +214,7 @@ var SIM = (function () {
      of this, so trade grows with what your kingdom actually makes rather than
      with where a stall happens to sit. Cached — output() asks for it once per
      market and it must not walk every building each time. */
-  var GOODS_VALUE = { food: 1.00, wood: 1.30, stone: 1.85, iron: 3.60 };
+  var GOODS_VALUE = { food: 1.00, wood: 1.30, stone: 1.85, iron: 3.60, tools: 5.20, bread: 2.40, wool: 2.10, cloth: 6.50 };
   var _goodsCache = 0, _goodsAt = -1e9;
   function goodsValue() {
     if (Math.abs(G.time - _goodsAt) < 0.25) return _goodsCache;
@@ -230,7 +232,7 @@ var SIM = (function () {
 
   /* Each further market takes a smaller cut of the same goods, so a second
      market is worth building and a tenth is not. */
-  function marketCut(index) { return 0.16 * Math.pow(0.68, index); }
+  function marketCut(index) { return 0.35 * Math.pow(0.68, index); }
 
   function costOf(id) {
     var def = DATA.B[id], out = {};
@@ -364,14 +366,18 @@ var SIM = (function () {
 
   function unitStrength(hp, atk, def) { return (hp * 0.25 + atk * 1.6 + def * 0.8) / 3.1; }
 
-  function fieldStrength(extraDef) {
+  function rosterStrength(roster, extraDef) {
     var sb = smithBonus(), out = 0;
-    Object.keys(G.army).forEach(function (k) {
+    Object.keys(roster || {}).forEach(function (k) {
       var u = DATA.UNITS[k];
       if (!u) return;
-      out += G.army[k] * unitStrength(u.hp, u.atk * sb.atk, u.def + (extraDef || 0));
+      out += roster[k] * unitStrength(u.hp, u.atk * sb.atk, u.def + (extraDef || 0));
     });
     return out;
+  }
+  function fieldStrength(extraDef) { return rosterStrength(G.army, extraDef); }
+  function totalStrength() {
+    return fieldStrength(0) + (G.campaign ? rosterStrength(G.campaign.army, 0) : 0);
   }
 
   /* Brannoch sends a war band sized against YOU, not against a number that
@@ -383,13 +389,35 @@ var SIM = (function () {
     var ramp = U.clamp((seasons - GRACE_SEASONS) / 14, 0, 1);
     // scaled against your ARMY only — walls and towers must stay a pure
     // advantage, never a reason for Brannoch to send more men
-    var mine = fieldStrength(0);
+    var mine = totalStrength();
     var base = 6 + ramp * 26;
     var target = mine * (0.50 + ramp * 0.60) + base;
     return U.clamp(Math.min(G.rival.str, target), 6, G.rival.str);
   }
 
   function graceLeft() { return Math.max(0, GRACE_SEASONS - seasonIndex()); }
+
+  /* Standing strength should stop a war before it starts. A realm that
+     plainly outmatches them is often simply left alone — which is what
+     makes soldiers and walls worth paying for even in peacetime. */
+  function deterrence() {
+    var mine = totalStrength() + defenseScore() * 0.8;
+    var theirs = Math.max(1, G.rival.str);
+    return mine / theirs;
+  }
+
+  /* the reason they are coming, decided from the state of the world */
+  function raidCause() {
+    var s = season().key;
+    // most specific reason first: a generic hungry-winter raid should never
+    // mask the fact that they are actually here to conquer you
+    if (G.campaign) return 'opportunity';
+    if (G.res.gold > 550 && totalStrength() < G.rival.str * 0.7) return 'plunder';
+    if (G.rival.str > totalStrength() * 1.7 && seasonIndex() > GRACE_SEASONS + 6) return 'conquest';
+    if (G.stats.wins > G.stats.losses && Math.random() < 0.5) return 'revenge';
+    if ((s === 'winter' || s === 'autumn') && Math.random() < 0.55) return 'hunger';
+    return 'raid';
+  }
 
   function defenseScore() {
     var d = castleBonus().defense || 0;
@@ -404,6 +432,7 @@ var SIM = (function () {
       if (b.built && b.id === 'smith' && staffRatio(b) > 0.2) { atk += b.def.armyAtk * lvlMul(b); def += b.def.armyDef * lvlMul(b); }
     });
     if (G.tech.iron_weapons) atk += 0.10;
+    if (G.tech.siege_forges) { atk += 0.25 * (G.toolCov || 0); def += 0.25 * (G.toolCov || 0); }
     return { atk: 1 + Math.min(atk, 0.6), def: 1 + Math.min(def, 0.5) };
   }
 
@@ -421,7 +450,7 @@ var SIM = (function () {
   /* how badly the realm wants each resource right now */
   function pressures() {
     var net = ledger(), p = {};
-    ['food', 'wood', 'stone', 'iron', 'gold'].forEach(function (k) {
+    ['food', 'wood', 'stone', 'iron', 'gold', 'tools', 'bread', 'wool', 'cloth'].forEach(function (k) {
       var c = cap(k), ratio = c > 0 ? G.res[k] / c : 0;
       var need = 1;
       if (net[k] < 0) need += 1.5;
@@ -434,6 +463,9 @@ var SIM = (function () {
     if (G.res.food < G.pop * 2) p.food += 2.6;
     else if (G.res.food < G.pop * 5) p.food += 1.1;
     if (net.food < 0) p.food += 1.0;
+    // bare hands slow every trade in the realm, so a smithy is urgent
+    if ((G.toolCov || 0) < 0.5 && G.count.smith > 0) p.tools += 1.6;
+    if ((G.breadCov || 0) < 0.6 && G.count.bakery > 0 && G.res.food > G.pop * 4) p.bread += 1.2;
     return p;
   }
 
@@ -547,9 +579,51 @@ var SIM = (function () {
     return mul;
   }
 
+  /* ---------------------------------------------------------
+     Tools.
+     A worker with tools does far more than one with bare hands.
+     Every staffed workplace draws on the tool store; the better
+     stocked it is, the bigger the bonus everyone gets. Runs the
+     iron chain — mine to smithy to every trade in the realm.
+     --------------------------------------------------------- */
+  var TOOL_PER_WORKER = 0.0035;   // consumed per second per working pair of hands
+  var TOOL_BONUS = 0.25;          // output multiplier at full supply
+  var TOOL_BUFFER = 8;            // seconds of stock that counts as "fully supplied"
+
+  function toolDemand() {
+    var d = 0;
+    G.buildings.forEach(function (b) {
+      if (!b.built || b.paused || !b.def.produces) return;
+      if (b.id === 'smith') return;                 // the smithy makes them, it does not eat them
+      d += b.workers * TOOL_PER_WORKER;
+    });
+    return d;
+  }
+  function toolCoverage() {
+    var d = toolDemand();
+    if (d <= 0) return G.res.tools > 0 ? 1 : 0;
+    return U.clamp(G.res.tools / (d * TOOL_BUFFER), 0, 1);
+  }
+
+  /* Bread. Baked grain goes further than raw, so a realm eating bread needs
+     less food AND is markedly happier. Same supply model as tools. */
+  var BREAD_PER_HEAD = 0.0040;
+  var BREAD_SAVING = 0.35;     // how much less grain a bread-fed realm eats
+  var BREAD_JOY = 12;          // contentment at full supply
+
+  function breadDemand() { return G.pop * BREAD_PER_HEAD; }
+  function breadCoverage() {
+    var d = breadDemand();
+    if (d <= 0) return 0;
+    return U.clamp(G.res.bread / (d * 8), 0, 1);
+  }
+
   function techMul(res) {
     var m = 1;
     if (res === 'food' && G.tech.crop_rotation) m += 0.25;
+    if ((res === 'food' || res === 'wool') && G.tech.enclosure) m += 0.40;
+    if ((res === 'food' || res === 'wool') && G.tech.common_fields) m += 0.15;
+    if (res === 'gold' && G.tech.guild_charter) m += 0.30;
     if (res === 'wood' && G.tech.forestry) m += 0.20;
     if (res === 'stone' && G.tech.masonry) m += 0.20;
     if (res === 'iron' && G.tech.deep_mining) m += 0.50;
@@ -583,11 +657,14 @@ var SIM = (function () {
     if (!b.built || b.paused) return out;
     var ratio = staffRatio(b);
     if (ratio <= 0 && jobsOf(b) > 0) return out;
-    var eff = efficiency() * ratio * auraFor(b) * lvlMul(b);
+    var toolBoost = (b.id === 'smith') ? 1 : 1 + TOOL_BONUS * (G.toolCov || 0);
+    if (G.tech.iron_ploughs && (b.def.seasonal || b.def.seasonalWool)) toolBoost += 0.25 * (G.toolCov || 0);
+    var eff = efficiency() * ratio * auraFor(b) * lvlMul(b) * toolBoost;
     if (b.def.produces) {
       Object.keys(b.def.produces).forEach(function (k) {
         var v = b.def.produces[k] * eff * techMul(k);
         if (b.def.seasonal && k === 'food') v *= foodSeasonMul();
+        if (b.def.seasonalWool) v *= (0.55 + season().food * 0.45);
         if (b.def.scaleNear) {
           var n = W.nearCount(b.x, b.y, b.def.scaleNear.terrain, 1);
           v *= U.clamp(n / b.def.scaleNear.div, 0.34, 2.0);
@@ -602,7 +679,7 @@ var SIM = (function () {
     }
     if (b.def.trade) {
       // retail from the people, plus a cut of the realm's goods
-      var g = (b.def.trade * G.pop + 0.30) * eff * techMul('gold');
+      var g = (b.def.trade * G.pop + 0.20) * eff * techMul('gold');
       if (b.id !== 'castle') {
         g += goodsValue() * marketCut(b._mIdx || 0) * eff * techMul('gold') * lvlMul(b);
       }
@@ -618,7 +695,7 @@ var SIM = (function () {
 
   /* full per-second ledger, used by the HUD and the tick */
   function ledger() {
-    var net = { gold: 0, food: 0, wood: 0, stone: 0, iron: 0 };
+    var net = { gold: 0, food: 0, wood: 0, stone: 0, iron: 0, tools: 0, bread: 0, wool: 0, cloth: 0 };
     G.buildings.forEach(function (b) {
       var o = output(b);
       Object.keys(o).forEach(function (k) { net[k] += o[k]; });
@@ -632,8 +709,11 @@ var SIM = (function () {
       net.food += spare * 0.020 * eff * foodSeasonMul();
       net.wood += spare * 0.010 * eff;
     }
-    net.food -= G.pop * 0.055;
+    net.tools -= toolDemand() * (G.toolCov || 0);
+    net.bread -= breadDemand() * (G.breadCov || 0);
+    net.food -= G.pop * 0.055 * (1 - BREAD_SAVING * (G.breadCov || 0));
     net.food -= armySlots() * 0.012;
+    net.food -= campaignSlots() * PROVISION_PER_SLOT;
     net.gold -= armySlots() * 0.014;
     if (season().key === 'winter') {
       var spoil = G.count.granary > 0 ? 0.03 : 0.06;
@@ -653,6 +733,11 @@ var SIM = (function () {
     var coverage = G.pop > 0 ? U.clamp(capacity / G.pop, 0, 1.35) : 1;
     var t = 34 + coverage * 46;
     if (G.tech.sanitation) t += 8;
+    t += BREAD_JOY * (G.breadCov || 0);
+    if (G.tech.enclosure) t -= 10;
+    if (G.tech.common_fields) t += 8;
+    if (G.tech.guild_charter) t -= 6;
+    if (G.tech.free_trade) t += 5;
     if (G.res.food > G.pop * 10) t += 8;
     else if (G.res.food <= 0) t -= 34;
     else if (G.res.food < G.pop * 2) t -= 12;
@@ -687,6 +772,11 @@ var SIM = (function () {
         emit('completed', b);
       }
     });
+
+    G.toolCov = toolCoverage();
+    G.breadCov = breadCoverage();
+    if (!G.seen) G.seen = { gold: 1, food: 1, wood: 1, stone: 1 };
+    DATA.RES.forEach(function (r) { if (G.res[r.key] > 0) G.seen[r.key] = 1; });
 
     // economy
     var net = ledger();
@@ -747,13 +837,18 @@ var SIM = (function () {
       G.rival.nextRaid = DATA.SEASON_LEN * gap;
       if (seasonIndex() < GRACE_SEASONS) {
         G.rival.nextRaid = DATA.SEASON_LEN * 2;   // still at peace — try again later
+      } else if (deterrence() > 1.45 && Math.random() < U.clamp((deterrence() - 1.45) * 0.55, 0, 0.88)) {
+        // they looked, and thought better of it
+        G.rival.nextRaid = DATA.SEASON_LEN * (2 + Math.random() * 2.5);
+        emit('toast', { msg: 'Brannoch\'s scouts turned back at the border — Ashveil looks too strong to bother.', kind: 'good' });
       } else {
-        emit('raid-incoming');
+        emit('raid-incoming', { cause: raidCause() });
       }
     }
 
     regrow(dt);
     checkRelief(dt);
+    tickCampaign(dt);
 
     // random events
     G.eventTimer -= dt;
@@ -817,6 +912,7 @@ var SIM = (function () {
     if (G.tech.trade_charter) { s2 += 0.06; b2 -= 0.10; }
     if (G.tech.guilds)        { s2 += 0.06; b2 -= 0.10; }
     if (G.tech.banking)       { s2 += 0.08; b2 -= 0.12; }
+    if (G.tech.free_trade)    { s2 += 0.20; b2 -= 0.15; }
     var lvl = 0;
     G.buildings.forEach(function (b) { if (b.built && b.id === 'market') lvl += lvlMul(b); });
     s2 += Math.min(0.10, lvl * 0.02);
@@ -887,6 +983,79 @@ var SIM = (function () {
   }
 
   /* ---------------------------------------------------------
+     Campaigns.
+     Marching on Brannoch is no longer instant. The army leaves, takes a
+     season to reach the border, fights, and takes a season to come home.
+     While it is away your walls are all that stand between Brannoch and
+     your granaries — which is the decision the war was missing.
+     --------------------------------------------------------- */
+  var MARCH_SEASONS = 1.0;
+  var PROVISION_PER_SLOT = 0.020;    // food eaten per second on the march
+
+  function campaignSlots() {
+    if (!G.campaign) return 0;
+    var n = 0;
+    Object.keys(G.campaign.army).forEach(function (k) {
+      n += G.campaign.army[k] * (DATA.UNITS[k].slots || 1);
+    });
+    return n;
+  }
+  function awayCount() {
+    if (!G.campaign) return 0;
+    var n = 0;
+    Object.keys(G.campaign.army).forEach(function (k) { n += G.campaign.army[k]; });
+    return n;
+  }
+
+  function launchCampaign(opts) {
+    if (G.campaign) return { ok: false, why: 'Your army is already in the field' };
+    if (armyCount() < 3) return { ok: false, why: 'You need at least 3 soldiers to march' };
+    G.campaign = {
+      phase: 'out', timeLeft: DATA.SEASON_LEN * MARCH_SEASONS,
+      army: G.army, vets: G.vets || {},
+      power: opts.power, name: opts.name || 'Brannoch', flavour: opts.flavour || null
+    };
+    G.army = {}; G.vets = {};
+    emit('army');
+    emit('toast', { msg: 'Your army marches for ' + G.campaign.name + '. Home is held by your walls alone.', kind: 'war' });
+    return { ok: true };
+  }
+
+  /* the battle is over — the survivors turn for home */
+  function campaignResolved(survivors) {
+    if (!G.campaign) return;
+    G.campaign.army = survivors || {};
+    G.campaign.vets = G.vets || {};
+    G.campaign.phase = 'back';
+    G.campaign.timeLeft = DATA.SEASON_LEN * MARCH_SEASONS;
+    if (!awayCount()) { G.campaign = null; emit('army'); }
+  }
+
+  function bringArmyHome() {
+    if (!G.campaign) return;
+    var back = G.campaign.army || {};
+    Object.keys(back).forEach(function (k) { G.army[k] = (G.army[k] || 0) + back[k]; });
+    var v = G.campaign.vets || {};
+    Object.keys(v).forEach(function (k) { G.vets[k] = Math.min(G.army[k] || 0, (G.vets[k] || 0) + v[k]); });
+    G.campaign = null;
+    emit('army');
+    emit('toast', { msg: 'Your army is home.', kind: 'good' });
+  }
+
+  function tickCampaign(dt) {
+    if (!G.campaign) return;
+    if (G.campaign.phase === 'battle') return;      // waiting on the field
+    G.campaign.timeLeft -= dt;
+    if (G.campaign.timeLeft > 0) return;
+    if (G.campaign.phase === 'out') {
+      G.campaign.phase = 'battle';
+      emit('campaign-arrived');
+    } else {
+      bringArmyHome();
+    }
+  }
+
+  /* ---------------------------------------------------------
      castle / research / army
      --------------------------------------------------------- */
   function nextCastle() { return DATA.CASTLE[G.castle + 1] || null; }
@@ -905,9 +1074,14 @@ var SIM = (function () {
   function techAvailable(id) {
     var t = DATA.TECH[id];
     if (G.tech[id]) return false;
+    if (t.excludes && G.tech[t.excludes]) return false;   // you chose the other road
     if (t.req.some(function (r) { return !G.tech[r]; })) return false;
     if (t.lib && G.count.library < t.lib) return false;
     return true;
+  }
+  function techClosed(id) {
+    var t = DATA.TECH[id];
+    return !!(t && t.excludes && G.tech[t.excludes]);
   }
   function startResearch(id) {
     if (G.research) return { ok: false, why: 'Already studying ' + DATA.TECH[G.research.id].name };
@@ -964,6 +1138,7 @@ var SIM = (function () {
     if (n.tech && G.stats.techDone < n.tech) return false;
     if (n.wins && G.stats.wins < n.wins) return false;
     if (n.upgrades && (G.stats.upgrades || 0) < n.upgrades) return false;
+    if (n.res) { for (var rk in n.res) if ((G.res[rk] || 0) < n.res[rk]) return false; }
     if (n.bld) {
       for (var k in n.bld) if ((G.count[k] || 0) < n.bld[k]) return false;
     }
@@ -1000,8 +1175,90 @@ var SIM = (function () {
   }
 
   /* ---------------------------------------------------------
+     What needs attention.
+     On a phone you cannot see the whole realm at once, so the realm
+     tells you what is wrong instead. Severity 2 is urgent, 1 wants
+     seeing to, 0 is worth knowing.
+     --------------------------------------------------------- */
+  var _issCache = null, _issAt = -1e9;
+  function issues() {
+    if (_issCache && Math.abs(G.time - _issAt) < 0.5) return _issCache;
+    var out = [], net = ledger();
+
+    if (G.res.food <= 0.5 && G.pop > 1) {
+      out.push({ sev: 2, ic: '💀', text: 'Your people are starving', hint: 'Anything that makes food, now' });
+    } else if (net.food < -0.01) {
+      var seasons = G.res.food / (-net.food) / DATA.SEASON_LEN;
+      out.push({ sev: seasons < 1.5 ? 2 : 1, ic: '🌾',
+        text: 'Food is falling — about ' + seasons.toFixed(1) + ' seasons left',
+        hint: 'Build farms, or a fishing hut by the water' });
+    }
+    if (G.pop >= housing() - 0.01) {
+      out.push({ sev: 1, ic: '🏠', text: 'No room to grow — every bed is full', hint: 'Raise more cottages' });
+    }
+    if (G.happy < 30) {
+      out.push({ sev: G.happy < 18 ? 2 : 1, ic: '😠', text: 'The people are miserable (' + Math.round(G.happy) + '%)',
+        hint: 'Wells, chapels, taverns — and keep the barns full' });
+    }
+    G.buildings.forEach(function (b) {
+      if (!b.built) return;
+      if (b.paused) { out.push({ sev: 0, ic: '⏸', text: b.def.name + ' is paused', b: b }); return; }
+      if (jobsOf(b) > 0 && b.workers === 0) {
+        out.push({ sev: 1, ic: '⚠', text: b.def.name + ' has nobody working it', b: b,
+          hint: 'Not enough villagers to go round' });
+      }
+    });
+    if (G.count.smith > 0 && (G.toolCov || 0) < 0.5) {
+      out.push({ sev: 1, ic: '🔨', text: 'Tools are running short — every trade is slower',
+        hint: 'The smithy needs iron and timber' });
+    }
+    if (G.count.bakery > 0 && (G.breadCov || 0) < 0.4) {
+      out.push({ sev: 0, ic: '🍞', text: 'Little bread on the table', hint: 'The bakery needs grain and firewood' });
+    }
+    if (!G.research && G.count.library > 0) {
+      out.push({ sev: 0, ic: '📜', text: 'Your scholars are idle', hint: 'Begin a study in Research' });
+    }
+    DATA.RES.forEach(function (r) {
+      if (G.res[r.key] >= cap(r.key) - 0.5 && net[r.key] > 0.02) {
+        out.push({ sev: 0, ic: r.ic, text: r.name + ' stores are full — the surplus is being wasted',
+          hint: 'Build a warehouse, or sell some at the market' });
+      }
+    });
+    if (G.campaign) {
+      out.push({ sev: G.campaign.phase === 'out' ? 1 : 0, ic: '⚔️',
+        text: G.campaign.phase === 'out' ? 'Your army is away — only walls defend Ashveil'
+             : G.campaign.phase === 'battle' ? 'Your army has reached the border'
+             : 'Your army is marching home',
+        hint: 'See the War tab' });
+    } else if (raidSoon() && armyCount() === 0 && defenseScore() < 10) {
+      out.push({ sev: 2, ic: '📯', text: 'Brannoch rides soon and Ashveil is undefended',
+        hint: 'Muster soldiers, build a tower, or save gold to buy them off' });
+    }
+
+    out.sort(function (a, b2) { return b2.sev - a.sev; });
+    _issCache = out; _issAt = G.time;
+    return out;
+  }
+  function issueCount() {
+    var n = 0;
+    issues().forEach(function (i) { if (i.sev >= 1) n++; });
+    return n;
+  }
+
+  /* ---------------------------------------------------------
      save / load
      --------------------------------------------------------- */
+  /* A save written before a resource existed has no key for it, and
+     undefined + number is NaN — which would poison the whole economy on
+     load. Every resource the game knows about gets a number here. */
+  function normaliseRes(res) {
+    var out = res || {};
+    DATA.RES.forEach(function (r) {
+      if (typeof out[r.key] !== 'number' || !isFinite(out[r.key])) out[r.key] = 0;
+    });
+    return out;
+  }
+
   function save() {
     if (!G) return false;
     var d = {
@@ -1009,7 +1266,7 @@ var SIM = (function () {
       time: G.time, res: G.res, pop: G.pop, happy: G.happy,
       castle: G.castle, tech: G.tech, research: G.research,
       army: G.army, rival: G.rival, quests: G.quests, stats: G.stats,
-      vets: G.vets || {}, formation: G.formation || 'line',
+      vets: G.vets || {}, formation: G.formation || 'line', seen: G.seen || {}, campaign: G.campaign || null,
       eventTimer: G.eventTimer, speed: G.speed,
       buildings: G.buildings.map(function (b) {
         return [b.id, b.x, b.y, b.built ? 1 : 0, Number(b.prog.toFixed(3)),
@@ -1027,7 +1284,9 @@ var SIM = (function () {
     if (st.upgrades === undefined) st.upgrades = 0;
     if (st.traded === undefined) st.traded = 0;
     G = {
-      seed: d.world.seed, time: d.time, res: d.res, pop: d.pop, happy: d.happy,
+      seed: d.world.seed, time: d.time, res: normaliseRes(d.res), pop: d.pop, happy: d.happy,
+      toolCov: 0, breadCov: 0, seen: d.seen || { gold: 1, food: 1, wood: 1, stone: 1 },
+      campaign: d.campaign || null,
       buildings: [], tech: d.tech || {}, research: d.research || null,
       castle: d.castle || 0, army: d.army || {}, rival: d.rival,
       quests: d.quests || {}, stats: st, eventTimer: d.eventTimer,
@@ -1075,8 +1334,11 @@ var SIM = (function () {
     ledger: ledger, output: output, cap: cap, housing: housing,
     armyCap: armyCap, armySlots: armySlots, armyCount: armyCount,
     defenseScore: defenseScore, smithBonus: smithBonus,
-    fieldStrength: fieldStrength, unitStrength: unitStrength,
+    fieldStrength: fieldStrength, unitStrength: unitStrength, totalStrength: totalStrength,
+    launchCampaign: launchCampaign, campaignResolved: campaignResolved,
+    campaignSlots: campaignSlots, awayCount: awayCount, MARCH_SEASONS: MARCH_SEASONS,
     raidPower: raidPower, graceLeft: graceLeft, GRACE_SEASONS: GRACE_SEASONS,
+    deterrence: deterrence, raidCause: raidCause,
     jobsOf: jobsOf, staffRatio: staffRatio, efficiency: efficiency,
     scoreOf: scoreOf, priorityLabel: priorityLabel, assignWorkers: assignWorkers,
     season: season, seasonIndex: seasonIndex, year: year, seasonProgress: seasonProgress,
@@ -1087,9 +1349,10 @@ var SIM = (function () {
     goodsValue: goodsValue, marketCut: marketCut,
     rebuildPaths: function () { markPathsDirty(); ensurePaths(true); },
     canTrade: canTrade, priceOf: priceOf, sell: sell, buy: buy, tradeSpread: tradeSpread,
-    techAvailable: techAvailable, startResearch: startResearch,
+    techAvailable: techAvailable, techClosed: techClosed, startResearch: startResearch,
     unitAvailable: unitAvailable, recruit: recruit, disband: disband,
     activeQuests: activeQuests, applyEffects: applyEffects, checkQuests: checkQuests,
+    issues: issues, issueCount: issueCount,
     happyTarget: happyTarget
   };
 })();
