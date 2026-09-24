@@ -960,6 +960,12 @@ var BATTLE = (function () {
         loot.gold = Math.round(30 + startFoes * 6);
         title = 'Ashveil Holds';
         body = 'The attack broke against your line. Brannoch withdraws, weakened.';
+      } else if (ctx.flavour === 'wolves') {
+        loot.gold = Math.round(120 + startFoes * 10);
+        loot.iron = Math.round(startFoes * 2);
+        if (typeof EXPLORE !== 'undefined') EXPLORE.hitHaven(true);
+        title = 'The Haven Burns';
+        body = 'Their longships burn at their moorings. The Sea Wolves will not raid Ashveil for two years at least.';
       } else if (ctx.flavour === 'bandits') {
         loot.gold = Math.round(90 + startFoes * 9);
         title = 'Road Cleared';
@@ -991,8 +997,8 @@ var BATTLE = (function () {
         G.rival.str += 6;
         body = 'They came over the wall. <b>−' + stolen + ' gold, −' + burned + ' food</b> carried off.';
       } else {
-        G.rival.str += 8;
-        body = 'Your banners fall back across the border. Brannoch takes heart.';
+        if (ctx.flavour === 'wolves') body = 'The Wolves drove your men back to the boats. Their haven stands.';
+        else { G.rival.str += 8; body = 'Your banners fall back across the border. Brannoch takes heart.'; }
       }
       G.happy = U.clamp(G.happy - 14, 0, 100);
       U.sfx.defeat();

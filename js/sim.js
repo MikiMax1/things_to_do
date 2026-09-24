@@ -16,6 +16,7 @@ var SIM = (function () {
      --------------------------------------------------------- */
   function newGame(seed) {
     if (typeof FOLK !== 'undefined') FOLK.reset();
+    if (typeof EXPLORE !== 'undefined') EXPLORE.reset();
     seed = seed || Math.floor(Math.random() * 1e9);
     var spot = W.generate(seed);
     G = {
@@ -32,6 +33,7 @@ var SIM = (function () {
       rival: { str: 30, anger: 0, nextRaid: DATA.SEASON_LEN * 6.5, warned: false },
       quests: {}, questShown: [], chapter: 0, won: false, weather: 'clear', weatherTimer: 40,
       tut: -1, mkt: {}, decrees: {}, shiftUntil: -1, finds: [], findTimer: DATA.SEASON_LEN * 0.8,
+      fog: '',                       // the mist over the island; '' = a fresh reign, not yet painted
       ship: null, shipTimer: DATA.SEASON_LEN * 2.2, fireTimer: 5,
       stats: { wins: 0, losses: 0, built: 0, raidsSurvived: 0, techDone: 0, upgrades: 0, traded: 0 },
       vets: {}, formation: 'line', campaign: null,
@@ -742,6 +744,7 @@ var SIM = (function () {
       if (!bonus) return;
       if (U.dist(a.x, a.y, b.x, b.y) <= (a.def.radius || 3) + 0.4) mul += bonus * Math.max(0.34, staffRatio(a));
     });
+    if (typeof EXPLORE !== 'undefined') mul *= EXPLORE.bonusAt(b);   // an iron seam, a spring
     return mul;
   }
 
@@ -978,6 +981,7 @@ var SIM = (function () {
     var coverage = G.pop > 0 ? U.clamp(capacity / G.pop, 0, 1.35) : 1;
     var t = 34 + coverage * 46;
     if (G.tech.sanitation) t += 8;
+    t += G.blessing || 0;
     t += BREAD_JOY * (G.breadCov || 0);
     if (G.tech.enclosure) t -= 10;
     if (G.tech.common_fields) t += 8;
@@ -1094,12 +1098,12 @@ var SIM = (function () {
       } else if (atPeace()) {
         // the treaty holds; only the Sea Wolves still come
         G.rival.nextRaid = DATA.SEASON_LEN * (2.5 + Math.random() * 2);
-        if (seasonIndex() >= 12 && Math.random() < 0.45) emit('raid-incoming', { cause: 'wolves', faction: 'wolves' });
+        if (seasonIndex() >= 12 && Math.random() < 0.45 && !(typeof EXPLORE !== 'undefined' && EXPLORE.wolvesQuiet())) emit('raid-incoming', { cause: 'wolves', faction: 'wolves' });
       } else if (deterrence() > 1.45 && Math.random() < U.clamp((deterrence() - 1.45) * 0.55, 0, 0.88)) {
         // they looked, and thought better of it
         G.rival.nextRaid = DATA.SEASON_LEN * (2 + Math.random() * 2.5);
         emit('toast', { msg: 'Brannoch\'s scouts turned back at the border — Ashveil looks too strong to bother.', kind: 'good' });
-      } else if (seasonIndex() >= 12 && Math.random() < 0.35) {
+      } else if (seasonIndex() >= 12 && Math.random() < 0.35 && !(typeof EXPLORE !== 'undefined' && EXPLORE.wolvesQuiet())) {
         emit('raid-incoming', { cause: 'wolves', faction: 'wolves' });
       } else if (dip().att > 0 && Math.random() < dip().att / 110) {
         G.rival.nextRaid = DATA.SEASON_LEN * (2 + Math.random() * 2);
@@ -1111,6 +1115,7 @@ var SIM = (function () {
 
     if (typeof WAR !== 'undefined') WAR.tick(dt);
     if (typeof FOLK !== 'undefined') FOLK.tick(dt);
+    if (typeof EXPLORE !== 'undefined') EXPLORE.tick(dt);
     tickWeather(dt);
     tickHarvest(dt);
     tickFire(dt);
@@ -1502,6 +1507,7 @@ var SIM = (function () {
     if (G.tech.banking)       { s2 += 0.08; b2 -= 0.12; }
     if (G.tech.free_trade)    { s2 += 0.20; b2 -= 0.15; }
     if (G.fairUntil > G.time) { s2 += 0.25; b2 -= 0.20; }
+    if (typeof EXPLORE !== 'undefined') { s2 += EXPLORE.tradeBonus(); b2 -= EXPLORE.tradeBonus(); }
     var lvl = 0;
     G.buildings.forEach(function (b) { if (b.built && b.id === 'market') lvl += lvlMul(b); });
     s2 += Math.min(0.10, lvl * 0.02);
@@ -2099,6 +2105,7 @@ var SIM = (function () {
       tut: typeof G.tut === 'number' ? G.tut : -1, mkt: G.mkt || {}, decrees: G.decrees || {}, shiftUntil: G.shiftUntil || -1, finds: G.finds || [],
       dip: G.dip || null, tribute: G.tribute || null,
       folk: typeof FOLK !== 'undefined' ? FOLK.pack() : null,
+      fog: G.fog, sites: G.sites || null, sea: G.sea || null, scouts: G.scouts || [], blessing: G.blessing || 0,
       shipTimer: G.shipTimer, findTimer: G.findTimer,
       vets: G.vets || {}, formation: G.formation || 'line', seen: G.seen || {}, campaign: G.campaign || null,
       festivals: G.festivals || {}, fairUntil: G.fairUntil || -1,
@@ -2140,6 +2147,7 @@ var SIM = (function () {
   function loadGame() {
     var d = U.load();
     if (typeof FOLK !== 'undefined') FOLK.reset();
+    if (typeof EXPLORE !== 'undefined') EXPLORE.reset();
     if (!d || !(d.v >= 2 && d.v <= 4)) return false;    // older saves still load
     W.deserialize(d.world);
     var st = d.stats || {};
@@ -2156,6 +2164,7 @@ var SIM = (function () {
       chapter: d.chapter || 0, won: !!d.won, weather: 'clear', weatherTimer: 30,
       tut: typeof d.tut === 'number' ? d.tut : -1, mkt: d.mkt || {}, decrees: d.decrees || {}, shiftUntil: d.shiftUntil || -1, finds: d.finds || [],
       dip: d.dip || null, tribute: d.tribute || null, folkSave: d.folk || null,
+      fog: d.fog, sites: d.sites || null, sea: d.sea || null, scouts: d.scouts || [], blessing: d.blessing || 0,
       ship: null, shipTimer: d.shipTimer || DATA.SEASON_LEN * 2, findTimer: d.findTimer || 40, fireTimer: 5,
       vets: d.vets || {}, formation: d.formation || 'line',
       growTimer: 6, reliefTimer: 30, reliefCooldown: 0,

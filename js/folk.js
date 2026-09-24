@@ -164,7 +164,7 @@ var FOLK = (function () {
   function refreshServices() {
     services = {};
     homes().forEach(function (b) {
-      services[b.uid] = { well: near(b, 'well', 4.5), chapel: near(b, 'chapel', 7), tavern: near(b, 'tavern', 6), market: near(b, 'market', 8) };
+      services[b.uid] = { well: near(b, 'well', 4.5) || (typeof EXPLORE !== 'undefined' ? EXPLORE.springNear(b, 4.5) : 0), chapel: near(b, 'chapel', 7), tavern: near(b, 'tavern', 6), market: near(b, 'market', 8) };
     });
   }
   function servicesOf(b) { return (b && services[b.uid]) || { well: 0, chapel: 0, tavern: 0, market: 0 }; }

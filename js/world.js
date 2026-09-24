@@ -156,6 +156,10 @@ var W = (function () {
                (t.terr === 'forest' && def.terrain.indexOf('grass') >= 0);
       if (!ok) return { ok: false, why: 'Cannot build on ' + DATA.TERRAIN[t.terr].name.toLowerCase() };
       if (t.bld && t.bld !== ignore) return { ok: false, why: 'Already occupied' };
+      if (typeof EXPLORE !== 'undefined') {
+        if (!EXPLORE.seen(t.x, t.y)) return { ok: false, why: 'Unexplored — send a scout first' };
+        if (EXPLORE.blocked(t.x, t.y)) return { ok: false, why: 'Something is already here' };
+      }
     }
     if (def.near) {
       var n = nearCount(x, y, def.near.terrain, 1);

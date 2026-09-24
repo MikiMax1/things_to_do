@@ -269,10 +269,12 @@ var RENDER = (function () {
     /* ---- 2. collect everything that stands up ---- */
     var items = [];
     var pad = z * 2.2;
+    var misty = typeof EXPLORE !== 'undefined' ? EXPLORE.seen : null;
     for (var y = y0; y <= y1; y++) {
       for (var x = x0; x <= x1; x++) {
         var t = W.at(x, y);
         if (!t || t.bld) continue;
+        if (misty && !misty(x, y)) continue;
         if (t.terr === 'forest' && !DBG.noTrees) {
           if (!onScreen(x + .5, y + .5, pad)) continue;
           W.treesOf(t).forEach(function (tr) { items.push({ k: 'tree', o: tr, d: tr.x + tr.y }); });
@@ -294,11 +296,17 @@ var RENDER = (function () {
     });
     AGENTS.animals.forEach(function (a) {
       if (!onScreen(a.x, a.y, 40)) return;
+      if (misty && !misty(Math.floor(a.x), Math.floor(a.y))) return;
       items.push({ k: 'ani', a: a, d: a.x + a.y + 0.02 });
     });
     (G.finds || []).forEach(function (f, i) {
+      if (misty && !misty(Math.floor(f.x), Math.floor(f.y))) return;
       if (onScreen(f.x, f.y, 40)) items.push({ k: 'find', f: f, d: f.x + f.y });
     });
+    if (misty) {
+      EXPLORE.sites.forEach(function (st) { if (st.found && onScreen(st.x + .5, st.y + .5, 60)) items.push({ k: 'site', s: st, d: st.x + st.y + 1 }); });
+      EXPLORE.scouts.forEach(function (sc) { if (onScreen(sc.x, sc.y, 40)) items.push({ k: 'scout', a: sc, d: sc.x + sc.y + 0.02 }); });
+    }
     if (G.ship && onScreen(G.ship.x, G.ship.y, 120)) items.push({ k: 'ship', d: G.ship.x + G.ship.y });
     if (WAR.active) {
       WAR.state.ships.forEach(function (s) { if (onScreen(s.x, s.y, 120)) items.push({ k: 'wship', s: s, d: s.x + s.y }); });
@@ -366,6 +374,11 @@ var RENDER = (function () {
         var ss = toScreen(it.s.x, it.s.y); WAR.drawShip(g, it.s, ss.x, ss.y, z);
       } else if (it.k === 'war') {
         var su = toScreen(it.u.x, it.u.y); WAR.drawUnit(g, it.u, su.x, su.y, z);
+      } else if (it.k === 'site') {
+        drawSite(it.s, z);
+      } else if (it.k === 'scout') {
+        var sc = it.a, ss2 = toScreen(sc.x, sc.y);
+        AGENTS.draw(g, { x: sc.x, y: sc.y, bob: sc.bob, face: sc.face, path: true, shirt: '#8a3a2a', skin: '#d3a476', hair: '#3a2a22', speed: 1, state: 'scout' }, ss2.x, ss2.y, z);
       } else if (it.k === 'vil') {
         var sp2 = toScreen(it.a.x, it.a.y);
         AGENTS.draw(g, it.a, sp2.x, sp2.y, z);
@@ -402,6 +415,9 @@ var RENDER = (function () {
       }
       g.globalAlpha = 1;
     });
+
+    /* ---- 5b. the mist over land nobody has walked yet ---- */
+    if (misty) drawFog(z);
 
     /* ---- 6. clouds and their shadows ---- */
     if (!DBG.noClouds) drawClouds(dt, z, sun);
@@ -763,6 +779,73 @@ var RENDER = (function () {
     }
     return -1;
   }
+  /* mist: once on the ground, once lifted so it swallows what stands in it */
+  function drawFog(z) {
+    var fc = EXPLORE.fogCanvas();
+    if (!fc) return;
+    groundTransform();
+    g.globalAlpha = 0.93;
+    g.drawImage(fc, 0, 0, W.COLS, W.ROWS);
+    screenTransform();
+    var z0 = cam.z, ox = cw / 2 - (cam.x - cam.y) * z0 / 2, oy = ch / 2 - (cam.x + cam.y) * z0 / 4 - z0 * 0.32;
+    g.setTransform(dpr * z0 / 2, dpr * z0 / 4, -dpr * z0 / 2, dpr * z0 / 4, dpr * ox, dpr * oy);
+    g.globalAlpha = 0.8;
+    g.drawImage(fc, 0, 0, W.COLS, W.ROWS);
+    g.globalAlpha = 1;
+    screenTransform();
+  }
+
+  /* things found on the island, marked where they lie */
+  function drawSite(st, z) {
+    var s = toScreen(st.x + .5, st.y + .5), u = z / 60;
+    g.fillStyle = 'rgba(0,0,0,.22)';
+    g.beginPath(); g.ellipse(s.x + 4 * u, s.y + 2 * u, 20 * u, 8 * u, 0, 0, 6.3); g.fill();
+    var stone = function (x, y, w, h, c) {
+      var gr = g.createLinearGradient(x - w / 2, 0, x + w / 2, 0);
+      gr.addColorStop(0, c || '#b8b2a4'); gr.addColorStop(1, '#6e695e');
+      g.fillStyle = gr; g.beginPath();
+      g.moveTo(x - w / 2, y); g.lineTo(x - w * 0.42, y - h); g.quadraticCurveTo(x, y - h - w * 0.3, x + w * 0.42, y - h); g.lineTo(x + w / 2, y); g.closePath(); g.fill();
+    };
+    if (st.k === 'stones') {
+      for (var i = 0; i < 7; i++) {
+        var a = i / 7 * 6.28, px = s.x + Math.cos(a) * 16 * u, py = s.y + Math.sin(a) * 7 * u;
+        stone(px, py, 5 * u, (12 + (i % 3) * 3) * u);
+      }
+    } else if (st.k === 'ruin') {
+      stone(s.x - 8 * u, s.y, 9 * u, 22 * u, '#a39c8c'); stone(s.x + 6 * u, s.y + 3 * u, 8 * u, 12 * u, '#a39c8c');
+      g.fillStyle = '#8f8878'; for (var j = 0; j < 5; j++) g.fillRect(s.x - 16 * u + j * 7 * u, s.y + 4 * u + (j % 2) * 2 * u, 5 * u, 3 * u);
+      if (!st.done) { g.fillStyle = '#f0cd6a'; g.beginPath(); g.arc(s.x + 12 * u, s.y - 2 * u, 2.2 * u, 0, 6.3); g.fill(); }
+    } else if (st.k === 'ore') {
+      stone(s.x, s.y, 20 * u, 12 * u, '#9a6a4a');
+      g.fillStyle = '#c0603a'; for (var k = 0; k < 6; k++) g.fillRect(s.x - 8 * u + k * 3 * u, s.y - 6 * u - (k % 3) * 2 * u, 2 * u, 2 * u);
+    } else if (st.k === 'spring') {
+      g.fillStyle = '#8a8272'; g.beginPath(); g.ellipse(s.x, s.y, 15 * u, 7 * u, 0, 0, 6.3); g.fill();
+      var wg = g.createRadialGradient(s.x, s.y - 1 * u, 1, s.x, s.y, 12 * u);
+      wg.addColorStop(0, '#bfe3f0'); wg.addColorStop(1, '#4f8fb0');
+      g.fillStyle = wg; g.beginPath(); g.ellipse(s.x, s.y, 12 * u, 5.2 * u, 0, 0, 6.3); g.fill();
+      g.strokeStyle = 'rgba(255,255,255,' + (0.4 + Math.sin(time * 3) * 0.2).toFixed(2) + ')'; g.lineWidth = 1;
+      g.beginPath(); g.ellipse(s.x, s.y, 5 * u + Math.sin(time * 2) * 2 * u, 2 * u, 0, 0, 6.3); g.stroke();
+    } else if (st.k === 'cave') {
+      stone(s.x, s.y + 2 * u, 30 * u, 18 * u, '#8f887a');
+      g.fillStyle = '#17120e'; g.beginPath(); g.ellipse(s.x, s.y - 3 * u, 7 * u, 8 * u, 0, Math.PI, 0); g.lineTo(s.x + 7 * u, s.y + 2 * u); g.lineTo(s.x - 7 * u, s.y + 2 * u); g.fill();
+    }
+    if (!st.done && st.k !== 'ore' && st.k !== 'spring') {
+      var bob = Math.sin(time * 3) * 2;
+      g.fillStyle = 'rgba(24,18,12,.8)'; ART.rr(g, s.x - 9, s.y - 44 * u - 20 + bob, 18, 18, 9); g.fill();
+      g.fillStyle = '#f0d98a'; g.font = '700 12px sans-serif'; g.textAlign = 'center'; g.fillText('?', s.x, s.y - 44 * u - 7 + bob); g.textAlign = 'left';
+    }
+  }
+  function pickSite(sx, sy) {
+    if (typeof EXPLORE === 'undefined') return null;
+    var ss = EXPLORE.sites;
+    for (var i = 0; i < ss.length; i++) {
+      if (!ss[i].found) continue;
+      var s = toScreen(ss[i].x + .5, ss[i].y + .5);
+      if (Math.abs(sx - s.x) < Math.max(22, cam.z * 0.4) && sy < s.y + 12 && sy > s.y - Math.max(40, cam.z * 0.9)) return ss[i];
+    }
+    return null;
+  }
+
   /* the villager under a finger: feet to head, a little generous */
   function pickAgent(sx, sy, tight) {
     var best = null, bd = 1e9, z = cam.z, hh = Math.max(7, z * 0.19), k = tight ? 0.55 : 1;
@@ -903,7 +986,7 @@ var RENDER = (function () {
   }
 
   return {
-    init: init, resize: resize, draw: draw, pickBuilding: pickBuilding, pickFind: pickFind, pickShip: pickShip, pickAgent: pickAgent,
+    init: init, resize: resize, draw: draw, pickBuilding: pickBuilding, pickFind: pickFind, pickShip: pickShip, pickAgent: pickAgent, pickSite: pickSite,
     toScreen: toScreen, toWorld: toWorld, tileAtScreen: tileAtScreen,
     centreOn: centreOn, pan: pan, zoomAt: zoomAt,
     get cam() { return cam; },

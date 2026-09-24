@@ -173,7 +173,7 @@ var UI = (function () {
     tech: { title: 'Research', tabs: function () { return [{ key: 1, name: 'Tier I' }, { key: 2, name: 'Tier II' }, { key: 3, name: 'Tier III' }]; }, body: techBody },
     decrees: { title: 'Royal Decrees', tabs: function () { return [{ key: 'all', name: 'Decrees' }]; }, body: decreesBody },
     alerts: { title: 'Needs attention', tabs: function () { return [{ key: 'all', name: 'All' }]; }, body: alertsBody },
-    world: { title: 'The Realm', tabs: function () { return [{ key: 'castle', name: 'Castle' }, { key: 'trade', name: 'Trade' }, { key: 'chronicle', name: 'Chronicle' }, { key: 'settings', name: 'Settings' }]; }, body: worldBody }
+    world: { title: 'The Realm', tabs: function () { return [{ key: 'castle', name: 'Castle' }, { key: 'trade', name: 'Trade' }, { key: 'sea', name: 'Sea chart' }, { key: 'chronicle', name: 'Chronicle' }, { key: 'settings', name: 'Settings' }]; }, body: worldBody }
   };
 
   function renderSheet(rebuildTabs) {
@@ -721,8 +721,66 @@ var UI = (function () {
   }
 
   /* ---------------- WORLD ---------------- */
+  var chartSel = -1, chartCv = null;
+  function seaBody(box) {
+    var G = SIM.G, sea = G.sea;
+    if (!sea) { box.appendChild(h('<p class="hint">The chart is still being drawn.</p>')); return; }
+    chartCv = h('<canvas class="sea-chart"></canvas>');
+    box.appendChild(chartCv);
+    chartCv.addEventListener('click', function (e) {
+      var r = chartCv.getBoundingClientRect();
+      chartSel = EXPLORE.spotAt(chartCv, e.clientX - r.left, e.clientY - r.top);
+      U.sfx.tap(); renderSheet();
+    });
+    requestAnimationFrame(function () { if (chartCv) EXPLORE.drawChart(chartCv, chartSel, performance.now() / 1000); });
+    var harbour = EXPLORE.harbour();
+    if (!harbour) box.appendChild(h('<p class="hint">⚓ You need a harbour to put ships to sea — any <b>fishing hut</b> will do.</p>'));
+    if (sea.voyage) {
+      var left = Math.max(0, (sea.voyage.len - sea.voyage.t) / DATA.SEASON_LEN);
+      box.appendChild(h('<p class="hint">⛵ Your ship is out charting ' + EXPLORE.SPOTS[sea.spots[sea.voyage.to].k].name.replace(/.*/, function (n) { return sea.spots[sea.voyage.to].known ? n : 'unknown waters'; }) +
+        ' — back in ' + left.toFixed(1) + ' seasons.</p>'));
+    }
+    if (chartSel < 0) {
+      box.appendChild(h('<p class="hint">Tap a place on the chart. Charted islets can be settled as <b>outposts</b> that ship goods home every season; the mainland port can take a standing <b>trade route</b>.</p>'));
+      return;
+    }
+    var sp = sea.spots[chartSel], d = EXPLORE.SPOTS[sp.k];
+    var card = h('<div class="card"><div class="card-row"><div class="card-ic" style="font-size:22px">' + (sp.known ? d.ic : '❔') + '</div>' +
+      '<div class="card-main"><h4>' + (sp.known ? d.name : 'Uncharted waters') + '</h4><p>' +
+      (sp.known ? d.desc : 'Something lies out there. Only a ship will tell you what.') + '</p>' +
+      (sp.outpost ? '<p style="color:#8fd06a;margin-top:5px">⚑ Your outpost: +' + d.amt + ' ' + d.res + ' every season</p>' : '') +
+      (sp.route ? '<p style="color:#8fd06a;margin-top:5px">⛵ Trade route running: gold every season, better prices at market</p>' : '') +
+      (sp.burned ? '<p style="color:#8fd06a;margin-top:5px">🔥 Burned. The Wolves are licking their wounds.</p>' : '') +
+      '</div></div></div>');
+    function act(label, fn, dis) {
+      var b = h('<button class="btn wide">' + label + '</button>');
+      b.disabled = !!dis;
+      b.addEventListener('click', function () {
+        var r = fn();
+        if (!r || !r.ok) { if (r) toast(r.why, 'bad'); U.sfx.err(); return; }
+        if (r.msg) { toast(r.msg, 'good'); chronicle(r.msg); }
+        U.sfx.tap(); SIM.save(); renderSheet(); refreshHUD();
+      });
+      card.appendChild(b);
+    }
+    if (!sp.known) act('🧭 Send a ship to chart it (30 gold, 20 food)', function () { return EXPLORE.chart(chartSel); }, !harbour || !!sea.voyage);
+    else if (d.res && !sp.outpost) act('⚑ Found an outpost (60 gold, 80 wood, 40 food, 3 settlers)', function () { return EXPLORE.foundOutpost(chartSel); }, !harbour);
+    else if (sp.k === 'port' && !sp.route) act('⚓ Open a trade route (' + EXPLORE.ROUTE_COST + ' gold)', function () { return EXPLORE.openRoute(chartSel); }, !harbour);
+    else if (sp.k === 'haven' && !sp.burned) {
+      act('🔥 Sail on the haven with your army', function () {
+        if (SIM.armyCount() < 6) return { ok: false, why: 'You need at least 6 soldiers at home' };
+        closeSheet();
+        startBattle('raid', { power: 40 + SIM.seasonIndex() * 2.2, name: 'The Sea Wolves', flavour: 'wolves', faction: 'wolves' });
+        return { ok: true };
+      }, SIM.armyCount() < 6);
+      card.appendChild(h('<p class="hint" style="margin-top:6px">A walled cove. Bring at least 6 soldiers — catapults help with the gate.</p>'));
+    }
+    box.appendChild(card);
+  }
+
   function worldBody(box, tab) {
     var G = SIM.G;
+    if (tab === 'sea') { seaBody(box); return; }
     if (tab === 'castle') {
       var cur = DATA.CASTLE[G.castle], nxt = SIM.nextCastle();
       box.appendChild(h('<div class="card">' +
@@ -1187,6 +1245,38 @@ var UI = (function () {
       }
     } else if (selected.p) {
       personCard(FOLK.get(selected.p), ic, body, acts);
+    } else if (selected.site) {
+      var st = selected.site, sd = EXPLORE.SITES[st.k];
+      ic.textContent = sd.ic; ic.style.fontSize = '24px';
+      el('insp-name').textContent = sd.name;
+      el('insp-sub').textContent = st.done ? 'searched' : (st.k === 'ore' || st.k === 'spring') ? 'found by your scouts' : 'waiting to be searched';
+      body.innerHTML = '<p style="font-size:12.5px;color:#d9ccae;margin:0">' + sd.desc + '</p>';
+      if (!st.done && st.k !== 'ore' && st.k !== 'spring') {
+        var sb = h('<button class="btn">🔦 Search it</button>');
+        sb.addEventListener('click', function () {
+          var r = EXPLORE.search(st);
+          if (!r.ok) { toast(r.why, 'bad'); return; }
+          U.sfx.quest(); chronicle('Searched the ' + sd.name.toLowerCase() + '.');
+          RENDER.puff(st.x + .5, st.y + .5, '#f0d98a', 10);
+          clearSelection(); refreshHUD();
+          storyCard(sd.ic, sd.name, r.msg, [{ label: 'Good' }]);
+        });
+        acts.appendChild(sb);
+      }
+    } else if (selected.t && typeof EXPLORE !== 'undefined' && !EXPLORE.seen(selected.t.x, selected.t.y)) {
+      var ft = selected.t;
+      ic.textContent = '🌫️'; ic.style.fontSize = '22px';
+      el('insp-name').textContent = 'Unexplored';
+      el('insp-sub').textContent = Math.round(EXPLORE.known() * 100) + '% of the island is known';
+      body.innerHTML = '<p style="font-size:12.5px;color:#d9ccae;margin:0">Nobody from Ashveil has been this way. Send a scout to map it — or build nearby, and the mist will lift around it. Watchtowers see furthest.</p>';
+      var scb = h('<button class="btn">🧭 Send a scout (' + EXPLORE.SCOUT_COST + ' gold)</button>');
+      scb.addEventListener('click', function () {
+        var r = EXPLORE.sendScout(ft.x, ft.y);
+        if (!r.ok) { toast(r.why, 'bad'); U.sfx.err(); return; }
+        toast('A scout sets out to the ' + 'unknown.', 'good'); U.sfx.tap();
+        clearSelection(); refreshHUD();
+      });
+      acts.appendChild(scb);
     } else if (selected.t) {
       var t = selected.t;
       var terr = DATA.TERRAIN[t.terr];
@@ -1316,6 +1406,8 @@ var UI = (function () {
         if (RENDER.pickShip(e.clientX, sy)) { U.sfx.tap(); openShip(); return; }
         var fi = RENDER.pickFind(e.clientX, sy);
         if (fi >= 0) { collectFind(fi); return; }
+        var site = RENDER.pickSite(e.clientX, sy);
+        if (site) { select({ site: site }); U.sfx.tap(); return; }
         var hitB = RENDER.pickBuilding(e.clientX, sy);
         // a villager right under the finger beats the building behind them
         var ag = typeof FOLK !== 'undefined' ? RENDER.pickAgent(e.clientX, sy, !!hitB) : null;
@@ -1752,6 +1844,12 @@ var UI = (function () {
       if (kind === 'war-over') eventQueue.unshift({ k: 'warover', r: payload });
       if (kind === 'weather' && payload === 'rain') toast('🌧️ Rain sweeps in off the sea — the fields drink it up.', '');
       if (kind === 'folk' && payload.toast) { chronicle(payload.msg); toast(payload.msg, /died|Fever|fever/.test(payload.msg) ? 'bad' : 'good'); }
+      if (kind === 'site-found') {
+        var sd2 = EXPLORE.SITES[payload.k];
+        toast(sd2.ic + ' Your people found ' + sd2.name.toLowerCase().replace(/^/, /^[aeiou]/i.test(sd2.name) ? 'an ' : 'a ') + '! Tap it on the map.', 'good');
+        chronicle('Found ' + sd2.name + '.'); U.sfx.quest();
+      }
+      if (kind === 'voyage') { toast('⛵ ' + payload.msg, 'good'); chronicle(payload.msg); U.sfx.quest(); if (openPanel === 'world') renderSheet(); }
       if (kind === 'harvest') { toast('🌾 Harvest time! ' + payload + ' food stands in the fields — the farmhands are bringing it in.', 'good'); chronicle('The harvest began: ' + payload + ' in the fields.'); U.sfx.quest(); }
       if (kind === 'fire') {
         toast('🔥 Fire at the ' + payload.def.name.toLowerCase() + '! Tap it to call the bucket brigade.', 'bad');

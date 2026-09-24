@@ -492,3 +492,4 @@ h1,h2,h3{font-family:var(--font);margin:0}
 .folk-names span.ill{border-color:#8f8a2e;color:#e4d77a}
 .folk-names.fams span{font-size:12.5px}
 #insp-body p.why{font-size:11.5px;color:#bda98a;margin:2px 0 6px}
+.sea-chart{display:block;width:100%;height:300px;border-radius:12px;border:1px solid #6b5436;box-shadow:inset 0 0 30px rgba(80,50,20,.35);margin-bottom:10px;touch-action:manipulation}

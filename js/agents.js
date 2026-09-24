@@ -272,6 +272,8 @@ var AGENTS = (function () {
           } else if (a.timer <= 0) {
             if (!errand(a, night)) {
               var spot = W.randomWalkable(Math.random);
+              // nobody wanders off into the mist
+              if (spot && typeof EXPLORE !== 'undefined' && !EXPLORE.seen(spot.x, spot.y)) spot = null;
               if (spot) goTo(a, spot.x, spot.y);
               a.state = 'wander';
             }
