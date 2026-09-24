@@ -1078,8 +1078,8 @@ var SIM = (function () {
 
     // the rival
     G.rival.str += dt * (0.010 + G.time / 140000);
-    G.rival.nextRaid -= dt;
-    if (!G.rival.warned && G.rival.nextRaid <= DATA.SEASON_LEN * 0.85 && seasonIndex() >= GRACE_SEASONS - 1) {
+    if (!G.war) G.rival.nextRaid -= dt;
+    if (!G.rival.warned && !atPeace() && G.rival.nextRaid <= DATA.SEASON_LEN * 0.85 && seasonIndex() >= GRACE_SEASONS - 1) {
       G.rival.warned = true;
       emit('toast', { msg: 'Scouts: Brannoch is mustering. Roughly a season before they ride.', kind: 'war' });
     }
@@ -1090,15 +1090,25 @@ var SIM = (function () {
       G.rival.nextRaid = DATA.SEASON_LEN * gap;
       if (seasonIndex() < GRACE_SEASONS) {
         G.rival.nextRaid = DATA.SEASON_LEN * 2;   // still at peace — try again later
+      } else if (atPeace()) {
+        // the treaty holds; only the Sea Wolves still come
+        G.rival.nextRaid = DATA.SEASON_LEN * (2.5 + Math.random() * 2);
+        if (seasonIndex() >= 12 && Math.random() < 0.45) emit('raid-incoming', { cause: 'wolves', faction: 'wolves' });
       } else if (deterrence() > 1.45 && Math.random() < U.clamp((deterrence() - 1.45) * 0.55, 0, 0.88)) {
         // they looked, and thought better of it
         G.rival.nextRaid = DATA.SEASON_LEN * (2 + Math.random() * 2.5);
         emit('toast', { msg: 'Brannoch\'s scouts turned back at the border — Ashveil looks too strong to bother.', kind: 'good' });
+      } else if (seasonIndex() >= 12 && Math.random() < 0.35) {
+        emit('raid-incoming', { cause: 'wolves', faction: 'wolves' });
+      } else if (dip().att > 0 && Math.random() < dip().att / 110) {
+        G.rival.nextRaid = DATA.SEASON_LEN * (2 + Math.random() * 2);
+        emit('toast', { msg: 'Brannoch\'s council argued down a raid. Your goodwill is paying off.', kind: 'good' });
       } else {
         emit('raid-incoming', { cause: raidCause() });
       }
     }
 
+    if (typeof WAR !== 'undefined') WAR.tick(dt);
     tickWeather(dt);
     tickHarvest(dt);
     tickFire(dt);
@@ -1125,6 +1135,7 @@ var SIM = (function () {
     if (seasonIndex() !== prevSeason) {
       U.sfx.season();
       emit('season', season());
+      dipSeason();
       if (season().key === 'autumn') {
         var any = 0;
         G.buildings.forEach(function (b) { if (b.def.seasonal && b.built) { b.cropStart = b.crop || 0; any += b.crop || 0; } });
@@ -1642,6 +1653,7 @@ var SIM = (function () {
   function launchCampaign(opts) {
     if (G.campaign) return { ok: false, why: 'Your army is already in the field' };
     if (armyCount() < 3) return { ok: false, why: 'You need at least 3 soldiers to march' };
+    if (!opts.flavour) breakPeace();
     G.campaign = {
       phase: 'out', timeLeft: DATA.SEASON_LEN * MARCH_SEASONS,
       army: G.army, vets: G.vets || {},
@@ -1651,6 +1663,113 @@ var SIM = (function () {
     emit('army');
     emit('toast', { msg: 'Your army marches for ' + G.campaign.name + '. Home is held by your walls alone.', kind: 'war' });
     return { ok: true };
+  }
+
+  /* diplomacy -------------------------------------------
+     Brannoch's lord has a temper you learn over time. Their attitude runs
+     from −100 (sworn enemy) to 100 (kin). Gifts and envoys warm it; beating
+     them cools it — unless they are the kind who respect strength. Warm
+     enough and they will sign a trade pact (no more raids from Brannoch,
+     a trickle of trade gold); keep the peace and a marriage makes them
+     allies for good. The Sea Wolves answer to nobody. */
+  var PERSONAS = {
+    greedy: { name: 'Greedy', gift: 1.6, beaten: -12, desc: 'Lord Harric counts coin before honour. Gifts go a long way with him.' },
+    proud:  { name: 'Proud',  gift: 0.6, beaten: -26, desc: 'Lord Harric never forgets a defeat, and takes gifts as no more than his due.' },
+    wary:   { name: 'Wary',   gift: 1.0, beaten: 6,   desc: 'Lord Harric respects strength. Every beating makes him readier to talk.' }
+  };
+  var DIP = { gift: 80, envoy: 20, pact: 150, ally: 400, pactAtt: 25, allyAtt: 60, allySeasons: 4 };
+  function dip() {
+    if (!G.dip) {
+      var keys = Object.keys(PERSONAS);
+      G.dip = { att: -20, pers: keys[Math.floor(U.mulberry((G.seed || 1) + 77)() * keys.length)], known: false,
+                pact: -1, ally: false, giftAt: -1e9, envoyAt: -1e9 };
+    }
+    return G.dip;
+  }
+  function persona() { return PERSONAS[dip().pers] || PERSONAS.wary; }
+  function atPeace() { var d = dip(); return d.ally || d.pact >= 0; }
+  function dipShift(n) { var d = dip(); d.att = U.clamp(d.att + n, -100, 100); }
+  function dipMood() {
+    var a = dip().att;
+    return a <= -50 ? { name: 'Hostile', col: '#e0795f' } : a < 0 ? { name: 'Cold', col: '#e0795f' }
+         : a < DIP.pactAtt ? { name: 'Wary', col: '#e0b23c' } : a < DIP.allyAtt ? { name: 'Friendly', col: '#8fd06a' }
+         : { name: 'Warm', col: '#8fd06a' };
+  }
+  function dipReady(kind) {
+    var d = dip(), at = kind === 'gift' ? d.giftAt : d.envoyAt;
+    return G.time - at >= DATA.SEASON_LEN;
+  }
+  function dipAct(kind) {
+    var d = dip(), p = persona();
+    if (G.campaign && kind !== 'break') return { ok: false, why: 'Not while your army is marching on them' };
+    if (kind === 'gift' || kind === 'envoy') {
+      if (!dipReady(kind)) return { ok: false, why: 'Wait a season before sending another' };
+      var c = kind === 'gift' ? DIP.gift : DIP.envoy;
+      if (G.res.gold < c) return { ok: false, why: 'Not enough gold' };
+      G.res.gold -= c;
+      if (kind === 'gift') {
+        d.giftAt = G.time; var gain = Math.round(12 * p.gift);
+        dipShift(gain);
+        G.rival.nextRaid += DATA.SEASON_LEN * 0.5;
+        return { ok: true, msg: 'Brannoch accepts the gift. (+' + gain + ' goodwill)' };
+      }
+      d.envoyAt = G.time; d.known = true; dipShift(3);
+      return { ok: true, msg: 'Your envoy returns: ' + p.desc };
+    }
+    if (kind === 'pact') {
+      if (d.pact >= 0 || d.ally) return { ok: false, why: 'You already have a pact' };
+      if (d.att < DIP.pactAtt) return { ok: false, why: 'They are not friendly enough yet' };
+      if (G.res.gold < DIP.pact) return { ok: false, why: 'Not enough gold' };
+      G.res.gold -= DIP.pact; d.pact = G.time; dipShift(8);
+      G.stats.pacts = (G.stats.pacts || 0) + 1;
+      return { ok: true, msg: 'The pact is sealed. Brannoch\'s raiders stay home, and their merchants come instead.' };
+    }
+    if (kind === 'ally') {
+      if (d.ally) return { ok: false, why: 'You are already allies' };
+      if (d.pact < 0 || G.time - d.pact < DATA.SEASON_LEN * DIP.allySeasons) return { ok: false, why: 'Keep the pact for ' + DIP.allySeasons + ' seasons first' };
+      if (d.att < DIP.allyAtt) return { ok: false, why: 'They are not warm enough yet' };
+      if (G.res.gold < DIP.ally) return { ok: false, why: 'Not enough gold' };
+      G.res.gold -= DIP.ally; d.ally = true; dipShift(15);
+      G.happy = U.clamp(G.happy + 10, 0, 100);
+      return { ok: true, msg: 'Bells ring on both shores: a royal wedding binds Ashveil and Brannoch.' };
+    }
+    return { ok: false, why: '?' };
+  }
+  /* marching on a partner tears up whatever was agreed */
+  function breakPeace() {
+    var d = dip();
+    if (!atPeace()) return false;
+    d.pact = -1; d.ally = false; dipShift(-60);
+    G.happy = U.clamp(G.happy - 6, 0, 100);
+    emit('toast', { msg: 'You broke faith with Brannoch. They will not trust you again soon.', kind: 'bad' });
+    return true;
+  }
+  /* how a battle against Brannoch changes their mind */
+  function dipBattle(won, full) {
+    var p = persona();
+    if (won) dipShift(full ? p.beaten : Math.round(p.beaten / 2));
+    else dipShift(5);
+  }
+  /* each new season: trade under the pact, tribute, and the slow drift */
+  function dipSeason() {
+    var d = dip(), notes = [];
+    if (d.ally || d.pact >= 0) {
+      var trade = d.ally ? 40 : 18;
+      G.res.gold = Math.min(cap('gold'), G.res.gold + trade);
+      dipShift(d.ally ? 1 : 2);
+      notes.push('+' + trade + ' gold in trade with Brannoch');
+    } else {
+      var base = G.tribute && G.tribute.left > 0 ? -35 : -20;
+      if (d.att > base) dipShift(-Math.min(3, d.att - base));
+      else if (d.att < base) dipShift(Math.min(2, base - d.att));
+    }
+    if (G.tribute && G.tribute.left > 0) {
+      G.res.gold = Math.min(cap('gold'), G.res.gold + G.tribute.amt);
+      G.tribute.left--;
+      notes.push('Brannoch\'s tribute: +' + G.tribute.amt + ' gold' + (G.tribute.left ? ' (' + G.tribute.left + ' more)' : ' — the last of it'));
+      if (!G.tribute.left) G.tribute = null;
+    }
+    if (notes.length) emit('toast', { msg: notes.join(' · '), kind: 'good' });
   }
 
   /* the battle is over — the survivors turn for home */
@@ -1969,6 +2088,7 @@ var SIM = (function () {
       castle: G.castle, tech: G.tech, research: G.research,
       army: G.army, rival: G.rival, quests: G.quests, stats: G.stats, chapter: G.chapter || 0, won: !!G.won,
       tut: typeof G.tut === 'number' ? G.tut : -1, mkt: G.mkt || {}, decrees: G.decrees || {}, shiftUntil: G.shiftUntil || -1, finds: G.finds || [],
+      dip: G.dip || null, tribute: G.tribute || null,
       shipTimer: G.shipTimer, findTimer: G.findTimer,
       vets: G.vets || {}, formation: G.formation || 'line', seen: G.seen || {}, campaign: G.campaign || null,
       festivals: G.festivals || {}, fairUntil: G.fairUntil || -1,
@@ -2024,6 +2144,7 @@ var SIM = (function () {
       quests: d.quests || {}, stats: st, eventTimer: d.eventTimer,
       chapter: d.chapter || 0, won: !!d.won, weather: 'clear', weatherTimer: 30,
       tut: typeof d.tut === 'number' ? d.tut : -1, mkt: d.mkt || {}, decrees: d.decrees || {}, shiftUntil: d.shiftUntil || -1, finds: d.finds || [],
+      dip: d.dip || null, tribute: d.tribute || null,
       ship: null, shipTimer: d.shipTimer || DATA.SEASON_LEN * 2, findTimer: d.findTimer || 40, fireTimer: 5,
       vets: d.vets || {}, formation: d.formation || 'line',
       growTimer: 6, reliefTimer: 30, reliefCooldown: 0,
@@ -2103,6 +2224,8 @@ var SIM = (function () {
     decree: decree, decreeReady: decreeReady, decreeCost: decreeCost, shiftMul: shiftMul,
     collectFind: collectFind, takeOffer: takeOffer, shipLeaves: shipLeaves, mktOf: mktOf,
     issues: issues, issueCount: issueCount, advice: advice,
-    happyTarget: happyTarget
+    happyTarget: happyTarget,
+    dip: dip, persona: persona, atPeace: atPeace, dipMood: dipMood, dipReady: dipReady, dipAct: dipAct,
+    dipBattle: dipBattle, breakPeace: breakPeace, DIP: DIP, PERSONAS: PERSONAS
   };
 })();

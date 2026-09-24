@@ -80,6 +80,16 @@
     <button id="build-cancel" type="button">Cancel</button>
   </div>
 
+  <div id="war-hud" class="hidden">
+    <div class="war-head"><b id="war-title">Raid</b><span id="war-count"></span></div>
+    <div id="war-squads"></div>
+    <div class="war-orders">
+      <button type="button" data-o="engage">⚔️ Charge</button>
+      <button type="button" data-o="hold">🛡️ Hold</button>
+      <button type="button" data-o="retreat">🏰 Fall back</button>
+    </div>
+    <p id="war-hint">Tap a squad, then tap where to send it.</p>
+  </div>
   <button id="undo-chip" class="hidden" type="button">↶ Undo <span id="undo-left"></span></button>
 
   <!-- ============ BOTTOM NAV ============ -->
@@ -173,6 +183,7 @@
 <script src="js/agents.js"></script>
 <script src="js/render.js"></script>
 <script src="js/battle.js"></script>
+<script src="js/war.js"></script>
 <script src="js/ui.js"></script>
 <script src="js/tutorial.js"></script>
 <script src="js/main.js"></script>

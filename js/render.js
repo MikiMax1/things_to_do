@@ -300,6 +300,10 @@ var RENDER = (function () {
       if (onScreen(f.x, f.y, 40)) items.push({ k: 'find', f: f, d: f.x + f.y });
     });
     if (G.ship && onScreen(G.ship.x, G.ship.y, 120)) items.push({ k: 'ship', d: G.ship.x + G.ship.y });
+    if (WAR.active) {
+      WAR.state.ships.forEach(function (s) { if (onScreen(s.x, s.y, 120)) items.push({ k: 'wship', s: s, d: s.x + s.y }); });
+      WAR.state.units.forEach(function (u) { if ((!u.dead || u.fade > 0) && !u.fled && onScreen(u.x, u.y, 40)) items.push({ k: 'war', u: u, d: u.x + u.y + (u.dead ? -0.3 : 0.03) }); });
+    }
     items.sort(function (p, q) { return p.d - q.d; });
 
     /* ---- 3. ground cover: fields, then every shadow ---- */
@@ -358,6 +362,10 @@ var RENDER = (function () {
         drawFind(it.f, z);
       } else if (it.k === 'ship') {
         drawShip(G.ship, z);
+      } else if (it.k === 'wship') {
+        var ss = toScreen(it.s.x, it.s.y); WAR.drawShip(g, it.s, ss.x, ss.y, z);
+      } else if (it.k === 'war') {
+        var su = toScreen(it.u.x, it.u.y); WAR.drawUnit(g, it.u, su.x, su.y, z);
       } else if (it.k === 'vil') {
         var sp2 = toScreen(it.a.x, it.a.y);
         AGENTS.draw(g, it.a, sp2.x, sp2.y, z);
@@ -366,6 +374,8 @@ var RENDER = (function () {
         AGENTS.drawAnimal(g, it.a, sp3.x, sp3.y, z, season);
       }
     });
+
+    if (WAR.active) WAR.drawShots(g, toScreen, z);
 
     /* ---- 4b. what each workplace makes, rising off it now and then ---- */
     if (G.speed > 0 && z >= 34) productionPops(dt * G.speed, onScreen);

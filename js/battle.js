@@ -17,6 +17,7 @@ var BATTLE = (function () {
   var endTimer = 0;
   var speedMul = 1.35;
   var ground = 'open', reserve = [], reservePct = 0, retreated = false, deploying = false;
+  var fort = null;   // Brannoch's town: a palisade and a gate to batter down
 
   var COL = {
     ours: { shirt: '#3f6ea5', shield: '#2d5c96', trim: '#9dc0e8' },
@@ -106,6 +107,7 @@ var BATTLE = (function () {
         var col = Math.floor(slot / perCol), row = slot % perCol;
         var back = (d.rng > 40) ? 26 : 0;
         var x = FW * 0.85 + col * 17 + back + (Math.random() - .5) * 5;
+        if (fort) x = Math.max(fort.x + 18, x - FW * 0.05);
         var y = FH / 2 + (row - (perCol - 1) / 2) * (FH * 0.66 / perCol) + (Math.random() - .5) * 6;
         arr.push(mkUnit('foes', k, d, U.clamp(x, FW * 0.62, FW - 12), U.clamp(y, 26, FH - 26), {}));
         slot++;
@@ -145,6 +147,9 @@ var BATTLE = (function () {
 
     var power = ctx.power || SIM.G.rival.str;
     ground = 'open'; reservePct = 0; retreated = false; reserve = [];
+    var gateHp = Math.round(180 + power * 1.6);
+    fort = (k === 'raid' && ctx.flavour !== 'bandits') ? { x: FW * 0.66,
+      gate: { gate: true, x: FW * 0.66, y: FH / 2, hp: gateHp, maxHp: gateHp, def: 10, side: 'foes', dead: false, flash: 0 } } : null;
     var ours = buildOurs();
     units = ours.concat(buildFoes(foeArmy(power, ctx.flavour)));
     startOurs = ours.length;
@@ -154,7 +159,7 @@ var BATTLE = (function () {
 
     el('bt-foe-name').textContent = ctx.name || 'Brannoch';
     el('bt-our-name').textContent = 'Ashveil';
-    el('bt-phase').textContent = kind === 'defend' ? 'Defending' : 'Attacking';
+    el('bt-phase').textContent = kind === 'defend' ? 'Defending' : fort ? 'Storming the town' : 'Attacking';
 
     setupOrders();
     openDeploy();
@@ -308,6 +313,19 @@ var BATTLE = (function () {
 
   function hit(src, tgt, mult) {
     var raw = src.atk * U.range(Math.random, 0.82, 1.2) * (mult || 1);
+    if (tgt.gate) {
+      if (tgt.dead) return 0;
+      var gd = raw * (12 / (12 + tgt.def)) * (src.splash ? 3 : 1);
+      tgt.hp -= gd; tgt.flash = 0.18;
+      fx.push({ kind: 'spark', x: tgt.x - 4, y: src.y, life: .25 });
+      if (tgt.hp <= 0) {
+        tgt.dead = true;
+        fx.push({ kind: 'boom', x: tgt.x, y: tgt.y, life: .6 });
+        say('The gate gives way! Into the town!'); U.sfx.horn(); U.vibrate(30);
+        units.forEach(function (o) { if (o.target === tgt) o.target = null; });
+      }
+      return gd;
+    }
     var dmg = raw * (12 / (12 + tgt.def));
     tgt.hp -= dmg;
     tgt.flash = 0.18;
@@ -371,10 +389,13 @@ var BATTLE = (function () {
       }
 
       var e = u.target && !u.target.dead ? u.target : nearestEnemy(u);
+      // while the gate stands, fighters and siege engines go for the gate
+      var walled = fort && !fort.gate.dead;
+      if (walled && ours && e && e.x > fort.x && !e.gate && (u.rng <= 40 || u.splash > 0)) e = fort.gate;
       u.target = e;
       if (!e) continue;
 
-      var d = U.dist(u.x, u.y, e.x, e.y);
+      var d = e.gate ? Math.hypot(e.x - u.x, Math.max(0, Math.abs(u.y - e.y) - 14)) : U.dist(u.x, u.y, e.x, e.y);
       var wantRange = u.rng;
       var spdMul = (ours && chargeOn) ? 1.7 : (ours && holdOn) ? 0 : 1;
       if (!ours) spdMul = 1;
@@ -393,6 +414,7 @@ var BATTLE = (function () {
           var m = Math.hypot(dx, dy) || 1;
           u.x += dx / m * u.spd * spdMul * dt;
           u.y += dy / m * u.spd * spdMul * dt;
+          if (walled) { if (ours && u.x > fort.x - 5) u.x = fort.x - 5; if (!ours && u.x < fort.x + 7) u.x = fort.x + 7; }
           u.bob += dt * 9;
           u.state = 'advance';
           if (Math.random() < dt * 0.25) fx.push({ kind: 'dust', x: u.x - (u.side === 'ours' ? 4 : -4), y: u.y, life: .5 });
@@ -405,7 +427,7 @@ var BATTLE = (function () {
           if (u.rng > 40) {
             shots.push({ x: u.x, y: u.y, tx: e.x, ty: e.y, t: 0,
               dur: U.clamp(d / 260, .18, .8), src: u, tgt: e, big: u.splash > 0,
-              mult: narrowFactor(u.side) });
+              mult: narrowFactor(u.side) * (walled && ours && !e.gate && e.x > fort.x ? 0.55 : 1) });
             U.sfx.arrow();
           } else {
             hit(u, e, ((ours && chargeOn) ? 1.3 : 1) * narrowFactor(u.side));
@@ -778,8 +800,52 @@ var BATTLE = (function () {
     return 'rgb(' + Math.round(((n >> 16) & 255) * f) + ',' + Math.round(((n >> 8) & 255) * f) + ',' + Math.round((n & 255) * f) + ')';
   }
 
+  /* the palisade round Brannoch's town, with its gate */
+  function drawFort() {
+    var fx0 = fort.x, gate = fort.gate, top = 8, bot = FH - 8, seg = 7;
+    function post(x, y, h) {
+      var a = P(x, y), w = 3.2 * scale;
+      g.fillStyle = 'rgba(0,0,0,.22)'; g.fillRect(a.x - w / 2 + 3 * scale, a.y - 1 * scale, w * 1.3, 2.2 * scale);
+      var gr = g.createLinearGradient(a.x - w / 2, 0, a.x + w / 2, 0);
+      gr.addColorStop(0, '#8a6a45'); gr.addColorStop(1, '#4f3a25');
+      g.fillStyle = gr; g.fillRect(a.x - w / 2, a.y - h * scale, w, h * scale);
+      g.fillStyle = '#a58459';
+      g.beginPath(); g.moveTo(a.x - w / 2, a.y - h * scale); g.lineTo(a.x, a.y - (h + 3) * scale); g.lineTo(a.x + w / 2, a.y - h * scale); g.fill();
+    }
+    for (var y = top; y <= bot; y += seg) {
+      if (Math.abs(y - gate.y) < 15) continue;
+      post(fx0 + Math.sin(y * 0.7) * 0.8, y, 17 + Math.sin(y * 1.3) * 1.5);
+    }
+    // gate towers
+    [gate.y - 18, gate.y + 18].forEach(function (ty) {
+      var a = P(fx0, ty), w = 12 * scale, h = 30 * scale;
+      g.fillStyle = 'rgba(0,0,0,.25)'; g.fillRect(a.x - w / 2 + 4 * scale, a.y - 2 * scale, w * 1.1, 4 * scale);
+      var gr = g.createLinearGradient(a.x - w / 2, 0, a.x + w / 2, 0);
+      gr.addColorStop(0, '#7a5c3c'); gr.addColorStop(1, '#43301f');
+      g.fillStyle = gr; g.fillRect(a.x - w / 2, a.y - h, w, h);
+      g.fillStyle = '#5b4330'; g.fillRect(a.x - w / 2 - 1.5 * scale, a.y - h - 3 * scale, w + 3 * scale, 4 * scale);
+      g.fillStyle = COL.foes.shield;
+      g.fillRect(a.x - 0.6 * scale, a.y - h - 13 * scale, 1.2 * scale, 10 * scale);
+      g.fillRect(a.x, a.y - h - 13 * scale, (6 + Math.sin(t * 5 + ty) * 1.2) * scale, 4 * scale);
+    });
+    var gp = P(fx0, gate.y + 12), gw = 6 * scale, gh = 24 * scale;
+    if (!gate.dead) {
+      g.fillStyle = gate.flash > 0 ? '#c9a878' : '#5c4128';
+      g.fillRect(gp.x - gw / 2, gp.y - gh, gw, gh);
+      g.strokeStyle = 'rgba(20,14,8,.7)'; g.lineWidth = 1.2 * scale;
+      for (var i = 1; i < 4; i++) { g.beginPath(); g.moveTo(gp.x - gw / 2, gp.y - gh * i / 4); g.lineTo(gp.x + gw / 2, gp.y - gh * i / 4); g.stroke(); }
+      var k = Math.max(0, gate.hp / gate.maxHp), bp = P(fx0, gate.y - 34);
+      g.fillStyle = 'rgba(0,0,0,.55)'; g.fillRect(bp.x - 16 * scale, bp.y, 32 * scale, 3.4 * scale);
+      g.fillStyle = k > 0.5 ? '#d9b44a' : '#e0795f'; g.fillRect(bp.x - 16 * scale, bp.y, 32 * k * scale, 3.4 * scale);
+    } else {
+      g.fillStyle = '#3d2c1c';
+      g.save(); g.translate(gp.x + 3 * scale, gp.y); g.rotate(1.2); g.fillRect(-gw / 2, -gh, gw, gh); g.restore();
+    }
+  }
+
   function render() {
     drawField();
+    if (fort) drawFort();
     var order = units.slice().sort(function (a, b) { return a.y - b.y; });
     // the fallen first, so the living stand over them
     order.forEach(function (u) { if (u.dead) drawUnit(u); });
@@ -824,7 +890,7 @@ var BATTLE = (function () {
         g.globalAlpha = 1;
       } else if (f.kind === 'boom') {
         g.globalAlpha = U.clamp(f.life * 2.2, 0, 1);
-        var rr = (0.45 - f.life) * 60 * scale + 6;
+        var rr = Math.max(0, 0.45 - f.life) * 60 * scale + 6;
         var gr = g.createRadialGradient(s.x, s.y - 4 * scale, 0, s.x, s.y - 4 * scale, rr);
         gr.addColorStop(0, '#fff0b0'); gr.addColorStop(0.4, '#f2a24a'); gr.addColorStop(1, 'rgba(120,90,60,0)');
         g.fillStyle = gr;
@@ -904,7 +970,9 @@ var BATTLE = (function () {
         loot.food = Math.round(20 + startFoes * 4);
         loot.iron = Math.round(startFoes * 1.6);
         title = 'Victory';
-        body = 'Brannoch\'s camp is taken and stripped. Their power is broken for a season.';
+        G.tribute = { left: 4, amt: Math.round(30 + startFoes * 4) };
+        body = 'The gate is down and Brannoch\'s town is taken and stripped. They will pay tribute every season for a year — <b>' +
+               G.tribute.amt + ' gold</b> a time.';
       }
       Object.keys(loot).forEach(function (k) {
         if (loot[k]) G.res[k] = Math.min(SIM.cap(k), G.res[k] + loot[k]);
@@ -929,6 +997,8 @@ var BATTLE = (function () {
       G.happy = U.clamp(G.happy - 14, 0, 100);
       U.sfx.defeat();
     }
+
+    if (ctx.flavour !== 'bandits' && ctx.faction !== 'wolves') SIM.dipBattle(won && !retreated, kind === 'raid');
 
     if (lostTotal) {
       body += '<br><b>Fallen:</b> ' + Object.keys(lost).map(function (k) {

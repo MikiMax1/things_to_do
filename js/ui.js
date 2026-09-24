@@ -169,7 +169,7 @@ var UI = (function () {
   var PANELS = {
     build: { title: 'Build', tabs: function () { return [{ key: 'suggested', name: '★ Suggested' }].concat(DATA.CATS); }, body: buildBody },
     people: { title: 'People', tabs: function () { return [{ key: 'quests', name: 'Story' }, { key: 'overview', name: 'Realm' }, { key: 'jobs', name: 'Work' }]; }, body: peopleBody },
-    army: { title: 'Army', tabs: function () { return [{ key: 'roster', name: 'Roster' }, { key: 'muster', name: 'Muster' }, { key: 'war', name: 'War' }]; }, body: armyBody },
+    army: { title: 'Army', tabs: function () { return [{ key: 'roster', name: 'Roster' }, { key: 'muster', name: 'Muster' }, { key: 'war', name: 'War' }, { key: 'dip', name: 'Diplomacy' }]; }, body: armyBody },
     tech: { title: 'Research', tabs: function () { return [{ key: 1, name: 'Tier I' }, { key: 2, name: 'Tier II' }, { key: 3, name: 'Tier III' }]; }, body: techBody },
     decrees: { title: 'Royal Decrees', tabs: function () { return [{ key: 'all', name: 'Decrees' }]; }, body: decreesBody },
     alerts: { title: 'Needs attention', tabs: function () { return [{ key: 'all', name: 'All' }]; }, body: alertsBody },
@@ -490,6 +490,7 @@ var UI = (function () {
       });
     }
 
+    if (tab === 'dip') { dipBody(box); return; }
     if (tab === 'war') {
       var r = G.rival;
       var attackOdds = estimateOdds(r.str, 'raid');
@@ -508,7 +509,7 @@ var UI = (function () {
         '<div class="stat-line"><span>Do they fear you?</span><b style="color:' +
           (SIM.deterrence() > 1.45 ? '#8fd06a' : SIM.deterrence() > 0.9 ? '#e0b23c' : '#e0795f') + '">' +
           (SIM.deterrence() > 1.45 ? 'yes — many raids turn back' : SIM.deterrence() > 0.9 ? 'they are wary' : 'no — you look easy') + '</b></div>' +
-        '<div class="stat-line"><span>Next raid on you</span><b>' + (grace > 0 ? 'at peace for ' + grace + ' more season' + (grace > 1 ? 's' : '') : '~' + Math.max(0, Math.round(r.nextRaid / DATA.SEASON_LEN * 10) / 10) + ' seasons') + '</b></div>' +
+        '<div class="stat-line"><span>Next raid on you</span><b>' + (SIM.atPeace() ? 'none — you have a treaty' : grace > 0 ? 'at peace for ' + grace + ' more season' + (grace > 1 ? 's' : '') : '~' + Math.max(0, Math.round(r.nextRaid / DATA.SEASON_LEN * 10) / 10) + ' seasons') + '</b></div>' +
         '<div class="stat-line"><span>Battles won / lost</span><b>' + G.stats.wins + ' / ' + G.stats.losses + '</b></div>' +
         '</div>'));
       box.appendChild(h('<p class="sect-label">Formation</p>'));
@@ -541,7 +542,11 @@ var UI = (function () {
         var raid = h('<button class="btn wide">⚔️ March on Brannoch</button>');
         raid.disabled = SIM.armyCount() < 3;
         if (SIM.armyCount() < 3) raid.textContent = 'You need at least 3 soldiers';
+        if (SIM.atPeace()) raid.textContent = '⚔️ March on Brannoch (breaks your ' + (SIM.dip().ally ? 'alliance' : 'pact') + ')';
         raid.addEventListener('click', function () {
+          if (SIM.atPeace() && !raid.dataset.sure) {
+            raid.dataset.sure = 1; raid.textContent = 'Tap again to break faith and march'; raid.classList.add('danger'); U.sfx.err(); return;
+          }
           var r = SIM.launchCampaign({ power: G.rival.str, name: 'Brannoch' });
           if (!r.ok) { toast(r.why, 'bad'); U.sfx.err(); return; }
           U.sfx.horn();
@@ -564,18 +569,52 @@ var UI = (function () {
         renderSheet();
       });
       box.appendChild(scout);
-      var tribute = h('<button class="btn sec wide">🕊️ Send tribute (−150 gold, delays their raid)</button>');
-      tribute.addEventListener('click', function () {
-        if (G.res.gold < 150) { toast('Not enough gold', 'bad'); return; }
-        G.res.gold -= 150;
-        r.nextRaid += DATA.SEASON_LEN * 2.4;
-        r.str = Math.max(10, r.str - 6);
-        toast('Brannoch accepts the tribute. Quiet, for now.', 'good');
-        renderSheet();
-      });
-      box.appendChild(tribute);
       box.appendChild(h('<p class="hint">Brannoch sizes each raid against <b>your</b> strength, so you will not be jumped by an army ten times your own — but leave yourself defenceless and they will still take your stores. Walls and watchtowers only help when <b>defending</b>. Attacking is won by numbers, archers and smithies.</p>'));
     }
+  }
+
+  function dipBody(box) {
+    var G = SIM.G, d = SIM.dip(), p = SIM.persona(), mood = SIM.dipMood(), D = SIM.DIP;
+    var pct = (d.att + 100) / 2;
+    var status = d.ally ? '💍 Allies by marriage' : d.pact >= 0 ? '🤝 Trade pact' : G.tribute ? '⚖️ Paying you tribute' : '⚔️ No treaty';
+    box.appendChild(h('<div class="card">' +
+      '<h4 style="font-family:var(--font);font-size:15px">Lord Harric of Brannoch</h4>' +
+      '<p style="font-size:12px;color:#c3b18e;margin:4px 0 8px">' + (d.known ? p.desc : 'You know little of him yet. Send an envoy to learn his temper.') + '</p>' +
+      '<div class="stat-line"><span>Their mood</span><b style="color:' + mood.col + '">' + mood.name + ' (' + (d.att > 0 ? '+' : '') + Math.round(d.att) + ')</b></div>' +
+      '<div class="meter dip"><i style="width:' + pct.toFixed(1) + '%"></i><em style="left:' + ((D.pactAtt + 100) / 2) + '%"></em><em style="left:' + ((D.allyAtt + 100) / 2) + '%"></em></div>' +
+      '<div class="stat-line" style="margin-top:8px"><span>Standing</span><b>' + status + '</b></div>' +
+      (d.known ? '<div class="stat-line"><span>Temper</span><b>' + p.name + '</b></div>' : '') +
+      (G.tribute ? '<div class="stat-line"><span>Tribute</span><b>' + G.tribute.amt + ' gold × ' + G.tribute.left + ' seasons</b></div>' : '') +
+      '</div>'));
+    function act(kind, label, sub, disabledWhy) {
+      var b = h('<button class="btn ' + (kind === 'pact' || kind === 'ally' ? '' : 'sec ') + 'wide dip-act">' +
+        '<span>' + label + '</span><small>' + (disabledWhy || sub) + '</small></button>');
+      b.disabled = !!disabledWhy;
+      b.addEventListener('click', function () {
+        var r = SIM.dipAct(kind);
+        if (!r.ok) { toast(r.why, 'bad'); U.sfx.err(); return; }
+        toast(r.msg, 'good'); U.sfx.tap();
+        chronicle(kind === 'gift' ? 'Sent gifts to Brannoch.' : kind === 'envoy' ? 'An envoy went to Brannoch.' :
+                  kind === 'pact' ? 'Signed a trade pact with Brannoch.' : 'A royal wedding: Brannoch is now an ally.');
+        SIM.save(); renderSheet(); refreshHUD();
+      });
+      box.appendChild(b);
+    }
+    var marching = G.campaign ? 'Not while your army is marching on them' : '';
+    act('envoy', '📜 Send an envoy · ' + D.envoy + ' gold', d.known ? 'Keep the talks going (+3).' : 'Learn their lord\'s temper, and warm him a little.',
+      marching || (SIM.dipReady('envoy') ? '' : 'Your last envoy has only just returned'));
+    act('gift', '🎁 Send gifts · ' + D.gift + ' gold', 'Warms them' + (d.known ? ' by about ' + Math.round(12 * p.gift) : '') + ' and delays any raid.',
+      marching || (SIM.dipReady('gift') ? '' : 'You sent gifts this season'));
+    if (!d.ally && d.pact < 0) {
+      act('pact', '🤝 Offer a trade pact · ' + D.pact + ' gold', 'No more raids from Brannoch, and +18 gold in trade every season.',
+        marching || (d.att < D.pactAtt ? 'Needs their mood at +' + D.pactAtt + ' or better' : ''));
+    } else if (!d.ally) {
+      var held = (G.time - d.pact) / DATA.SEASON_LEN;
+      act('ally', '💍 Propose a royal marriage · ' + D.ally + ' gold', 'Allies for good: +40 gold every season and a happier realm.',
+        held < D.allySeasons ? 'Keep the pact ' + Math.ceil(D.allySeasons - held) + ' more season' + (D.allySeasons - held > 1 ? 's' : '') :
+        d.att < D.allyAtt ? 'Needs their mood at +' + D.allyAtt + ' or better' : '');
+    }
+    box.appendChild(h('<p class="hint">Beating Brannoch in battle sours most lords — though a <b>wary</b> one respects it. Storming their town earns a year of tribute. Marching on them breaks any pact. <b>The Sea Wolves</b> talk to nobody: keep soldiers and walls for them whatever you sign.</p>'));
   }
 
   function fieldStrength(extraDef) { return SIM.fieldStrength(extraDef); }
@@ -1177,6 +1216,12 @@ var UI = (function () {
         updateGhost(e.clientX, sy);
         tryPlaceAt(e.clientX, sy);
       } else {
+        if (WAR.active && WAR.selected) {
+          var wp = RENDER.toWorld(e.clientX, sy);
+          WAR.orderAt(wp.x, wp.y); U.sfx.tap(); U.vibrate(10);
+          RENDER.puff(wp.x, wp.y, '#f0d98a', 5);
+          return;
+        }
         if (RENDER.pickShip(e.clientX, sy)) { U.sfx.tap(); openShip(); return; }
         var fi = RENDER.pickFind(e.clientX, sy);
         if (fi >= 0) { collectFind(fi); return; }
@@ -1490,12 +1535,12 @@ var UI = (function () {
     var ev = {
       art: cause.art, title: cause.title,
       text: cause.text + '\n\nRoughly ' + Math.round(power / 9) +
-            ' fighters. Your defences add +' + SIM.defenseScore() +
+            ' fighters in ' + (cause.faction === 'wolves' ? 'black-sailed longships' : 'longships') + '. Your defences add +' + SIM.defenseScore() +
             ' to the line, and your captains rate the fight at about ' + estimateOdds(power, 'defend') + '%.' +
             (SIM.G.campaign ? '\n\nYour army is in the field and cannot get back in time.' : '') +
             (cause.counter ? '\n\n' + cause.counter : ''),
       choices: [
-        { label: '⚔️ Meet them in the field', sub: 'Fight — your walls and towers help', battle: true },
+        { label: '⚔️ Man the defences', sub: 'Fight them on the island — towers shoot, walls block, you command', battle: true },
         { label: '💰 Buy them off', sub: '−' + Math.round(35 + power * 1.5) + ' gold', buy: Math.round(35 + power * 1.5) }
       ]
     };
@@ -1514,12 +1559,22 @@ var UI = (function () {
         el('event-modal').classList.add('hidden');
         modalBusy = false;
         if (c.battle) {
-          startBattle('defend', { power: power, name: 'Brannoch', cause: cause.key }, prevSpeed);
+          setSpeed(prevSpeed || 1);
+          var fac = cause.faction || 'brannoch';
+          if (WAR.begin({ power: power, cause: cause.key, faction: fac, name: fac === 'wolves' ? 'The Sea Wolves' : 'Brannoch' })) {
+            var st = WAR.state;
+            RENDER.centreOn(st.land.x - 0.5, st.land.y - 0.5);
+            chronicle((fac === 'wolves' ? 'Sea Wolf' : 'Brannoch') + ' longships sighted.');
+            toast('⛵ Longships! They will land in moments — your soldiers are mustering.', 'war');
+            refreshHUD();
+          } else {
+            startBattle('defend', { power: power, name: fac === 'wolves' ? 'The Sea Wolves' : 'Brannoch', cause: cause.key, faction: fac }, prevSpeed);
+          }
         } else {
           SIM.G.res.gold -= c.buy;
           SIM.G.happy = U.clamp(SIM.G.happy - 6, 0, 100);
-          SIM.G.rival.str += 4;
-          chronicle('Paid off a Brannoch war band for ' + c.buy + ' gold.');
+          if (cause.faction !== 'wolves') { SIM.G.rival.str += 4; if (SIM.dip().pers === 'greedy') SIM.dip().att = Math.min(100, SIM.dip().att + 4); }
+          chronicle('Paid off a ' + (cause.faction === 'wolves' ? 'Sea Wolf' : 'Brannoch') + ' war band for ' + c.buy + ' gold.');
           toast('The war band takes your gold and turns for home.', 'war');
           setSpeed(prevSpeed || 1);
           refreshHUD();
@@ -1571,6 +1626,9 @@ var UI = (function () {
     el('btn-sound').addEventListener('click', toggleSound);
     el('btn-decrees').addEventListener('click', function () { U.sfx.tap(); openSheet('decrees'); });
     el('btn-menu').addEventListener('click', function () { openTab.world = 'settings'; openSheet('world'); });
+    document.querySelectorAll('.war-orders button').forEach(function (b) {
+      b.addEventListener('click', function () { WAR.orderAll(b.dataset.o); U.sfx.horn(); U.vibrate(15); });
+    });
     [0, 1, 2, 3].forEach(function (i) {
       el('spd-' + i).addEventListener('click', function () { setSpeed([0, 1, 2, 4][i]); U.sfx.tap(); });
     });
@@ -1595,6 +1653,9 @@ var UI = (function () {
         eventQueue.unshift({ k: 'chapter', idx: payload.idx });
       }
       if (kind === 'victory') eventQueue.unshift({ k: 'victory' });
+      if (kind === 'war-landed') { toast('They are ashore! Send your squads to meet them.', 'war'); U.sfx.horn(); U.vibrate([40, 60, 40]); }
+      if (kind === 'war-flee') toast(payload.why === 'broken' ? 'The raiders break and run for their boats!' : 'The raiders are loading their plunder onto the ships…', payload.why === 'broken' ? 'good' : 'war');
+      if (kind === 'war-over') eventQueue.unshift({ k: 'warover', r: payload });
       if (kind === 'weather' && payload === 'rain') toast('🌧️ Rain sweeps in off the sea — the fields drink it up.', '');
       if (kind === 'harvest') { toast('🌾 Harvest time! ' + payload + ' food stands in the fields — the farmhands are bringing it in.', 'good'); chronicle('The harvest began: ' + payload + ' in the fields.'); U.sfx.quest(); }
       if (kind === 'fire') {
@@ -1640,11 +1701,56 @@ var UI = (function () {
     } catch (e) {}
   }
 
+  /* the panel shown while raiders are on the island */
+  var warKey = '';
+  function refreshWar() {
+    var hud = el('war-hud');
+    if (!WAR.active) {
+      if (!hud.classList.contains('hidden')) { hud.classList.add('hidden'); el('side-tools').style.display = ''; }
+      warKey = ''; return;
+    }
+    hud.classList.remove('hidden');
+    el('side-tools').style.display = 'none';
+    var st = WAR.state;
+    el('war-title').textContent = (st.faction === 'wolves' ? '🐺 The Sea Wolves' : '⚔️ Brannoch') +
+      (st.phase === 'sail' ? ' — landing soon' : st.phase === 'fleeing' ? ' — running for their boats' : ' — ashore');
+    el('war-count').textContent = 'raiders ' + (st.phase === 'sail' ? st.startFoes : WAR.alive('foe')) + ' · yours ' + WAR.alive('mine');
+    var sq = WAR.squads(), key = JSON.stringify(sq) + WAR.selected;
+    if (key !== warKey) {
+      warKey = key;
+      var box = el('war-squads'); box.innerHTML = '';
+      Object.keys(WAR.SQUADS).forEach(function (k) {
+        if (!sq[k]) return;
+        var b = h('<button type="button" class="' + (WAR.selected === k ? 'on' : '') + '">' + WAR.SQUADS[k].ic + ' ' + WAR.SQUADS[k].name + ' ' + sq[k] + '</button>');
+        b.addEventListener('click', function () { WAR.select(k); U.sfx.tap(); warKey = ''; });
+        box.appendChild(b);
+      });
+      if (!Object.keys(sq).length) box.appendChild(h('<p style="margin:0;font-size:12px;color:#f0c8b8">No soldiers to send — only towers and walls stand between them and the town.</p>'));
+      el('war-hint').textContent = WAR.selected ? 'Now tap where to send the ' + WAR.SQUADS[WAR.selected].name.toLowerCase() + ' — or tap a raider.' : 'Tap a squad, then tap where to send it.';
+    }
+  }
+
+  function warOver(r) {
+    var name = r.faction === 'wolves' ? 'the Sea Wolves' : 'Brannoch';
+    var lines = [];
+    if (r.won) lines.push('The raiders broke and ran for their boats. ' + r.killed + ' of them will not be going home.');
+    else lines.push(name.charAt(0).toUpperCase() + name.slice(1) + ' sailed off with their plunder.');
+    var st = Object.keys(r.stolen).filter(function (k) { return r.stolen[k] >= 1; }).map(function (k) { return Math.round(r.stolen[k]) + ' ' + k; });
+    if (st.length) lines.push('They carried off ' + st.join(', ') + (r.won ? ' — half of it recovered from the fallen.' : '.'));
+    var lt = Object.keys(r.loot).filter(function (k) { return r.loot[k] > 0; }).map(function (k) { return '+' + r.loot[k] + ' ' + k; });
+    if (lt.length) lines.push('Spoils: ' + lt.join(', '));
+    lines.push(r.lostN ? 'Fallen: ' + Object.keys(r.lost).map(function (k) { return r.lost[k] + '× ' + DATA.UNITS[k].name; }).join(', ') : 'Not a soldier lost.');
+    chronicle(r.won ? 'Drove off a raid by ' + name + '.' : 'Raided by ' + name + '.');
+    storyCard(r.won ? '🛡️' : '🔥', r.won ? 'Ashveil Holds' : 'The Raiders Got Away', lines.join('\n\n'), [{ label: 'Back to work' }]);
+  }
+
   /* drain queued events between frames so two never stack */
   function pump() {
+    refreshWar();
     if (modalBusy || BATTLE.isOpen() || !eventQueue.length) return;
     var next = eventQueue.shift();
-    if (next && next.k === 'chapter') chapterEvent(next.idx);
+    if (next && next.k === 'warover') warOver(next.r);
+    else if (next && next.k === 'chapter') chapterEvent(next.idx);
     else if (next && next.k === 'victory') victoryEvent();
     else if (next && next.k === 'festival') festivalEvent(next.key);
     else if (next && next.k === 'raid') incomingRaid(next.cause);

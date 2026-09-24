@@ -159,6 +159,8 @@ var AGENTS = (function () {
     var castle = G.buildings[0];
 
     var night = (typeof RENDER !== 'undefined' && RENDER.nightAmount) ? RENDER.nightAmount() : 0;
+    // when raiders are ashore, people bar their doors
+    if (G.war && typeof WAR !== 'undefined' && WAR.state && WAR.state.phase !== 'sail') night = 1;
     assignBrigades();
 
     for (var i = 0; i < list.length; i++) {

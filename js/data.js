@@ -491,6 +491,9 @@ var DATA = (function () {
     conquest: { key: 'conquest', art: '👑', title: 'Brannoch Means to Take Ashveil', power: 1.1,
       text: 'This is not a raid. Their lord has decided your realm is weak enough to swallow whole.',
       counter: 'Only strength will change their mind — or a very large tribute.' },
+    wolves: { key: 'wolves', art: '🐺', title: 'Black Sails: The Sea Wolves', power: 0.9, faction: 'wolves',
+      text: 'Longships with black sails have been seen off the point. The Sea Wolves answer to no lord and keep no treaty — they come for whatever is not nailed down.',
+      counter: 'No tribute buys them off for long. Towers on the coast and soldiers at the beach are the answer.' },
     raid: { key: 'raid', art: '📯', title: 'Brannoch Rides on Ashveil', power: 1.0,
       text: 'Smoke on the eastern road. A war band is coming for your granaries.',
       counter: '' }
