@@ -58,6 +58,13 @@ var SIM = (function () {
      buildings
      --------------------------------------------------------- */
   var uid = 1;
+  function makeCompact(b) {
+    b.compact = true;
+    var d = {};
+    Object.keys(b.def).forEach(function (k) { d[k] = b.def[k]; });
+    d.w = 1; d.h = 1;
+    b.def = d;
+  }
   function mkBuilding(id, x, y) {
     var def = DATA.B[id];
     return {
@@ -78,6 +85,16 @@ var SIM = (function () {
         t.bld = b;
       }
     });
+  }
+
+  /* A farm's plot can straddle kinds of ground: its soil is the average. */
+  function soilMul(b) {
+    var cells = W.footprint(b.def, b.x, b.y), m = 0;
+    cells.forEach(function (c) {
+      var t = W.at(c.x, c.y);
+      m += !t ? 1 : t.terr === 'meadow' ? 1.35 : t.terr === 'sand' ? 0.7 : 1;
+    });
+    return cells.length ? m / cells.length : 1;
   }
 
   /* what an upgraded building is worth, per level */
@@ -269,17 +286,60 @@ var SIM = (function () {
     if (!canAfford(cost)) return { ok: false, why: 'Not enough ' + short(cost) };
     pay(cost);
     var b = mkBuilding(id, x, y);
-    // clearing woodland pays you back in timber
+    // woodland in the way is cleared as the plot is marked out, and the
+    // timber goes to the stores
+    var felled = 0;
     W.footprint(def, x, y).forEach(function (c) {
       var t = W.at(c.x, c.y);
-      if (t && t.terr === 'forest') G.res.wood = Math.min(cap('wood'), G.res.wood + 12);
+      if (t && t.terr === 'forest') felled++;
     });
+    if (felled) {
+      G.res.wood = Math.min(cap('wood'), G.res.wood + 12 * felled);
+      emit('cleared', { x: x, y: y, gain: 12 * felled });
+    }
     if (def.build <= 0) { b.built = true; b.prog = 1; }
     commit(b);
     G.stats.built++;
     refreshCounts();
     emit('build', b);
     return { ok: true, b: b };
+  }
+
+  /* What a building would do on a given spot, in a few words, for the
+     placement ghost — so you can see rich soil or thick woodland pay off
+     before you commit. */
+  function preview(id, x, y) {
+    var def = DATA.B[id];
+    if (!def) return '';
+    var b = mkBuilding(id, x, y);
+    uid--;
+    b.built = true; b.workers = jobsOf(b);
+    if (def.trade) b._mIdx = G.count[id] || 0;
+    var parts = [];
+    if (def.produces || def.trade) {
+      var o = output(b);
+      Object.keys(o).forEach(function (k) {
+        if (o[k] > 0.004) {
+          var r = DATA.RES.filter(function (q) { return q.key === k; })[0];
+          parts.push('+' + (o[k] * DATA.SEASON_LEN).toFixed(0) + ' ' + (r ? r.ic : k));
+        }
+      });
+      if (parts.length) parts[parts.length - 1] += ' a season';
+    }
+    if (def.housing) parts.push('homes for ' + def.housing);
+    if (def.happy) parts.push('+' + def.happy + ' contentment');
+    if (def.aura) {
+      var n = 0;
+      G.buildings.forEach(function (o2) {
+        if (o2.built && def.aura[o2.id] && U.dist(x, y, o2.x, o2.y) <= (def.radius || 3) + 0.4) n++;
+      });
+      parts.push('boosts ' + n + ' nearby');
+    }
+    if (def.store) parts.push('more storage');
+    if (def.defense) parts.push('+' + def.defense + ' defence');
+    if (def.armyCap) parts.push('+' + def.armyCap + ' troops');
+    if (def.research) parts.push('faster research');
+    return parts.slice(0, 2).join(' · ');
   }
 
   function short(cost) {
@@ -490,11 +550,7 @@ var SIM = (function () {
       });
     }
     // a farm on bad ground is a poor use of a pair of hands
-    if (b.def.soilBonus) {
-      var t = W.at(b.x, b.y);
-      if (t && t.terr === 'meadow') s *= 1.25;
-      if (t && t.terr === 'sand') s *= 0.75;
-    }
+    if (b.def.soilBonus) s *= 0.3 + 0.7 * soilMul(b);
     if (b.def.seasonal) s *= (0.55 + foodSeasonMul() * 0.6);      // nobody farms hard in deep winter
     return Math.max(0.05, s);
   }
@@ -676,11 +732,7 @@ var SIM = (function () {
           var n = W.nearCount(b.x, b.y, b.def.scaleNear.terrain, 1);
           v *= U.clamp(n / b.def.scaleNear.div, 0.34, 2.0);
         }
-        if (b.def.soilBonus) {
-          var t = W.at(b.x, b.y);
-          if (t && t.terr === 'meadow') v *= 1.35;
-          if (t && t.terr === 'sand') v *= 0.7;
-        }
+        if (b.def.soilBonus) v *= soilMul(b);
         out[k] = (out[k] || 0) + v;
       });
     }
@@ -1340,7 +1392,7 @@ var SIM = (function () {
   function save() {
     if (!G) return false;
     var d = {
-      v: 3, world: W.serialize(),
+      v: 4, world: W.serialize(),
       time: G.time, res: G.res, pop: G.pop, happy: G.happy,
       castle: G.castle, tech: G.tech, research: G.research,
       army: G.army, rival: G.rival, quests: G.quests, stats: G.stats,
@@ -1349,7 +1401,7 @@ var SIM = (function () {
       eventTimer: G.eventTimer, speed: G.speed,
       buildings: G.buildings.map(function (b) {
         return [b.id, b.x, b.y, b.built ? 1 : 0, Number(b.prog.toFixed(3)),
-                b.paused ? 1 : 0, b.level || 1];
+                b.paused ? 1 : 0, b.level || 1, b.compact ? 1 : 0];
       })
     };
     return U.save(d);
@@ -1357,7 +1409,7 @@ var SIM = (function () {
   function hasSave() { return !!U.load(); }
   function loadGame() {
     var d = U.load();
-    if (!d || !(d.v === 2 || d.v === 3)) return false;   // v2 saves still load
+    if (!d || !(d.v >= 2 && d.v <= 4)) return false;    // older saves still load
     W.deserialize(d.world);
     var st = d.stats || {};
     if (st.upgrades === undefined) st.upgrades = 0;
@@ -1371,7 +1423,7 @@ var SIM = (function () {
       castle: d.castle || 0, army: d.army || {}, rival: d.rival,
       quests: d.quests || {}, stats: st, eventTimer: d.eventTimer,
       vets: d.vets || {}, formation: d.formation || 'line',
-      growTimer: 6, reliefTimer: 30, reliefCooldown: 0, festivals: {}, fairUntil: -1,
+      growTimer: 6, reliefTimer: 30, reliefCooldown: 0,
       speed: d.speed || 1, log: []
     };
     d.buildings.forEach(function (a) {
@@ -1379,6 +1431,9 @@ var SIM = (function () {
       var b = mkBuilding(a[0], a[1], a[2]);
       b.built = !!a[3]; b.prog = a[4]; b.paused = !!a[5];
       b.level = a[6] || 1;
+      // Farms and pastures became 2×2 plots. One saved before that keeps its
+      // single tile rather than spilling onto its neighbours.
+      if (a[7] || (d.v < 4 && (b.def.w || 1) > 1 && b.id !== 'castle')) makeCompact(b);
       commit(b);
     });
     // Kingdoms saved while roads were placeable buildings: pull them up,
@@ -1430,6 +1485,7 @@ var SIM = (function () {
     ensurePaths: ensurePaths, markPathsDirty: markPathsDirty,
     goodsValue: goodsValue, marketCut: marketCut,
     rebuildPaths: function () { markPathsDirty(); ensurePaths(true); },
+    preview: preview, soilMul: soilMul,
     canTrade: canTrade, priceOf: priceOf, sell: sell, buy: buy, tradeSpread: tradeSpread,
     techAvailable: techAvailable, techClosed: techClosed, startResearch: startResearch,
     unitAvailable: unitAvailable, recruit: recruit, disband: disband,

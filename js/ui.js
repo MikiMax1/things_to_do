@@ -680,20 +680,28 @@ var UI = (function () {
     RENDER.setGhost(null);
     el('build-banner').classList.add('hidden');
   }
+  /* the plot a finger at (sx,sy) means: big buildings centre on it */
+  function plotAt(sx, sy, id) {
+    var def = DATA.B[id], w = RENDER.toWorld(sx, sy);
+    return { x: Math.round(w.x - (def.w || 1) / 2), y: Math.round(w.y - (def.h || 1) / 2) };
+  }
   function updateGhost(sx, sy) {
     if (!buildMode) return;
-    var t = RENDER.tileAtScreen(sx, sy);
+    var t = plotAt(sx, sy, buildMode);
     var chk = W.canPlace(buildMode, t.x, t.y);
     var cost = SIM.costOf(buildMode);
     var afford = SIM.canAfford(cost);
-    RENDER.setGhost({ id: buildMode, x: t.x, y: t.y, ok: chk.ok && afford, why: chk.ok ? (afford ? '' : 'Not enough materials') : chk.why });
+    var ok = chk.ok && afford;
+    RENDER.setGhost({ id: buildMode, x: t.x, y: t.y, ok: ok,
+      why: chk.ok ? (afford ? '' : 'Not enough materials') : chk.why,
+      preview: chk.ok ? SIM.preview(buildMode, t.x, t.y) || DATA.B[buildMode].name : chk.why });
   }
   function tryPlaceAt(sx, sy) {
-    var t = RENDER.tileAtScreen(sx, sy);
+    var t = plotAt(sx, sy, buildMode);
     var r = SIM.place(buildMode, t.x, t.y);
     if (r.ok) {
       U.sfx.place(); U.vibrate(12);
-      RENDER.puff(t.x + .5, t.y + .8, '#c9b58a', 7);
+      RENDER.puff(t.x + (DATA.B[buildMode].w || 1) / 2, t.y + (DATA.B[buildMode].h || 1) / 2, '#c9b58a', 9);
       refreshHUD();
       if (!SIM.canAfford(SIM.costOf(buildMode))) {
         toast('Out of materials for more ' + DATA.B[buildMode].name.toLowerCase() + 's', 'war');
@@ -1257,8 +1265,13 @@ var UI = (function () {
       if (kind === 'festival') eventQueue.push({ k: 'festival', key: payload });
       if (kind === 'season') { chronicle(payload.name + ' comes to Ashveil.'); }
       if (kind === 'completed') {
-        RENDER.puff(payload.x + .5, payload.y + .6, '#e8dcb5', 10);
-        RENDER.floater(payload.x + .5, payload.y - .1, payload.def.name + ' done', '#a8f07a');
+        var cw2 = (payload.def.w || 1) / 2, ch2 = (payload.def.h || 1) / 2;
+        RENDER.puff(payload.x + cw2, payload.y + ch2, '#e8dcb5', 12);
+        RENDER.floater(payload.x + cw2, payload.y + ch2, payload.def.name + ' built', '#a8f07a');
+      }
+      if (kind === 'cleared') {
+        RENDER.puff(payload.x + .5, payload.y + .5, '#7a9a4a', 10);
+        RENDER.floater(payload.x + .5, payload.y + .5, '+' + payload.gain + ' wood from clearing', '#d9b27a');
       }
       if (kind === 'tech' || kind === 'castle' || kind === 'army' || kind === 'quest') {
         if (openPanel) renderSheet(true);

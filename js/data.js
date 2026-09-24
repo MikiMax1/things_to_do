@@ -71,11 +71,11 @@ var DATA = (function () {
       desc: 'Fine lodgings — houses 14 and lifts spirits nearby.'
     },
     farm: {
-      id: 'farm', name: 'Farm', cat: 'food', ic: '🌾',
+      id: 'farm', name: 'Farm', cat: 'food', ic: '🌾', w: 2, h: 2, noYard: true,
       cost: { wood: 18, gold: 15 }, build: 6, jobs: 2, produces: { food: 0.52 }, upkeep: 0.02,
       terrain: ['grass', 'meadow', 'sand'], seasonal: true,
       soilBonus: true,
-      desc: 'Grows food. Much better on rich soil, and far worse in winter.'
+      desc: 'A farmstead and its fields. The crop grows through the year — much better on rich soil, and nothing grows in winter snow.'
     },
     fishery: {
       id: 'fishery', name: 'Fishing Hut', cat: 'food', ic: '🎣',
@@ -113,7 +113,7 @@ var DATA = (function () {
       desc: '+40% output from every lumber camp within 3 tiles.'
     },
     pasture: {
-      id: 'pasture', name: 'Pasture', cat: 'industry', ic: '🐑',
+      id: 'pasture', name: 'Pasture', cat: 'industry', ic: '🐑', w: 2, h: 2, noYard: true,
       cost: { wood: 28, gold: 30 }, build: 6, jobs: 2, produces: { wool: 0.100 }, upkeep: 0.02,
       terrain: ['grass', 'meadow'], seasonalWool: true,
       desc: 'Grazes sheep on open grass for wool. Needs room — it will not thrive on sand or in the hills.'

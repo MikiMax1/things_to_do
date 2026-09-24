@@ -21,7 +21,7 @@
     el('btn-continue').addEventListener('click', function () {
       U.resumeAudio();
       if (!SIM.loadGame()) { SIM.newGame(); }
-      enter();
+      prepare(enter);
     });
     el('btn-new').addEventListener('click', function () {
       U.resumeAudio();
@@ -32,7 +32,7 @@
       }
       U.wipe();
       SIM.newGame();
-      enter();
+      prepare(enter);
     });
 
     // keep the canvas honest through rotations and browser chrome changes
@@ -48,6 +48,25 @@
     // block the browser's own pinch-zoom / double-tap zoom
     document.addEventListener('gesturestart', function (e) { e.preventDefault(); });
     document.addEventListener('dblclick', function (e) { e.preventDefault(); });
+  }
+
+  /* The island is painted pixel by pixel before you see it. It takes a
+     moment on a phone, so it happens behind a progress bar rather than
+     as a frozen screen. */
+  var preparing = false;
+  function prepare(then) {
+    if (preparing) return;
+    preparing = true;
+    el('btn-continue').style.display = 'none';
+    el('btn-new').style.display = 'none';
+    el('loading').classList.remove('hidden');
+    TERRAIN.begin(SIM.season().key, SIM.G.seed);
+    (function stepLoad() {
+      TERRAIN.step(28);
+      el('load-fill').style.width = Math.round(TERRAIN.progress() * 100) + '%';
+      if (TERRAIN.ready) { preparing = false; then(); }
+      else requestAnimationFrame(stepLoad);
+    })();
   }
 
   function enter() {

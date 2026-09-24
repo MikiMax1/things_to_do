@@ -151,7 +151,10 @@ var W = (function () {
     for (var i = 0; i < cells.length; i++) {
       var t = at(cells[i].x, cells[i].y);
       if (!t) return { ok: false, why: 'Outside the realm' };
-      if (def.terrain.indexOf(t.terr) < 0) return { ok: false, why: 'Cannot build on ' + DATA.TERRAIN[t.terr].name.toLowerCase() };
+      // woodland is simply cleared for anything that could stand on open grass
+      var ok = def.terrain.indexOf(t.terr) >= 0 ||
+               (t.terr === 'forest' && def.terrain.indexOf('grass') >= 0);
+      if (!ok) return { ok: false, why: 'Cannot build on ' + DATA.TERRAIN[t.terr].name.toLowerCase() };
       if (t.bld) return { ok: false, why: 'Already occupied' };
     }
     if (def.near) {
@@ -222,6 +225,32 @@ var W = (function () {
     return null;
   }
 
+  /* ---------------- trees and rocks: where they stand ---------------- */
+  function treesOf(t) {
+    if (t._trees) return t._trees;
+    var r = U.mulberry((seed * 31) ^ (t.x * 7349 + t.y * 3371));
+    var out = [], n = 3 + (r() < 0.45 ? 1 : 0);
+    // conifers cluster on high ground, broadleaf in the lowland
+    var pine = (t.x * 0.37 + t.y * 0.23 + Math.sin(t.x * 0.9) * 2 + Math.cos(t.y * 0.7) * 2) % 5 > 3.1 ? 0.75 : 0.18;
+    for (var i = 0; i < n; i++) {
+      var u = (i % 2) * 0.46 + 0.15 + r() * 0.3, v = Math.floor(i / 2) * 0.46 + 0.15 + r() * 0.3;
+      if (n === 3 && i === 2) u = 0.3 + r() * 0.4;
+      var k = r() < pine ? 1 : (r() < 0.16 ? 2 : 0);
+      out.push({ x: t.x + u, y: t.y + v, kind: k, v: Math.floor(r() * 3), s: 0.82 + r() * 0.36, ph: r() * 6.28 });
+    }
+    t._trees = out;
+    return out;
+  }
+  function rocksOf(t) {
+    if (t._rocks) return t._rocks;
+    var r = U.mulberry((seed * 17) ^ (t.x * 5153 + t.y * 9203));
+    var out = [];
+    var n = 1 + Math.floor(r() * 2);
+    for (var i = 0; i < n; i++) out.push({ x: t.x + 0.25 + r() * 0.5, y: t.y + 0.25 + r() * 0.5, v: Math.floor(r() * 4), s: 0.7 + r() * 0.5 });
+    t._rocks = out;
+    return out;
+  }
+
   /* serialise only what generation can't recreate */
   function serialize() {
     var mods = [];
@@ -246,6 +275,7 @@ var W = (function () {
     generate: generate, findCastleSpot: findCastleSpot,
     nearCount: nearCount, footprint: footprint, canPlace: canPlace,
     walkable: walkable, path: path, randomWalkable: randomWalkable,
+    treesOf: treesOf, rocksOf: rocksOf,
     serialize: serialize, deserialize: deserialize,
     getSeed: function () { return seed; }
   };
