@@ -1391,7 +1391,11 @@ var UI = (function () {
       if (kind === 'campaign-arrived') eventQueue.push('campaign');
       if (kind === 'relief') eventQueue.push('relief');
       if (kind === 'festival') eventQueue.push({ k: 'festival', key: payload });
-      if (kind === 'chapter') eventQueue.unshift({ k: 'chapter', idx: payload.idx });
+      if (kind === 'chapter') {
+        // several chapters closing at once (an old, advanced kingdom) make one card, not a stack
+        eventQueue = eventQueue.filter(function (e) { return !(e && e.k === 'chapter'); });
+        eventQueue.unshift({ k: 'chapter', idx: payload.idx });
+      }
       if (kind === 'victory') eventQueue.unshift({ k: 'victory' });
       if (kind === 'weather' && payload === 'rain') toast('🌧️ Rain sweeps in off the sea — the fields drink it up.', '');
       if (kind === 'season') { chronicle(payload.name + ' comes to Ashveil.'); }

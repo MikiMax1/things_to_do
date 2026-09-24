@@ -192,14 +192,23 @@ var SIM = (function () {
     var castle = G.buildings[0];
     if (!castle) return;
 
-    // the castle forecourt seeds the network
-    var net = {};
+    // the castle forecourt seeds the network — or, if the castle has been
+    // built in on every side, the nearest open ground to it
+    var net = {}, seeded = 0;
     W.footprint(castle.def, castle.x, castle.y).forEach(function (c) {
       [[1,0],[-1,0],[0,1],[0,-1]].forEach(function (d) {
         var t = W.at(c.x + d[0], c.y + d[1]);
-        if (t && !blocked(t)) { t.path = 1; net[t.x + ',' + t.y] = 1; }
+        if (t && !blocked(t)) { t.path = 1; net[t.x + ',' + t.y] = 1; seeded++; }
       });
     });
+    for (var rad = 2; !seeded && rad <= 5; rad++) {
+      for (var oy = -rad; oy <= rad + 1; oy++) for (var ox = -rad; ox <= rad + 1; ox++) {
+        var t3 = W.at(castle.x + ox, castle.y + oy);
+        if (t3 && !blocked(t3) && (Math.abs(ox) === rad || Math.abs(oy) === rad || ox === rad + 1 || oy === rad + 1)) {
+          t3.path = 1; net[t3.x + ',' + t3.y] = 1; seeded++;
+        }
+      }
+    }
     // Every building traces the whole way to the castle gate rather than
     // stopping at the first track it meets, so tiles near the keep carry
     // many routes and wear into broad lanes while the outskirts stay thin.

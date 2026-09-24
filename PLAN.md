@@ -1,5 +1,79 @@
 # Kingdom of Ashveil — the redesign plan
 
+## v3: the rework (done)
+
+The brief was "make it as good as possible, as visually realistic as possible,
+and the gameplay much better — and stop making me chop a tree before I can
+build on its tile". What shipped:
+
+**An isometric world instead of a flat grid.**
+- `js/terrain.js` paints the ground *per pixel* into one canvas: kinds of
+  ground blend along ragged noisy edges, a smooth height field gives hills
+  light and shade (sun low in the west), the sea deepens off the beach, the
+  island stands on a low earth bank with foam at the waterline, footpaths are
+  worn in by traffic, yards are trampled around buildings, and tree and crag
+  shadows are baked in. It is patched in place when tiles change (a signature
+  per tile is compared four times a second) and repainted with a cross-fade
+  each season — snow in winter, gold in autumn, blossom in spring.
+- `js/art.js` draws every building as lit 3D volumes. Each wall or roof face
+  is painted in its own flat coordinates (stone courses, planks, half-timber,
+  thatch, clay tiles, slate, windows, doors) and skewed into place, so detail
+  sits on the wall it belongs to. Every volume drops a true shadow into a
+  separate layer. Four castles (hall → keep → great castle → citadel), three
+  house standings, winter variants with snow on the roofs, walls that join
+  their neighbours, fishing huts whose jetty finds the water.
+- `js/render.js`: iso camera and picking, depth-sorted world, trees that lean
+  in the wind, moving water glints, drifting cloud shadows (and clouds when
+  zoomed out), rain/snow/leaves/petals, a day–night grade with lamplight in
+  windows, forges and gatehouses, smoke from chimneys, sparks at the smithy.
+- Farms and pastures are 2×2 plots. Fields grow through the year (ploughed →
+  shoots → green → gold → stubble and stooks → snow); sheep graze in pastures;
+  fishing boats work the water; farmers work out in their fields.
+- Construction rises inside its scaffolding course by course.
+- Battles are fought on a field painted for where and when they happen: your
+  rampart, towers and cottages when defending, Brannoch's camp when
+  attacking, woods pressing in on a narrow front, boulders on broken ground,
+  snow in winter. Soldiers are drawn by trade and nearer ones stand larger.
+- The title is a painted scene built from the game's own art.
+
+**A game that tells you what to do, and ends.**
+- Five **chapters** (The Founding → A Village → A Market Town → The Brannoch
+  War → The Crown of Ashveil). The current goal and its progress sit in a card
+  under the HUD; each chapter closes with a reward and a story card.
+- The **Great Cathedral**, a 3×3 wonder unlocked by the Great Castle. It is
+  paid for *as it rises* and waits whenever the stores run dry, so no
+  storehouse is ever too small for it. Completing it ends the reign with a
+  victory screen; you can keep playing.
+- **Building on woodland clears it** and puts the timber in store. Felling by
+  hand still works but is never required.
+- **Build opens on "Suggested"**: what the realm needs most, each with its
+  reason ("Food is running short", "For your chapter: …"). The same Needed tag
+  shows on every card in every tab.
+- The **placement ghost says what a building would make on that spot**, so
+  rich soil or thick woodland visibly pays off before you commit.
+- Workplaces show what they make as small rising numbers.
+- **Rain** comes and goes (most in spring and autumn) and waters the fields.
+- Loading bug fixed: festivals and the fair were reset on every load.
+- Old saves load: 1×1 farms and pastures from before become "compact" plots
+  rather than spilling onto their neighbours; resources and chapters default.
+
+**Measured, not guessed.** `node tools/balance.js` still passes every check,
+and now also reports chapter pacing (chapter II opens around season 2, III
+around season 3, IV around year 3–4 when a player raises the castle).
+
+### Performance notes
+The sandbox has no GPU, so frame times here are pessimistic; the ratios are
+what matter. Costs that were cut: sprites are trimmed to their painted pixels
+(trees were mostly empty canvas), tree/crag shadows are baked, lamplight is
+one pre-drawn glow stamped per light, water glints are batched into four
+strokes, the vignette is CSS, the terrain draws with bilinear filtering when
+magnified, and the canvas renders at no more than 2× pixel density.
+
+If a real phone struggles, next steps in order: split the terrain canvas into
+chunks and draw only visible ones; skip tree lean below a zoom threshold
+(already done under 44px); cull trees hidden behind buildings; drop to 1.5×
+density on low-end devices.
+
 ## A settled decision: the kingdom is a pool, not a map of places
 
 **Contentment and trade are realm-wide, and they stay that way.** Amenities and

@@ -9,20 +9,22 @@ Open `index.html` and play. It saves to your device automatically.
 
 ## How to play
 
-**Build.** Tap **Build**, pick something, then tap the land. The ghost turns
-green where it can go and red where it cannot, and tells you why. Walls can be
-**dragged** to lay a whole line at once.
+**Follow the card at the top.** Your reign is told in five chapters. The
+card under the resource bar always shows your next goal and how close you are;
+tap it for the whole chapter. Finish the fifth — the Great Cathedral — and your
+reign is complete (you can keep playing).
+
+**Build.** Tap **Build**. It opens on **★ Suggested**: what your realm needs
+most right now and why. Pick something and tap the land — the ghost turns green
+where it can go, red where it cannot, and says what it would make on that exact
+spot. **Building on woodland clears it for you** and the timber goes into store.
+Farms and pastures are 2×2 plots with fields that grow through the year.
 
 **Footpaths wear themselves in.** You never place a path. They are worked out
-from where your buildings stand, cost nothing, and take up no ground — build
-straight over one and it reroutes. Every building traces a route to the castle
-gate, routes braid together into shared lanes, and the ground near the keep
-wears into a broad road while the outskirts stay a thin trail.
+from where your buildings stand, cost nothing, and take up no ground.
 
-Paths are decoration — they cost nothing and change nothing. **Markets take a
-cut of everything your kingdom produces**, wherever they stand, so the more you
-make the more they earn. Each further market takes a smaller cut, so a second
-pays and a tenth does not.
+**Markets take a cut of everything your kingdom produces**, wherever they
+stand, so the more you make the more they earn.
 
 **Move around.** Drag to pan, pinch to zoom, tap a tile or building to
 inspect it, long-press for the same thing without selecting. The 🎯 button
