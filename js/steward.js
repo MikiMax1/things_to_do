@@ -121,8 +121,9 @@ var STEWARD = (function () {
   }
 
   /* ---------------- what to do next ---------------- */
-  function spare(cost) {
-    var g = G(), res = st().reserve;
+  function spare(cost, urgent) {
+    // an empty larder is what the reserve is kept for
+    var g = G(), res = urgent ? 0 : st().reserve;
     for (var k in cost) {
       var keep = k === 'gold' ? res : k === 'food' ? Math.max(40, g.pop * 3) : 20;
       if (g.res[k] - cost[k] < keep) return false;
@@ -146,11 +147,11 @@ var STEWARD = (function () {
     var wait = DATA.B[id].housing ? DATA.SEASON_LEN * 0.15 : DATA.SEASON_LEN * 0.9;
     return G().time - last >= wait;
   }
-  function build(id, why) {
+  function build(id, why, urgent) {
     if (!SIM.unlocked(id) || !rested(id)) return false;
     var def = DATA.B[id];
     if (def.max && SIM.countAll(id) >= def.max) return false;
-    if (!spare(SIM.costOf(id))) return false;
+    if (!spare(SIM.costOf(id), urgent)) return false;
     var p = spotFor(id);
     if (!p) return false;
     var r = SIM.place(id, p.x, p.y);
@@ -175,7 +176,7 @@ var STEWARD = (function () {
     // things that come before building: a fire, raiders, an empty larder
     if (g.war || SIM.burning().length) return;
     var starving = g.res.food <= g.pop * 0.5;
-    if (starving) { build('fishery', 'the larder was empty') || build('farm', 'the larder was empty') || build('hunter', 'the larder was empty'); return; }
+    if (starving) { build('fishery', 'the larder was empty', true) || build('farm', 'the larder was empty', true) || build('hunter', 'the larder was empty', true); return; }
     // the player's own plans come first
     if (SIM.plans.some(function (p) { return p.by === 'you'; })) return;
 
@@ -225,7 +226,8 @@ var STEWARD = (function () {
     }
     // research
     if (!g.research) {
-      var techs = Object.keys(DATA.TECH).filter(function (t) { return SIM.techAvailable(t) && spare(DATA.TECH[t].cost); });
+      // the forks close a road for good: that choice is left to the ruler
+      var techs = Object.keys(DATA.TECH).filter(function (t) { return !DATA.TECH[t].fork && SIM.techAvailable(t) && spare(DATA.TECH[t].cost); });
       techs.sort(function (a, b) { return DATA.TECH[a].tier - DATA.TECH[b].tier; });
       if (techs.length && SIM.startResearch(techs[0]).ok) { note('The scholars began studying ' + DATA.TECH[techs[0]].name + '.'); return; }
     }

@@ -108,8 +108,8 @@ function place(id, n) {
 function runKingdom(seed, seasons) {
   SIM.newGame(seed, { map: process.argv[4] || 'green', diff: process.argv[3] || 'fair', scen: process.argv[5] || 'standard' });
   const G = SIM.G;
-  const rec = { playing: 0, atCap: 0, wonAt: 99, battles: 0, battleWins: 0, starved: 0, broke: 0, raids: 0, minFood: 1e9, minGold: 1e9, churn: 0, reached: [0, 99, 99, 99, 99] };
-  let lastTiers = null;
+  const rec = { playing: 0, atCap: 0, happySum: 0, pinned: 0, wonAt: 99, battles: 0, battleWins: 0, starved: 0, broke: 0, raids: 0, minFood: 1e9, minGold: 1e9, churn: 0, reached: [0, 99, 99, 99, 99] };
+  const lastTier = new Map();
   let step = 0, sinceBuild = 0;
   const DT = 0.5, ticks = Math.round(seasons * DATA.SEASON_LEN / DT);
 
@@ -134,15 +134,19 @@ function runKingdom(seed, seasons) {
     if (SIM.canTrade() && G.res.gold > SIM.cap('gold') * 0.8) {
       for (const k of ['wood', 'stone']) if (G.res[k] < SIM.cap(k) * 0.5) SIM.buy(k, 1);
     }
-    // research whatever is available and affordable
-    if (!STEWARDED && !G.research) {
+    // research whatever is available and affordable (under the steward, only
+    // the forks: Village Growth leaves those to the ruler)
+    if (!G.research) {
       for (const t of Object.keys(DATA.TECH)) {
+        if (STEWARDED && (!DATA.TECH[t].fork || G.res.gold < (DATA.TECH[t].cost.gold || 0) + 250)) continue;
         if (SIM.techAvailable(t) && SIM.canAfford(DATA.TECH[t].cost)) { SIM.startResearch(t); break; }
       }
     }
     // raise the castle when the realm can spare it, as a player would
     const nc = SIM.nextCastle();
-    if (!STEWARDED && nc && SIM.canAfford(nc.cost) && G.res.gold > nc.cost.gold + 120) SIM.upgradeCastle();
+    // (but not with the last of its stone before there is a quarry: now and
+    // then that left a Harsh kingdom unable to afford its granary for good)
+    if (!STEWARDED && nc && SIM.canAfford(nc.cost) && G.res.gold > nc.cost.gold + 120 && G.count.quarry) SIM.upgradeCastle();
     // a player's other habits, from Chapter IV on: raise soldiers, clear the
     // bandit camp now and then, and pour spare gold into great works
     const chN0 = G.chapter || 0;
@@ -150,7 +154,14 @@ function runKingdom(seed, seasons) {
       const kind = ['spearman', 'archer', 'militia'].find(k => SIM.unitAvailable(k)) || 'militia';
       SIM.recruit(kind, 1);
     }
-    if (chN0 >= 3 && SIM.armyCount() >= 6 && SIM.banditReady()) {
+    // ...but only at odds the bandit card would show in green or amber: a
+    // harness that charged in regardless lost two fights in three, bled the
+    // army it needed for Chapter IV and dragged contentment down with it
+    const banditOdds = () => {
+      const mine = SIM.fieldStrength(0), theirs = SIM.foeStrengthOf(SIM.foeSpec(SIM.banditPower(), 'bandits'));
+      return mine <= 0 ? 0 : mine * mine / (mine * mine + theirs * theirs);
+    };
+    if (chN0 >= 3 && SIM.armyCount() >= 6 && SIM.banditReady() && banditOdds() >= 0.5) {
       G.banditAt = G.time; const r = SIM.autoBattle({ power: SIM.banditPower(), flavour: 'bandits' });
       rec.battles++; if (r.won) rec.battleWins++;
     }
@@ -160,7 +171,12 @@ function runKingdom(seed, seasons) {
       if (w) SIM.startWork(w);
     }
     if (chN0 >= 4 && !SIM.countAll('cathedral') && SIM.unlocked('cathedral') && SIM.canAfford(SIM.costOf('cathedral'))) place('cathedral', 1);
-    if (!G.won) { rec.playing += DT; if (G.res.gold >= SIM.cap('gold') * 0.98) rec.atCap += DT; }
+    if (!G.won) {
+      rec.playing += DT; if (G.res.gold >= SIM.cap('gold') * 0.98) rec.atCap += DT;
+      // contentment while there is still something to play for: the end-of-
+      // decade figure is mostly how many bandit fights were lost after the win
+      rec.happySum += G.happy * DT; if (G.happy >= 99) rec.pinned += DT;
+    }
     if (G.won && rec.wonAt === 99) rec.wonAt = (i * DT) / DATA.SEASON_LEN;
     // follow the build plan whenever it is affordable
     sinceBuild += DT;
@@ -175,10 +191,16 @@ function runKingdom(seed, seasons) {
       }
     }
     // housing churn: how often homes change standing. High numbers mean the
-    // tiers are flickering rather than settling.
-    const tiers = G.buildings.filter(b => b.def.evolves && b.built).map(b => b.level || 1).join(',');
-    if (lastTiers !== null && tiers !== lastTiers) rec.churn++;
-    lastTiers = tiers;
+    // tiers are flickering rather than settling. Only a home that changes its
+    // standing counts: a new cottage going up is growth, not flicker.
+    let flick = false;
+    G.buildings.forEach(b => {
+      if (!b.def.evolves || !b.built) return;
+      const was = lastTier.get(b), now = b.level || 1;
+      if (was !== undefined && was !== now) flick = true;
+      lastTier.set(b, now);
+    });
+    if (flick) rec.churn++;
     const chN = G.chapter || 0;
     if (rec.reached[chN] === 99) rec.reached[chN] = (i * DT) / DATA.SEASON_LEN;
     if (G.res.food <= 0.5) rec.starved += DT;
@@ -204,7 +226,9 @@ function runKingdom(seed, seasons) {
     chapter: (G.chapter || 0) + 1,
     ch2: rec.reached[1], ch3: rec.reached[2], ch4: rec.reached[3], ch5: rec.reached[4], wonAt: rec.wonAt,
     won: G.won ? 1 : 0,
-    capPct: rec.atCap / Math.max(1, rec.playing) * 100, works: G.stats.works || 0,
+    capPct: rec.atCap / Math.max(1, rec.playing) * 100,
+    reignHappy: rec.happySum / Math.max(1, rec.playing), pinnedPct: rec.pinned / Math.max(1, rec.playing) * 100,
+    unmet: G.won ? '' : SIM.activeQuests().map(q => q.id).join(','), works: G.stats.works || 0,
     battles: rec.battles, battleWins: rec.battleWins, army: SIM.armyCount()
   };
 }
@@ -212,7 +236,7 @@ function runKingdom(seed, seasons) {
 function simulate(runs, seasons) {
   console.log(`\n=== ${runs} KINGDOMS, ${seasons} SEASONS EACH (scripted build order) ===`);
   const all = [];
-  for (let i = 0; i < runs; i++) all.push(runKingdom(1000 + i * 7919, seasons));
+  for (let i = 0; i < runs; i++) all.push(Object.assign(runKingdom(1000 + i * 7919, seasons), { seed: 1000 + i * 7919 }));
   const avg = k => all.reduce((a, r) => a + r[k], 0) / all.length;
   const min = k => Math.min(...all.map(r => r[k]));
   const max = k => Math.max(...all.map(r => r[k]));
@@ -222,6 +246,8 @@ function simulate(runs, seasons) {
   row('population', 'pop');
   row('housing', 'housing');
   row('contentment', 'happy');
+  row('contentment in the reign', 'reignHappy');
+  row('% of the reign at 100%', 'pinnedPct');
   row('house standing', 'tier', 2);
   row('gold /s', 'gold', 2);
   row('food /s (over a year)', 'food', 2);
@@ -274,6 +300,9 @@ function simulate(runs, seasons) {
   chk(all.filter(r => r.won).reduce((a, r) => a + r.wonAt, 0) / Math.max(1, all.filter(r => r.won).length) > 16, 'reigns are not won in a rush (over 4 years on average)');
   chk(avg('happy') < 92, 'contentment is earned, not automatic (average under 92%)');
   chk(max('burned') <= 8, 'no single kingdom is burned flat by bad luck (≤8 buildings lost)');
+  // the reigns that were not won, and what held them up
+  all.filter(r => !r.won).forEach(r => console.log(`   unwon: seed ${r.seed}, chapter ${r.chapter}, waiting on ${r.unmet || '?'}` +
+    ` (pop ${Math.round(r.pop)}, contentment in the reign ${Math.round(r.reignHappy)}%, gold ${r.gold.toFixed(2)}/s)`));
   return all;
 }
 

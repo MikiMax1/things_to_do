@@ -1261,6 +1261,9 @@ var SIM = (function () {
     net.wood -= firewoodNeed();
     // with the woodpile low, anyone without a trade goes out for deadwood
     if (firewoodNeed() && G.res.wood < hearths() * DATA.SEASON_LEN) net.wood += Math.min(firewoodNeed() * 0.8, (G.idle || 0) * 0.03);
+    // and with no woodcutters and the woodpile bare, they gather enough for
+    // one: otherwise a realm that spent its timber first could never cut more
+    else if (!G.count.lumber && G.res.wood < 25) net.wood += Math.min(0.2, (G.idle || 0) * 0.03);
     if (season().key === 'winter') net.food -= (G.count.pasture || 0) * 0.015;   // hay for the flocks
     net.food -= campaignSlots() * PROVISION_PER_SLOT;
     net.gold -= armySlots() * 0.014;
@@ -1279,7 +1282,10 @@ var SIM = (function () {
       if (jobsOf(b) > 0 && staffRatio(b) < 0.5) return;
       capacity += b.def.happy * 6 * lvlMul(b);
     });
-    var coverage = G.pop > 0 ? U.clamp(capacity / G.pop, 0, 1.35) : 1;
+    // enough is enough: a town awash with taverns is no happier than one with
+    // room for all (up to 1.35 once: two wells kept a village of 30 at the
+    // ceiling, and the ceiling made every other choice free)
+    var coverage = G.pop > 0 ? U.clamp(capacity / G.pop, 0, 1) : 1;
     var t = 34 + coverage * 46;
     if (G.tech.sanitation) t += 8;
     t += G.blessing || 0;
@@ -1290,7 +1296,7 @@ var SIM = (function () {
     if (G.tax === 'low') t += 6; else if (G.tax === 'high') t -= 10;
     if (G.tithe) t += 4;
     // a bigger town expects more of its lord: crowds, noise, prices
-    t -= U.clamp((G.pop - 45) * 0.12, 0, 14);
+    t -= U.clamp((G.pop - 45) * 0.15, 0, 22);
     // and the better off a household is, the harder it is to please
     var hs = 0, hn = 0;
     G.buildings.forEach(function (b) { if (b.built && b.def.evolves) { hs += (b.level || 1) - 1; hn++; } });
@@ -1610,6 +1616,10 @@ var SIM = (function () {
     AGENTS.dropJob(b);
     G.stats.burned = (G.stats.burned || 0) + 1;
     G.fireCalm = G.time + DATA.SEASON_LEN * 1.5;   // everyone is careful with candles for a while
+    // once a roof has fallen the whole street turns out: the blazes it had
+    // spread to get buckets for a few seconds, so one fire rarely takes a quarter
+    var c0 = centre(b);
+    burning().forEach(function (o) { var c1 = centre(o); if (U.dist(c0.x, c0.y, c1.x, c1.y) <= 5) o.fire.brigade = Math.max(o.fire.brigade, 5); });
     G.happy = U.clamp(G.happy - 6, 0, 100);
     refreshCounts();
     emit('burned', b);
@@ -1908,8 +1918,12 @@ var SIM = (function () {
      last-resort relief: you should never be able to get stuck
      --------------------------------------------------------- */
   function destitute() {
-    if (G.res.gold >= 40 || G.res.wood >= 20 || G.res.stone >= 20) return false;
+    // timber and stone are no use to a realm that has no market to sell them
+    // at and no coin to build one: on Harsh that could last four years
+    var noSale = !canTrade() && seasonIndex() >= 6;
+    if (G.res.gold >= 40 || (!noSale && (G.res.wood >= 20 || G.res.stone >= 20))) return false;
     var net = ledger();
+    if (noSale) return net.gold <= 0.1;
     // broke, with nothing coming in but the castle's thin trickle of tax
     return net.gold <= 0.35 && net.wood <= 0.02 && net.stone <= 0.02;
   }
