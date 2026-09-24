@@ -19,6 +19,41 @@ var RENDER = (function () {
   var lastSeason = null;
   var DBG = {};          // switches for profiling
 
+  /* ---------------- detail levels ----------------
+     'auto' starts at high and steps down if the phone cannot keep up;
+     a level picked by hand stays put. */
+  var QPREF = 'auto', QLEVEL = 'high';
+  var Q = {
+    high:     { dpr: 2,   lean: true,  weather: 1,   clouds: true,  glints: true },
+    balanced: { dpr: 1.5, lean: false, weather: 0.6, clouds: true,  glints: true },
+    saver:    { dpr: 1,   lean: false, weather: 0.3, clouds: false, glints: false }
+  };
+  try { QPREF = localStorage.getItem('ashveil.quality') || 'auto'; } catch (e) {}
+  if (QPREF !== 'auto' && Q[QPREF]) QLEVEL = QPREF;
+  var perf = { t: 0, frames: 0, slow: 0 }, onQuality = null;
+  function setQuality(pref) {
+    QPREF = pref;
+    try { localStorage.setItem('ashveil.quality', pref); } catch (e) {}
+    QLEVEL = pref === 'auto' ? 'high' : pref;
+    perf.slow = 0;
+    resize();
+  }
+  function watchFrames(dt) {
+    if (QPREF !== 'auto' || document.hidden) return;
+    perf.t += dt; perf.frames++;
+    if (perf.t < 2) return;
+    var avg = perf.t / perf.frames;
+    perf.t = 0; perf.frames = 0;
+    // slower than about 36 frames a second, twice running: ease off
+    if (avg > 0.028) perf.slow++; else perf.slow = 0;
+    if (perf.slow >= 2 && QLEVEL !== 'saver') {
+      QLEVEL = QLEVEL === 'high' ? 'balanced' : 'saver';
+      perf.slow = 0;
+      resize();
+      if (onQuality) onQuality(QLEVEL);
+    }
+  }
+
   function init(canvas) {
     cv = canvas; g = cv.getContext('2d');
     resize();
@@ -29,7 +64,7 @@ var RENDER = (function () {
 
   function resize() {
     // 2× is indistinguishable from 3× on a phone and costs half the pixels
-    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    dpr = Math.min(window.devicePixelRatio || 1, Q[QLEVEL].dpr);
     cw = cv.clientWidth; ch = cv.clientHeight;
     cv.width = Math.floor(cw * dpr); cv.height = Math.floor(ch * dpr);
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -143,7 +178,7 @@ var RENDER = (function () {
     var rainy = SIM.G && SIM.G.weather === 'rain';
     var kind = season === 'winter' ? 'snow' : rainy ? 'rain' : season === 'autumn' ? 'leaf' : season === 'spring' ? 'petal' : null;
     var rate = kind === 'snow' ? 60 : kind === 'rain' ? 220 : kind === 'leaf' ? 7 : kind === 'petal' ? 6 : 0;
-    var n = rate * dt * (cw / 400);
+    var n = rate * dt * (cw / 400) * Q[QLEVEL].weather;
     while (n > 0) {
       if (n < 1 && Math.random() > n) break;
       n--;
@@ -194,6 +229,7 @@ var RENDER = (function () {
     var G = SIM.G;
     if (!G) return;
     time += dt;
+    watchFrames(dt);
     var season = SIM.season().key;
     if (season !== lastSeason) {
       if (lastSeason !== null) {
@@ -204,7 +240,7 @@ var RENDER = (function () {
       lastSeason = season;
     }
     TERRAIN.sync();
-    TERRAIN.step(5);
+    TERRAIN.step(TERRAIN.detailed ? 5 : 14);
     updateParticles(dt);
     updateWeather(dt, season);
 
@@ -225,7 +261,7 @@ var RENDER = (function () {
       return s.x > -pad && s.x < cw + pad && s.y > -pad * 0.5 && s.y < ch + pad * 1.6;
     }
 
-    if (!DBG.noWater) drawWater(x0, x1, y0, y1, z);
+    if (!DBG.noWater && Q[QLEVEL].glints) drawWater(x0, x1, y0, y1, z);
 
     var night = nightAmount(), golden = goldenAmount();
     var sun = 1 - night;
@@ -305,7 +341,7 @@ var RENDER = (function () {
         var thin = screenT[Math.floor(tr.x) + ',' + Math.floor(tr.y)];
         if (thin) g.globalAlpha = 0.42;
         // trees lean a touch in the wind, from the root
-        if (z > 44) {
+        if (z > 44 && Q[QLEVEL].lean) {
           var lean = (wind + Math.sin(time * 1.3 + tr.ph) * 0.35) * 0.018;
           g.setTransform(dpr, 0, dpr * lean, dpr, dpr * s.x, dpr * s.y);
           g.drawImage(sp.c, -sp.ax * k, -sp.ay * k, sp.c.width * k, sp.c.height * k);
@@ -474,7 +510,7 @@ var RENDER = (function () {
     g.globalAlpha = 1;
     screenTransform();
     // seen from a distance, the clouds themselves drift over the island
-    var far = U.clamp((42 - z) / 18, 0, 1);
+    var far = Q[QLEVEL].clouds ? U.clamp((42 - z) / 18, 0, 1) : 0;
     if (far > 0) {
       clouds.forEach(function (c) {
         var s = toScreen(c.x - 2.2, c.y - 2.2);
@@ -765,13 +801,13 @@ var RENDER = (function () {
   }
 
   function drawGhost(z) {
-    var def = DATA.B[ghost.id];
+    var def = ghost.def || DATA.B[ghost.id];
     var wT = def.w || 1, hT = def.h || 1;
     footprintPath(ghost.x, ghost.y, wT, hT, 0.02);
     g.fillStyle = ghost.ok ? 'rgba(125,212,90,.32)' : 'rgba(212,85,58,.38)';
     g.fill();
     g.strokeStyle = ghost.ok ? '#b4f58a' : '#f59a7a'; g.lineWidth = 2.5; g.stroke();
-    var sp = ART.building({ id: ghost.id, def: def, level: 1 }, SIM.season().key);
+    var sp = ART.building(ghost.b ? { id: ghost.b.id, def: def, level: ghost.b.level, compact: ghost.b.compact } : { id: ghost.id, def: def, level: 1 }, SIM.season().key);
     if (sp) drawSprite(sp, ghost.x, ghost.y, 0.62);
     if (def.radius && def.aura) auraRing(ghost.x + wT / 2, ghost.y + hT / 2, def.radius + .5);
     // what it would make here
@@ -837,6 +873,8 @@ var RENDER = (function () {
     getGhost: function () { return ghost; },
     setSelected: function (s) { selected = s; },
     puff: puff, floater: floater, nightAmount: nightAmount, DBG: DBG,
+    quality: function () { return QLEVEL; }, qualityPref: function () { return QPREF; }, setQuality: setQuality,
+    set onQuality(f) { onQuality = f; },
     get size() { return { w: cw, h: ch }; }
   };
 })();

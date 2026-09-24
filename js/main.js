@@ -101,6 +101,7 @@
     RENDER.init(el('scene'));
     BATTLE.init();
     UI.init();
+    TUT.init();
 
     var hasSave = SIM.hasSave();
     el('btn-continue').style.display = hasSave ? 'block' : 'none';
@@ -129,10 +130,10 @@
       setTimeout(function () { RENDER.resize(); BATTLE.resize(); }, 250);
     });
     document.addEventListener('visibilitychange', function () {
-      if (document.hidden) { SIM.save(); }
+      if (document.hidden) { SIM.save(); TERRAIN.saveCache(); }
       else last = performance.now();
     });
-    window.addEventListener('pagehide', function () { SIM.save(); });
+    window.addEventListener('pagehide', function () { SIM.save(); TERRAIN.saveCache(); });
     // block the browser's own pinch-zoom / double-tap zoom
     document.addEventListener('gesturestart', function (e) { e.preventDefault(); });
     document.addEventListener('dblclick', function (e) { e.preventDefault(); });
@@ -176,6 +177,8 @@
   function loop(now) {
     requestAnimationFrame(loop);
     if (!running) return;
+    // battery saver draws at most 30 times a second
+    if (RENDER.quality() === 'saver' && now - last < 30) return;
     var dt = Math.min((now - last) / 1000, 0.1);
     last = now;
 
@@ -198,6 +201,7 @@
 
     RENDER.draw(dt);
     UI.pump();
+    TUT.update();
 
     hudTimer += dt;
     if (hudTimer > 0.2) { hudTimer = 0; UI.refreshHUD(); }

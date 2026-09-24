@@ -30,7 +30,7 @@ var SIM = (function () {
       army: { militia: 4 },
       rival: { str: 30, anger: 0, nextRaid: DATA.SEASON_LEN * 6.5, warned: false },
       quests: {}, questShown: [], chapter: 0, won: false, weather: 'clear', weatherTimer: 40,
-      mkt: {}, decrees: {}, shiftUntil: -1, finds: [], findTimer: DATA.SEASON_LEN * 0.8,
+      tut: -1, mkt: {}, decrees: {}, shiftUntil: -1, finds: [], findTimer: DATA.SEASON_LEN * 0.8,
       ship: null, shipTimer: DATA.SEASON_LEN * 2.2, fireTimer: 5,
       stats: { wins: 0, losses: 0, built: 0, raidsSurvived: 0, techDone: 0, upgrades: 0, traded: 0 },
       vets: {}, formation: 'line', campaign: null,
@@ -324,7 +324,9 @@ var SIM = (function () {
       rootTreasure(x, y);
     }
     if (def.build <= 0) { b.built = true; b.prog = 1; }
+    b.paid = cost;
     commit(b);
+    lastPlaced = { b: b, at: Date.now() };
     G.stats.built++;
     refreshCounts();
     emit('build', b);
@@ -369,6 +371,76 @@ var SIM = (function () {
     if (def.armyCap) parts.push('+' + def.armyCap + ' troops');
     if (def.research) parts.push('faster research');
     return parts.slice(0, 2).join(' · ');
+  }
+
+  /* ---------------------------------------------------------
+     Second thoughts. A building placed a moment ago can be taken back for
+     everything it cost, and any building can be moved for a quarter of
+     its price — no demolishing and rebuilding to fix a misplaced farm.
+     --------------------------------------------------------- */
+  var UNDO_MS = 8000, lastPlaced = null;
+  function canUndo() {
+    return !!(lastPlaced && Date.now() - lastPlaced.at < UNDO_MS && G.buildings.indexOf(lastPlaced.b) >= 0);
+  }
+  function undoLeft() { return canUndo() ? (UNDO_MS - (Date.now() - lastPlaced.at)) / 1000 : 0; }
+  function undoPlace() {
+    if (!canUndo()) return { ok: false, why: 'Too late to take that back' };
+    var b = lastPlaced.b;
+    lastPlaced = null;
+    removeFromMap(b);
+    Object.keys(b.paid || {}).forEach(function (k) { G.res[k] = Math.min(cap(k) + b.paid[k], G.res[k] + b.paid[k]); });
+    G.stats.built = Math.max(0, G.stats.built - 1);
+    refreshCounts();
+    emit('undone', b);
+    return { ok: true, b: b };
+  }
+  function removeFromMap(b) {
+    var i = G.buildings.indexOf(b);
+    if (i >= 0) G.buildings.splice(i, 1);
+    markPathsDirty();
+    W.footprint(b.def, b.x, b.y).forEach(function (c) {
+      var t = W.at(c.x, c.y);
+      if (t && t.bld === b) t.bld = null;
+    });
+    AGENTS.dropJob(b);
+  }
+  function moveCost(b) {
+    var base = costOf(b.id), out = {};
+    Object.keys(base).forEach(function (k) { out[k] = Math.max(1, Math.round(base[k] * 0.25)); });
+    out.gold = Math.max(5, out.gold || 0);
+    return out;
+  }
+  function canMove(b, x, y) {
+    if (!b || b.def.unique) return { ok: false, why: 'The castle stays where it is' };
+    if (b.fire) return { ok: false, why: 'Not while it is burning' };
+    if (x === b.x && y === b.y) return { ok: false, why: 'That is where it already is' };
+    return W.canPlace(b.id, x, y, b.def, b);
+  }
+  function moveBuilding(b, x, y) {
+    var chk = canMove(b, x, y);
+    if (!chk.ok) return chk;
+    var cost = moveCost(b);
+    if (!canAfford(cost)) return { ok: false, why: 'Moving it needs ' + short(cost) };
+    pay(cost);
+    W.footprint(b.def, b.x, b.y).forEach(function (c) {
+      var t = W.at(c.x, c.y);
+      if (t && t.bld === b) t.bld = null;
+    });
+    var felled = 0;
+    W.footprint(b.def, x, y).forEach(function (c) {
+      var t = W.at(c.x, c.y);
+      if (!t) return;
+      if (t.terr === 'forest') { t.terr = 'grass'; t.cleared = true; felled++; }
+      t.bld = b;
+    });
+    if (felled) G.res.wood = Math.min(cap('wood'), G.res.wood + 12 * felled);
+    b.x = x; b.y = y;
+    b.crop = 0;
+    AGENTS.dropJob(b);
+    markPathsDirty();
+    refreshCounts();
+    emit('moved', b);
+    return { ok: true };
   }
 
   function short(cost) {
@@ -1896,7 +1968,7 @@ var SIM = (function () {
       time: G.time, res: G.res, pop: G.pop, happy: G.happy,
       castle: G.castle, tech: G.tech, research: G.research,
       army: G.army, rival: G.rival, quests: G.quests, stats: G.stats, chapter: G.chapter || 0, won: !!G.won,
-      mkt: G.mkt || {}, decrees: G.decrees || {}, shiftUntil: G.shiftUntil || -1, finds: G.finds || [],
+      tut: typeof G.tut === 'number' ? G.tut : -1, mkt: G.mkt || {}, decrees: G.decrees || {}, shiftUntil: G.shiftUntil || -1, finds: G.finds || [],
       shipTimer: G.shipTimer, findTimer: G.findTimer,
       vets: G.vets || {}, formation: G.formation || 'line', seen: G.seen || {}, campaign: G.campaign || null,
       festivals: G.festivals || {}, fairUntil: G.fairUntil || -1,
@@ -1909,6 +1981,32 @@ var SIM = (function () {
     return U.save(d);
   }
   function hasSave() { return !!U.load(); }
+
+  /* A save as a line of text, for keeping somewhere safe. */
+  var CODE_TAG = 'ASHVEIL1:';
+  function exportCode() {
+    var d = U.load();
+    if (!d) return '';
+    return CODE_TAG + btoa(unescape(encodeURIComponent(JSON.stringify(d))));
+  }
+  function decodeCode(text) {
+    var t = String(text || '').replace(/\s+/g, '');
+    if (t.indexOf(CODE_TAG) !== 0) return null;
+    try { return JSON.parse(decodeURIComponent(escape(atob(t.slice(CODE_TAG.length))))); }
+    catch (e) { return null; }
+  }
+  function checkCode(text) {
+    var d = decodeCode(text);
+    if (!d) return { ok: false, why: 'That is not an Ashveil save code' };
+    if (!(d.v >= 2 && d.v <= 4) || !d.world || !Array.isArray(d.buildings)) return { ok: false, why: 'That save code is damaged or from an unknown version' };
+    return { ok: true, d: d };
+  }
+  function importCode(text) {
+    var r = checkCode(text);
+    if (!r.ok) return r;
+    U.save(r.d);
+    return { ok: true };
+  }
   function loadGame() {
     var d = U.load();
     if (!d || !(d.v >= 2 && d.v <= 4)) return false;    // older saves still load
@@ -1925,7 +2023,7 @@ var SIM = (function () {
       castle: d.castle || 0, army: d.army || {}, rival: d.rival,
       quests: d.quests || {}, stats: st, eventTimer: d.eventTimer,
       chapter: d.chapter || 0, won: !!d.won, weather: 'clear', weatherTimer: 30,
-      mkt: d.mkt || {}, decrees: d.decrees || {}, shiftUntil: d.shiftUntil || -1, finds: d.finds || [],
+      tut: typeof d.tut === 'number' ? d.tut : -1, mkt: d.mkt || {}, decrees: d.decrees || {}, shiftUntil: d.shiftUntil || -1, finds: d.finds || [],
       ship: null, shipTimer: d.shipTimer || DATA.SEASON_LEN * 2, findTimer: d.findTimer || 40, fireTimer: 5,
       vets: d.vets || {}, formation: d.formation || 'line',
       growTimer: 6, reliefTimer: 30, reliefCooldown: 0,
@@ -1970,6 +2068,7 @@ var SIM = (function () {
     get G() { return G; },
     on: on, emit: emit,
     newGame: newGame, loadGame: loadGame, hasSave: hasSave, save: save,
+    exportCode: exportCode, checkCode: checkCode, importCode: importCode,
     tick: tick, place: place, demolish: demolish, costOf: costOf, canAfford: canAfford,
     unlocked: unlocked, refreshCounts: refreshCounts,
     ledger: ledger, output: output, cap: cap, housing: housing,
@@ -1992,6 +2091,8 @@ var SIM = (function () {
     goodsValue: goodsValue, marketCut: marketCut,
     rebuildPaths: function () { markPathsDirty(); ensurePaths(true); },
     preview: preview, soilMul: soilMul,
+    canUndo: canUndo, undoLeft: undoLeft, undoPlace: undoPlace,
+    moveCost: moveCost, canMove: canMove, moveBuilding: moveBuilding,
     canTrade: canTrade, priceOf: priceOf, sell: sell, buy: buy, tradeSpread: tradeSpread,
     techAvailable: techAvailable, techClosed: techClosed, startResearch: startResearch,
     unitAvailable: unitAvailable, recruit: recruit, disband: disband,

@@ -144,8 +144,8 @@ var W = (function () {
   }
 
   /* can this building go here? returns {ok:bool, why:string} */
-  function canPlace(id, x, y) {
-    var def = DATA.B[id];
+  function canPlace(id, x, y, defOverride, ignore) {
+    var def = defOverride || DATA.B[id];
     if (!def) return { ok: false, why: 'Unknown building' };
     var cells = footprint(def, x, y);
     for (var i = 0; i < cells.length; i++) {
@@ -155,7 +155,7 @@ var W = (function () {
       var ok = def.terrain.indexOf(t.terr) >= 0 ||
                (t.terr === 'forest' && def.terrain.indexOf('grass') >= 0);
       if (!ok) return { ok: false, why: 'Cannot build on ' + DATA.TERRAIN[t.terr].name.toLowerCase() };
-      if (t.bld) return { ok: false, why: 'Already occupied' };
+      if (t.bld && t.bld !== ignore) return { ok: false, why: 'Already occupied' };
     }
     if (def.near) {
       var n = nearCount(x, y, def.near.terrain, 1);

@@ -17,6 +17,7 @@ var UI = (function () {
   function h(html) { var d = document.createElement('div'); d.innerHTML = html.trim(); return d.firstChild; }
 
   var buildMode = null;      // building id currently being placed
+  var moveTarget = null;     // a building being moved, when buildMode is for a move
   var openPanel = null;
   var openTab = {};
   var selected = null;       // {b:building} or {t:tile}
@@ -743,6 +744,16 @@ var UI = (function () {
         toast(SIM.save() ? 'Kingdom saved.' : 'Could not save (storage blocked).', SIM.save() ? 'good' : 'bad');
       });
       box.appendChild(sv);
+      box.appendChild(h('<p class="sect-label">Detail</p>'));
+      var qrow = h('<div class="pill-row"></div>');
+      [['auto', 'Automatic'], ['high', 'High'], ['balanced', 'Balanced'], ['saver', 'Battery saver']].forEach(function (q) {
+        var pb = h('<button class="pill' + (RENDER.qualityPref() === q[0] ? ' on' : '') + '">' + q[1] + '</button>');
+        pb.addEventListener('click', function () { RENDER.setQuality(q[0]); U.sfx.tap(); renderSheet(); });
+        qrow.appendChild(pb);
+      });
+      box.appendChild(qrow);
+      box.appendChild(h('<p class="hint">Automatic starts at High and eases off if your phone struggles. Now drawing at: <b>' +
+        { high: 'High', balanced: 'Balanced', saver: 'Battery saver' }[RENDER.quality()] + '</b>.</p>'));
       var snd = h('<button class="btn sec wide">' + (U.isMuted() ? '🔇 Sound off' : '🔊 Sound on') + '</button>');
       snd.addEventListener('click', function () { toggleSound(); renderSheet(); });
       box.appendChild(snd);
@@ -753,6 +764,30 @@ var UI = (function () {
         else if (document.exitFullscreen) document.exitFullscreen();
       });
       box.appendChild(fs);
+      box.appendChild(h('<p class="sect-label">Keep a copy</p>'));
+      box.appendChild(h('<p class="hint">Your kingdom lives in this browser. Copy its save code somewhere safe — a note, a message to yourself — and you can bring it back here or on another phone.</p>'));
+      var cp = h('<button class="btn sec wide">📋 Copy save code</button>');
+      cp.addEventListener('click', function () {
+        SIM.save();
+        var code = SIM.exportCode();
+        var done = function () { toast('Save code copied — ' + Math.round(code.length / 1024) + ' KB of text.', 'good'); };
+        var fallback = function () { ta.value = code; ta.select(); try { document.execCommand('copy'); done(); } catch (e) { toast('Select the text below and copy it.', ''); } };
+        if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(code).then(done, fallback);
+        else fallback();
+      });
+      box.appendChild(cp);
+      var ta = h('<textarea id="save-code" rows="3" placeholder="Paste a save code here to load it"></textarea>');
+      box.appendChild(ta);
+      var ld = h('<button class="btn sec wide">📥 Load this save code</button>');
+      var armedL = false;
+      ld.addEventListener('click', function () {
+        var r = SIM.checkCode(ta.value);
+        if (!r.ok) { toast(r.why, 'bad'); U.sfx.err(); return; }
+        if (!armedL) { armedL = true; ld.textContent = 'Tap again — this replaces the kingdom you are playing'; return; }
+        SIM.importCode(ta.value);
+        location.reload();
+      });
+      box.appendChild(ld);
       box.appendChild(h('<p class="sect-label">Danger</p>'));
       var rs = h('<button class="btn danger wide">Abandon this kingdom and start over</button>');
       var armed = false;
@@ -778,19 +813,37 @@ var UI = (function () {
     updateGhost(RENDER.size.w / 2, RENDER.size.h / 2);
     U.sfx.tap();
   }
+  function startMove(b) {
+    clearSelection(); closeSheet();
+    buildMode = b.id; moveTarget = b;
+    el('build-banner').classList.remove('hidden');
+    var mc = SIM.moveCost(b);
+    el('build-banner-text').textContent = 'Moving ' + (b.def.name) + ' — tap the new spot (' +
+      Object.keys(mc).map(function (k) { return mc[k] + ' ' + k; }).join(', ') + ')';
+    updateGhost(RENDER.size.w / 2, RENDER.size.h / 2);
+    U.sfx.tap();
+  }
   function cancelBuild() {
+    moveTarget = null;
     buildMode = null;
     RENDER.setGhost(null);
     el('build-banner').classList.add('hidden');
   }
   /* the plot a finger at (sx,sy) means: big buildings centre on it */
   function plotAt(sx, sy, id) {
-    var def = DATA.B[id], w = RENDER.toWorld(sx, sy);
+    var def = moveTarget ? moveTarget.def : DATA.B[id], w = RENDER.toWorld(sx, sy);
     return { x: Math.round(w.x - (def.w || 1) / 2), y: Math.round(w.y - (def.h || 1) / 2) };
   }
   function updateGhost(sx, sy) {
     if (!buildMode) return;
     var t = plotAt(sx, sy, buildMode);
+    if (moveTarget) {
+      var mchk = SIM.canMove(moveTarget, t.x, t.y), maff = SIM.canAfford(SIM.moveCost(moveTarget));
+      RENDER.setGhost({ id: buildMode, x: t.x, y: t.y, ok: mchk.ok && maff, def: moveTarget.def, b: moveTarget,
+        why: mchk.ok ? (maff ? '' : 'Not enough to move it') : mchk.why,
+        preview: mchk.ok ? (maff ? 'Move here' : 'Not enough to move it') : mchk.why });
+      return;
+    }
     var chk = W.canPlace(buildMode, t.x, t.y);
     var cost = SIM.costOf(buildMode);
     var afford = SIM.canAfford(cost);
@@ -801,8 +854,19 @@ var UI = (function () {
   }
   function tryPlaceAt(sx, sy) {
     var t = plotAt(sx, sy, buildMode);
+    if (moveTarget) {
+      var mb = moveTarget, mr = SIM.moveBuilding(mb, t.x, t.y);
+      if (mr.ok) {
+        U.sfx.place(); U.vibrate(12);
+        RENDER.puff(t.x + (mb.def.w || 1) / 2, t.y + (mb.def.h || 1) / 2, '#c9b58a', 9);
+        toast(mb.def.name + ' moved.', 'good');
+        cancelBuild(); refreshHUD();
+      } else { U.sfx.err(); toast(mr.why, 'bad'); }
+      return mr.ok;
+    }
     var r = SIM.place(buildMode, t.x, t.y);
     if (r.ok) {
+      showUndo();
       U.sfx.place(); U.vibrate(12);
       RENDER.puff(t.x + (DATA.B[buildMode].w || 1) / 2, t.y + (DATA.B[buildMode].h || 1) / 2, '#c9b58a', 9);
       refreshHUD();
@@ -853,6 +917,20 @@ var UI = (function () {
     });
     btns.push({ label: 'Nothing today', sub: 'They will stay until the season turns' });
     storyCard('⛵', 'A Merchant Cog', 'A trader from the southern ports has dropped anchor off Ashveil. Their prices beat the market square — for today.', btns);
+  }
+
+  var undoTimer = null;
+  function showUndo() {
+    var chip = el('undo-chip');
+    chip.classList.remove('hidden');
+    clearInterval(undoTimer);
+    var tickU = function () {
+      var left = SIM.undoLeft();
+      if (left <= 0) { chip.classList.add('hidden'); clearInterval(undoTimer); return; }
+      el('undo-left').textContent = Math.ceil(left) + 's';
+    };
+    tickU();
+    undoTimer = setInterval(tickU, 250);
   }
 
   function select(sel) {
@@ -960,6 +1038,11 @@ var UI = (function () {
         var pb = h('<button class="btn sec">' + (b.paused ? '▶ Resume' : '⏸ Pause') + '</button>');
         pb.addEventListener('click', function () { b.paused = !b.paused; SIM.assignWorkers(true); renderInspector(); });
         acts.appendChild(pb);
+      }
+      if (b.id !== 'castle' && !b.fire) {
+        var mv = h('<button class="btn sec">✥ Move</button>');
+        mv.addEventListener('click', function () { startMove(b); });
+        acts.appendChild(mv);
       }
       if (b.id !== 'castle') {
         var db = h('<button class="btn danger">Demolish</button>');
@@ -1303,7 +1386,7 @@ var UI = (function () {
     var ch = DATA.CHAPTERS[0];
     storyCard('🏝️', 'Chapter I · ' + ch.title,
       ch.text + '\n\nDrag to look around, pinch to zoom, and tap anything to see what it does. Your next goal is always in the card at the top of the screen — and the Build menu opens on what your realm needs most.',
-      [{ label: 'Begin', sub: 'Raise cottages, plant farms, fell timber' }]);
+      [{ label: 'Begin', sub: 'A few quick pointers first — you can skip them', then: function () { TUT.start(); } }]);
   }
 
   function fireEvent() {
@@ -1454,6 +1537,9 @@ var UI = (function () {
   function init() {
     bindInput(el('scene'));
     guard('event-modal', 'modal');
+    RENDER.onQuality = function (lvl) {
+      toast('Lowered the detail to ' + (lvl === 'saver' ? 'battery saver' : 'balanced') + ' for smoother play. Change it in ☰ → Settings.', '');
+    };
     guard('inspector', 'insp');
 
     document.querySelectorAll('.nav-btn').forEach(function (b) {
@@ -1463,6 +1549,15 @@ var UI = (function () {
     el('sheet-scrim').addEventListener('click', closeSheet);
     el('insp-close').addEventListener('click', clearSelection);
     el('build-cancel').addEventListener('click', cancelBuild);
+    el('undo-chip').addEventListener('click', function () {
+      var r = SIM.undoPlace();
+      el('undo-chip').classList.add('hidden');
+      if (!r.ok) { toast(r.why, 'bad'); return; }
+      U.sfx.tap();
+      RENDER.puff(r.b.x + (r.b.def.w || 1) / 2, r.b.y + (r.b.def.h || 1) / 2, '#c9b58a', 8);
+      toast('Taken back — everything it cost is returned.', 'good');
+      refreshHUD();
+    });
     el('btn-center').addEventListener('click', function () {
       var c = SIM.G.buildings[0];
       if (c) RENDER.centreOn(c.x, c.y);
@@ -1563,6 +1658,8 @@ var UI = (function () {
     init: init, refreshHUD: refreshHUD, toast: toast, pump: pump,
     setSpeed: setSpeed, renderSheet: function () { if (openPanel) renderSheet(); },
     isModalOpen: function () { return modalBusy; },
-    chronicle: chronicle, closeSheet: closeSheet, clearSelection: clearSelection, introCard: introCard
+    chronicle: chronicle, closeSheet: closeSheet, clearSelection: clearSelection, introCard: introCard,
+    ghostTo: function (p) { if (buildMode) updateGhost(p.x, p.y); },
+    get panel() { return openPanel; }, get building() { return buildMode; }, get selection() { return selected; }
   };
 })();
