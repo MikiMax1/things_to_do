@@ -92,6 +92,15 @@ var SIM = (function () {
         var h = mkBuilding('house', x, y); h.built = true; h.prog = 1; commit(h);
       }
     });
+    // the merchant prince lands with a trading post already standing: gold is
+    // only worth having if there is somewhere to spend it
+    if (setup.scen === 'merchant') {
+      for (var rr = 2, placed = false; rr < 7 && !placed; rr++)
+        for (var dy = -rr; dy <= rr && !placed; dy++) for (var dx = -rr; dx <= rr && !placed; dx++) {
+          if (Math.abs(dx) !== rr && Math.abs(dy) !== rr) continue;
+          if (W.canPlace('market', spot.x + dx, spot.y + dy).ok) { var m = mkBuilding('market', spot.x + dx, spot.y + dy); m.built = true; m.prog = 1; commit(m); placed = true; }
+        }
+    }
     refreshCounts();
     AGENTS.reset();
     emit('newgame');

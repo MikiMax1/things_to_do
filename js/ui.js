@@ -2340,6 +2340,7 @@ var UI = (function () {
     });
     el('bt-done').addEventListener('click', function () { BATTLE.close(); });
     el('dep-begin').addEventListener('click', function () { BATTLE.beginFight(); });
+    el('dep-quick').addEventListener('click', function () { BATTLE.quick(); });
 
     SIM.on(function (kind, payload) {
       if (kind === 'toast') { toast(payload.msg, payload.kind); chronicle(payload.msg); }

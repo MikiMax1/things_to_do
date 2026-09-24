@@ -1,6 +1,6 @@
 # Kingdom of Ashveil — the redesign plan
 
-## v5: more fun, less annoying, better balanced, more detailed (in progress)
+## v5: more fun, less annoying, better balanced, more detailed (done)
 
 Asked for: "make the game hyper realistic and really detailed", "more fun and
 less annoying", "a better balanced dynamic", and a switch that lets the
@@ -47,6 +47,27 @@ as chores. Every system either runs itself or becomes a clear choice.
   repair, storm damage; carts, spoilage; tax and tithe; more illnesses, a
   herbalist and a graveyard; wildlife, fish and forest stocks.
 - **Phase 12 — battles you command, close-up detail, sound.**
+
+What was found and fixed along the way:
+- **Taverns were markets.** Any building with a trade value took the first
+  market's cut of the realm's goods, and used up a market slot so the second
+  market earned less. One tavern made 5 gold a second.
+- **The harness was lying about pacing.** It finished buildings without
+  refreshing the counts (so chapter goals looked slow) and never raised an
+  army (so "Win 2 battles" never happened). With both fixed, the true curve
+  was too fast late and too idle — which is what Phase 7 then balanced.
+- **A cliff at 38% contentment.** Growth stopped dead below it, and Harsh's
+  early target sat just under it: every Harsh kingdom froze. Growth now
+  tapers smoothly.
+- **Village Growth over-built.** Early versions raised 55 pastures while
+  waiting for the first cloth, and drafted a soldier every few seconds
+  because "a raid is near" is always true once the grace ends. It now rests
+  after each kind of building and keeps a sensible garrison.
+
+Harness, v5: 18 checks, including chapter pacing, reigns won within ten
+years (Fair: all; Steward: 7–9 in 10; Harsh: 4 in 5), gold not idle at its
+cap, contentment earned rather than automatic, and no kingdom burned flat by
+bad luck. Pass `steward` as the sixth argument to let Village Growth play.
 
 ## v4: the five-phase plan (done)
 

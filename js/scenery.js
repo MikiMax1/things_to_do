@@ -43,6 +43,30 @@ var SCENERY = (function () {
     updateBirds(dt, api);
     updateCarts(dt);
     updateJumps(dt);
+    townSounds(dt, api);
+  }
+
+  /* the town, heard close up: the smithy's hammer, the woodcutters, the
+     market's chatter, the mill, the flocks, the chapel bell at dawn */
+  var soundT = 2;
+  var SOUNDS = { smith: 'clink', lumber: 'chop', sawmill: 'chop', market: 'chatter', tavern: 'chatter', windmill: 'creak', pasture: 'bleat' };
+  function townSounds(dt, api) {
+    soundT -= dt;
+    if (soundT > 0 || api.z < 55 || U.isMuted() || !U.soundPref('amb')) return;
+    soundT = 0.9 + Math.random() * 1.4;
+    var cx = api.cw / 2, cy = api.ch / 2, pool = [];
+    G().buildings.forEach(function (b) {
+      if (!b.built || !SOUNDS[b.id] || !(b.workers > 0)) return;
+      if (b.id === 'tavern' && api.night < 0.4) return;
+      if (b.id !== 'tavern' && api.night > 0.7) return;
+      var s = api.toScreen(b.x + 0.5, b.y + 0.5), d = Math.hypot(s.x - cx, s.y - cy);
+      if (d < Math.min(api.cw, api.ch) * 0.55) pool.push({ b: b, v: 1 - d / (Math.min(api.cw, api.ch) * 0.55) });
+    });
+    var chapel = G().buildings.filter(function (b) { return b.built && b.id === 'chapel'; })[0];
+    if (chapel && api.dayPhase > 0.06 && api.dayPhase < 0.09 && Math.random() < 0.5) { U.sfx.bell(0.8); return; }
+    if (!pool.length) return;
+    var p = pool[Math.floor(Math.random() * pool.length)], k = SOUNDS[p.b.id], zoom = U.clamp((api.z - 55) / 60, 0.3, 1);
+    if (U.sfx[k]) U.sfx[k](p.v * zoom);
   }
 
   /* ---------------- birds: flocks crossing, gulls over the shore ---------------- */

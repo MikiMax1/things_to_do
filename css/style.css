@@ -555,3 +555,9 @@ html.calm *, html.calm *::before, html.calm *::after{animation-duration:.001s !i
 .banner-pill.on{border-color:#f3e6c4;box-shadow:0 0 0 2px rgba(224,178,60,.6)}
 .banner-chip{display:inline-block;width:18px;height:12px;border-radius:3px;vertical-align:middle;border:1px solid rgba(0,0,0,.4)}
 .issue.advice b{font-size:13.5px}
+
+#dep-quick{display:block;width:100%;margin-top:8px;background:none;border:1px solid #6b543a;color:#e3d6b6;border-radius:12px;padding:10px;font:600 13px system-ui,sans-serif;cursor:pointer}
+#bt-squads{display:flex;flex-wrap:wrap;gap:5px;align-items:center;justify-content:center;margin:4px 0}
+#bt-squads .squad{background:rgba(30,22,15,.85);border:1px solid #6b543a;border-radius:10px;color:#f3e6c4;font:600 13px system-ui,sans-serif;padding:5px 10px;cursor:pointer}
+#bt-squads .squad.on{background:#e0b23c;color:#2a1d0e;border-color:#f0d27a}
+#bt-squads .squad-hint{font:italic 11.5px Georgia,serif;color:#e0d4b0}

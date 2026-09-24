@@ -130,6 +130,13 @@ var U = (function () {
     death:    function () { tone(220, .2, 'sawtooth', .12, 90); },
     victory:  function () { [523,659,784,1046,1318].forEach(function(f,i){ setTimeout(function(){ tone(f,.24,'triangle',.18); }, i*110); }); },
     defeat:   function () { [440,392,330,262].forEach(function(f,i){ setTimeout(function(){ tone(f,.3,'sine',.16); }, i*160); }); },
+    // the sounds of the town, heard when the camera is close
+    clink:    function (v) { tone(1800 + Math.random() * 300, .05, 'square', .05 * (v || 1)); setTimeout(function () { tone(2600, .04, 'triangle', .03 * (v || 1)); }, 30); },
+    chop:     function (v) { noise(.07, .12 * (v || 1), 900); },
+    chatter:  function (v) { for (var i = 0; i < 4; i++) setTimeout(function () { tone(180 + Math.random() * 160, .06 + Math.random() * .05, 'sine', .025 * (v || 1)); }, i * 90 + Math.random() * 60); },
+    creak:    function (v) { tone(120 + Math.random() * 30, .35, 'sawtooth', .025 * (v || 1), 90); },
+    bleat:    function (v) { tone(420, .28, 'sawtooth', .03 * (v || 1), 360); },
+    bell:     function (v) { tone(660, 1.4, 'sine', .07 * (v || 1)); setTimeout(function () { tone(660 * 1.5, 1.1, 'sine', .03 * (v || 1)); }, 20); },
     thunder:  function () { noise(1.6, 0.34, 180); setTimeout(function () { noise(1.1, 0.18, 120); }, 260); },
     season:   function () { tone(392, .18, 'sine', .12); setTimeout(function(){ tone(523,.22,'sine',.12); }, 140); }
   };

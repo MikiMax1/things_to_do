@@ -1778,9 +1778,18 @@ var ART = (function () {
     return c;
   }
 
+  var baseSPX = 128, fine = false;
   function bake() {
     var dpr = (typeof window !== 'undefined' && window.devicePixelRatio) || 1;
-    SPX = dpr >= 1.75 ? 128 : 96;
+    baseSPX = SPX = dpr >= 1.75 ? 128 : 96;
+  }
+  /* close-up: sprites re-painted at half as many pixels again, so roof
+     courses, window frames and door boards stay crisp when zoomed right in */
+  function setFine(on) {
+    if (on === fine) return false;
+    fine = on; SPX = on ? Math.round(baseSPX * 1.6) : baseSPX;
+    clearCache();
+    return true;
   }
   function clearCache() { cache = {}; icons = {}; }
 
@@ -1790,6 +1799,6 @@ var ART = (function () {
     icon: icon, rr: rr, poly: poly, clearCache: clearCache, fishDir: fishDir,
     /* the ruler's colours fly from every tower of the castle */
     setBanner: function (a, b) { if (C.banner === a && C.banner2 === b) return; C.banner = a || C.gold; C.banner2 = b || C.red; clearCache(); },
-    get SPX() { return SPX; }
+    get SPX() { return SPX; }, setFine: setFine, get fine() { return fine; }
   };
 })();

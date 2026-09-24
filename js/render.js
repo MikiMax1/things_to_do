@@ -55,6 +55,7 @@ var RENDER = (function () {
   }
 
   var calm = document.documentElement.classList.contains('calm');
+  var fineLow = 0;
   function init(canvas) {
     cv = canvas; g = cv.getContext('2d');
     resize();
@@ -253,6 +254,11 @@ var RENDER = (function () {
       }
       lastSeason = season;
     }
+    // close-up detail: repaint the sprites finer when zoomed right in on High
+    var dev = cam.z * dpr;
+    if (QLEVEL === 'high' && dev > 230 && !ART.fine) ART.setFine(true);
+    else if (ART.fine && (dev < 150 || QLEVEL !== 'high')) { fineLow = (fineLow || 0) + dt; if (fineLow > 4) { ART.setFine(false); fineLow = 0; } }
+    else fineLow = 0;
     TERRAIN.sync();
     TERRAIN.step(TERRAIN.detailed ? 5 : 14);
     updateParticles(dt);

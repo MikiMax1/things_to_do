@@ -17,7 +17,8 @@ var BATTLE = (function () {
   var endTimer = 0;
   var speedMul = 1.35;
   var ground = 'open', reserve = [], reservePct = 0, retreated = false, deploying = false;
-  var fort = null;   // Brannoch's town: a palisade and a gate to batter down
+  var fort = null;
+  var squadSel = null, marks = [];   // the squad you are commanding, and where you sent them   // Brannoch's town: a palisade and a gate to batter down
 
   var COL = {
     ours: { shirt: '#3f6ea5', shield: '#2d5c96', trim: '#9dc0e8' },
@@ -29,6 +30,43 @@ var BATTLE = (function () {
   function init() {
     cv = el('battle-canvas');
     g = cv.getContext('2d');
+    // command a squad: tap one of your soldiers (or a squad button), then
+    // tap the field where you want them
+    cv.addEventListener('click', function (e) {
+      if (!running || done) return;
+      var r = cv.getBoundingClientRect(), fx = (e.clientX - r.left - ox) / scale, fy = (e.clientY - r.top - oy) / scale;
+      var hit = null, bd = 18 * 18;
+      units.forEach(function (u) { if (u.side === 'ours' && !u.dead) { var d = (u.x - fx) * (u.x - fx) + (u.y - fy) * (u.y - fy); if (d < bd) { bd = d; hit = u; } } });
+      if (hit) { selectSquad(hit.key); return; }
+      if (!squadSel) return;
+      var n = 0;
+      units.forEach(function (u) {
+        if (u.side !== 'ours' || u.dead || u.key !== squadSel) return;
+        u.order = { x: U.clamp(fx + (Math.random() - 0.5) * 16, 8, FW - 8), y: U.clamp(fy + (Math.random() - 0.5) * 16, 8, FH - 8) };
+        u.target = null; n++;
+      });
+      if (n) { marks.push({ x: fx, y: fy, t: 1.2 }); say(DATA.UNITS[squadSel].name + 's on the move.'); U.sfx.tap(); U.vibrate(8); }
+    });
+  }
+  function selectSquad(k) {
+    squadSel = squadSel === k ? null : k;
+    U.sfx.tap();
+    drawSquads();
+  }
+  function drawSquads() {
+    var box = el('bt-squads');
+    if (!box) return;
+    var count = {};
+    units.forEach(function (u) { if (u.side === 'ours' && !u.dead) count[u.key] = (count[u.key] || 0) + 1; });
+    box.innerHTML = '';
+    Object.keys(count).forEach(function (k) {
+      var b = document.createElement('button');
+      b.type = 'button'; b.className = 'squad' + (squadSel === k ? ' on' : '');
+      b.innerHTML = DATA.UNITS[k].ic + ' ' + count[k];
+      b.addEventListener('click', function () { selectSquad(k); });
+      box.appendChild(b);
+    });
+    if (squadSel) { var hnt = document.createElement('span'); hnt.className = 'squad-hint'; hnt.textContent = 'tap the field to send them'; box.appendChild(hnt); }
   }
 
   function resize() {
@@ -214,7 +252,19 @@ var BATTLE = (function () {
     if (reserve.length) say(reserve.length + ' held back out of the first clash.');
     if (ground !== 'open') say('You take the fight to ' + DATA.GROUNDS[ground].name.toLowerCase() + '.');
     running = true;
+    squadSel = null; marks = [];
+    drawSquads();
     U.sfx.horn();
+  }
+  /* settle it without watching: the same battle, run to its end at once */
+  function quick() {
+    if (!deploying) return;
+    beginFight();
+    var wasMuted = U.isMuted();
+    U.setMuted(true);
+    for (var i = 0; i < 6000 && !done; i++) step(0.05);
+    U.setMuted(wasMuted);
+    render();
   }
 
   function commitReserve() {
@@ -370,6 +420,23 @@ var BATTLE = (function () {
         continue;
       }
 
+      // a squad you have sent somewhere goes there, fighting only what gets close
+      if (ours && u.order) {
+        var near2 = nearestEnemy(u), nd = near2 ? U.dist(u.x, u.y, near2.x, near2.y) : 1e9;
+        var od = U.dist(u.x, u.y, u.order.x, u.order.y);
+        if (od > 5 && nd > u.rng + 10) {
+          var mv = Math.min(od, u.spd * dt * (chargeOn ? 1.5 : 1));
+          u.x += (u.order.x - u.x) / od * mv; u.y += (u.order.y - u.y) / od * mv;
+          u.bob += dt * 9; u.state = 'advance';
+          continue;
+        }
+        if (od <= 5) { u.post = { x: u.order.x, y: u.order.y }; delete u.order; }
+      }
+      // at their post, they wait for the enemy to come within reach
+      if (ours && u.post && !chargeOn) {
+        var near3 = nearestEnemy(u);
+        if (!near3 || U.dist(u.x, u.y, near3.x, near3.y) > u.rng + 45) { u.state = 'hold'; continue; }
+      }
       var e = u.target && !u.target.dead ? u.target : nearestEnemy(u);
       // while the gate stands, fighters and siege engines go for the gate
       var walled = fort && !fort.gate.dead;
@@ -447,6 +514,7 @@ var BATTLE = (function () {
       routing.ours = true; say('Your line breaks — sound the retreat!');
     }
 
+    if ((Math.floor(t * 2) !== Math.floor((t - dt) * 2))) drawSquads();
     el('bt-our-count').textContent = (ao + reserve.length) + ' / ' + startOurs;
     el('bt-foe-count').textContent = af + ' / ' + startFoes;
     el('bt-our-bar').style.width = ((ao + reserve.length) / Math.max(1, startOurs) * 50).toFixed(1) + '%';
@@ -828,6 +896,18 @@ var BATTLE = (function () {
   function render() {
     drawField();
     if (fort) drawFort();
+    marks = marks.filter(function (m) { m.t -= 1 / 60; return m.t > 0; });
+    marks.forEach(function (m) {
+      var p = P(m.x, m.y);
+      g.strokeStyle = 'rgba(240,210,110,' + m.t.toFixed(2) + ')'; g.lineWidth = 2;
+      g.beginPath(); g.ellipse(p.x, p.y, (1.3 - m.t) * 22 * scale + 4, (1.3 - m.t) * 9 * scale + 2, 0, 0, 6.3); g.stroke();
+    });
+    if (squadSel) units.forEach(function (u) {
+      if (u.side !== 'ours' || u.dead || u.key !== squadSel) return;
+      var p = P(u.x, u.y);
+      g.strokeStyle = 'rgba(240,210,110,.85)'; g.lineWidth = 1.5;
+      g.beginPath(); g.ellipse(p.x, p.y + 1, 7 * scale, 3 * scale, 0, 0, 6.3); g.stroke();
+    });
     var order = units.slice().sort(function (a, b) { return a.y - b.y; });
     // the fallen first, so the living stand over them
     order.forEach(function (u) { if (u.dead) drawUnit(u); });
@@ -1027,7 +1107,7 @@ var BATTLE = (function () {
 
   return {
     init: init, start: start, update: update, resize: resize, close: close,
-    beginFight: function () { if (deploying) beginFight(); },
+    beginFight: function () { if (deploying) beginFight(); }, quick: quick,
     isDeploying: function () { return deploying; },
     isOpen: isOpen, foeArmy: foeArmy
   };

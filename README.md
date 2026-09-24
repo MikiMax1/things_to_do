@@ -15,6 +15,42 @@ Isle, Forest Isle, Highlands, or Twin Isles joined by a sand spit), the world
 start, a late autumn landing, a border war already under way, or a merchant's
 fortune with little else). A short tutorial points at what to tap first.
 
+**Name yourself.** The new-kingdom screen also asks who rules: your name,
+King or Queen, your house and your banner, which then flies from the castle.
+You age, the council proposes a match, heirs are born, and in a long reign the
+crown passes on (People → Court).
+
+**Let the village grow (optional).** The 🌱 Growth switch under the top bar
+lets the villagers build for themselves out of the treasury: just homes, or
+also whatever the realm is short of, or — as Steward — scouting, research,
+upgrades, the castle, the sea and great works too. Set a gold reserve it never
+touches, paint ground to keep clear, and lean it towards farming, trade,
+defence or faith. Everything it builds shows in the news with the reason, and
+you can undo it.
+
+**Nothing nags.** Offers, requests and festivals arrive as 📜 scrolls you open
+when you like (the game keeps running); only raids stop the clock. News comes
+one line at a time — tap it for the log. Tap the season to skip ahead; 8×
+speed is there too. The 🔔 Advisor says what is worth doing next.
+
+**Build faster.** Anything you can't afford yet can still be placed: it is
+marked out as a plan and the builders start the moment you can pay. Build
+cards say how long until you can afford them. ⟷ Row lays a line of cottages
+or fields in one drag. Undo works for demolishing too.
+
+**Choices.** At the end of each chapter you pick one charter of three (Trade,
+Granary, Fortress, Holy Isle, Seafarers…) for the rest of the reign. Villagers
+send petitions with a deadline. Lord Harric writes. Great works (The Realm →
+Castle) are where a rich treasury goes. The bandit camp (Army → War) is a fight
+you can pick any season — lead it, or settle it on paper. In battle, tap a
+squad and then the field to send it there, or settle the whole fight quickly.
+
+**The world pushes back, fairly.** Hearths burn firewood in winter; fields
+tire with each harvest and can lie fallow; one summer in seven is dry; storms
+tear thatch; fish and deer thin if worked too hard; woodcutters really fell the
+woods; the flux breaks out where there is no clean water. Each has a warning
+and a plain answer. Set taxes and the tithe in the Castle tab.
+
 **Follow the card at the top.** Your reign is told in five chapters. The
 card under the resource bar always shows your next goal and how close you are;
 tap it for the whole chapter. Finish the fifth — the Great Cathedral — and your
@@ -207,6 +243,9 @@ js/sim.js                  game state, economy, workers, research, population, d
 js/folk.js                 the named people: families, births, deaths, fever
 js/explore.js              mist, scouts, hidden sites, the sea chart and outposts
 js/honours.js              reign score, the ledger, honours
+js/steward.js              Village Growth: villagers who build for themselves
+js/court.js                the ruler and heirs, charters, petitions, Brannoch's letters
+js/scenery.js              life round the homes, carts, surf, birds, weather, fireworks
 js/agents.js               villagers who live, walk and work
 js/render.js               camera, drawing, weather, day/night, mist
 js/battle.js               the field battle and Brannoch's walled town
