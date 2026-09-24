@@ -826,6 +826,38 @@ var ART = (function () {
       g.fillStyle = '#b8bcc4'; g.fillRect(a.x - 5, a.y - 4, 8, 5);
     },
 
+    hunter: function (sp) {
+      // a low log lodge with antlers over the door, a hide on a frame, game hanging
+      box(sp, 0.16, 0.2, 0.62, 0.62, 0, 0.28, logWall({ deco: function (g, W, H, L, F) {
+        door(g, F, W * 0.55, H - 26, 12, 26, L);
+        g.strokeStyle = col('#e8dcc0', L); g.lineWidth = 1.6;
+        var ax = W * 0.55 + 6, ay = H - 32;
+        g.beginPath(); g.moveTo(ax, ay); g.lineTo(ax - 8, ay - 8); g.lineTo(ax - 12, ay - 6); g.moveTo(ax - 5, ay - 5); g.lineTo(ax - 7, ay - 11);
+        g.moveTo(ax, ay); g.lineTo(ax + 8, ay - 8); g.lineTo(ax + 12, ay - 6); g.moveTo(ax + 5, ay - 5); g.lineTo(ax + 7, ay - 11); g.stroke();
+        win(g, F, W * 0.15, H * 0.3, 9, 9, L);
+      } }), logWall(), false);
+      gable(sp, 0.16, 0.2, 0.62, 0.62, 0.28, 0.54, 'v', shingleRoof('#5e4a36'), logWall());
+      chimney(sp, 0.28, 0.3, 0.38, 0.64, true);
+      var g = sp.g;
+      // hide stretched on a frame
+      var h0 = P(sp, 0.78, 0.3, 0), h1 = P(sp, 0.78, 0.3, 0.3), h2 = P(sp, 0.78, 0.62, 0.3), h3 = P(sp, 0.78, 0.62, 0);
+      shadow(sp, [[0.78, 0.3, 0], [0.78, 0.62, 0], [0.78, 0.3, 0.3], [0.78, 0.62, 0.3]]);
+      g.strokeStyle = '#4e3826'; g.lineWidth = 1.8;
+      g.beginPath(); g.moveTo(h0.x, h0.y); g.lineTo(h1.x, h1.y); g.lineTo(h2.x, h2.y); g.lineTo(h3.x, h3.y); g.stroke();
+      g.fillStyle = '#a8784a';
+      g.beginPath(); g.moveTo(h1.x + 3, h1.y + 3); g.lineTo(h2.x - 3, h2.y + 3); g.lineTo(h2.x - 4, h2.y + 16); g.lineTo(h1.x + 2, h1.y + 17); g.closePath(); g.fill();
+      g.strokeStyle = 'rgba(60,40,20,.5)'; g.lineWidth = 0.8; g.stroke();
+      // game hanging from a pole
+      var p0 = P(sp, 0.3, 0.84, 0.26), p1 = P(sp, 0.6, 0.84, 0.26);
+      g.strokeStyle = '#5b4029'; g.lineWidth = 2; g.beginPath(); g.moveTo(p0.x, p0.y); g.lineTo(p1.x, p1.y); g.stroke();
+      [0.35, 0.45, 0.55].forEach(function (u, i) {
+        var q = P(sp, u, 0.84, 0.26);
+        g.fillStyle = i === 1 ? '#8a6a4a' : '#6b5a44';
+        g.beginPath(); g.ellipse(q.x, q.y + 7, 2.6, 6, 0, 0, 6.3); g.fill();
+      });
+      logPile(sp, 0.82, 0.82, 2, 'v');
+    },
+
     sawmill: function (sp) {
       box(sp, 0.1, 0.12, 0.82, 0.6, 0, 0.36, plankWall({ col: '#8a6a48', deco: function (g, W, H, L, F) {
         g.fillStyle = 'rgba(20,12,6,.8)'; g.fillRect(W * 0.3, H * 0.28, W * 0.42, H * 0.72);
@@ -1297,7 +1329,7 @@ var ART = (function () {
   /* heights so each sprite's canvas is tall enough */
   var MAXH = {
     castle: [1.4, 1.9, 2.4, 2.9], house: [0.9, 1.2, 1.5], manor: 1.2, farm: 0.8, fishery: 0.7, bakery: 0.8,
-    windmill: 1.9, lumber: 0.75, sawmill: 0.8, pasture: 0.5, weaver: 0.9, quarry: 0.7, mine: 0.7,
+    windmill: 1.9, lumber: 0.75, hunter: 0.7, sawmill: 0.8, pasture: 0.5, weaver: 0.9, quarry: 0.7, mine: 0.7,
     smith: 1.0, market: 0.5, granary: 0.95, warehouse: 0.9, well: 0.7, chapel: 1.8, tavern: 1.15,
     library: 1.3, barracks: 0.9, range: 0.6, tower: 2.3, wall: 0.7, cathedral: 3.4
   };

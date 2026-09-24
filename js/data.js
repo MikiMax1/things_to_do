@@ -75,7 +75,7 @@ var DATA = (function () {
       cost: { wood: 18, gold: 15 }, build: 6, jobs: 2, produces: { food: 0.52 }, upkeep: 0.02,
       terrain: ['grass', 'meadow', 'sand'], seasonal: true,
       soilBonus: true,
-      desc: 'A farmstead and its fields. The crop grows through the year — much better on rich soil, and nothing grows in winter snow.'
+      desc: 'A farmstead and its fields. A kitchen garden feeds you through the growing months, but the real yield stands in the fields until the autumn harvest — store it well, because nothing grows in winter. Much better on rich soil.'
     },
     fishery: {
       id: 'fishery', name: 'Fishing Hut', cat: 'food', ic: '🎣',
@@ -83,6 +83,13 @@ var DATA = (function () {
       terrain: ['sand', 'grass'], near: { terrain: ['water', 'shore'], min: 1 },
       scaleNear: { terrain: ['water', 'shore'], div: 3 },
       desc: 'Steady food from the water — barely troubled by winter.'
+    },
+    hunter: {
+      id: 'hunter', name: "Hunter's Lodge", cat: 'food', ic: '🦌',
+      cost: { wood: 20, gold: 20 }, build: 5, jobs: 2, produces: { food: 0.30 }, upkeep: 0.02,
+      terrain: ['grass', 'meadow', 'forest', 'hill'],
+      near: { terrain: ['forest'], min: 2 }, scaleNear: { terrain: ['forest'], div: 4 },
+      desc: 'Hunters bring venison out of the woods. The fields give nothing in winter, but the forest still feeds you — better the more woodland surrounds the lodge.'
     },
     bakery: {
       id: 'bakery', name: 'Bakery', cat: 'food', ic: '🍞', tech: 'crop_rotation',
@@ -287,7 +294,7 @@ var DATA = (function () {
     trade_charter: { name: 'Trade Charter', tier: 1, ic: '📜', cost: { gold: 120 }, time: 34,
       desc: '+25% market income, and unlocks the Weaver.', req: [] },
     irrigation: { name: 'Irrigation', tier: 2, ic: '💧', cost: { gold: 180, stone: 60, wood: 40 }, time: 48,
-      desc: 'Winter no longer ruins the harvest (0.25× → 0.65×).', req: ['crop_rotation'], lib: 1 },
+      desc: 'Channels to the fields: every harvest is 25% heavier, and kitchen gardens keep giving through the winter.', req: ['crop_rotation'], lib: 1 },
     mining: { name: 'Mining', tier: 2, ic: '⛏️', cost: { gold: 160, wood: 80, stone: 40 }, time: 46,
       desc: 'Unlocks the Iron Mine and the Blacksmith.', req: ['masonry'], lib: 1 },
     guilds: { name: 'Guilds', tier: 2, ic: '⚖️', cost: { gold: 220 }, time: 50,
@@ -460,7 +467,7 @@ var DATA = (function () {
     summer: { key: 'summer', art: '🎺', title: 'The Summer Muster',
       text: 'By custom the realm musters in high summer and the lord counts his swords. The whole valley comes to watch.' },
     autumn: { key: 'autumn', art: '🍂', title: 'The Harvest Festival',
-      text: 'The last sheaf is in. The people are looking at the granary, and at you.' },
+      text: 'The fields are gold and the reaping has begun. The people are looking at the granary, and at you.' },
     winter: { key: 'winter', art: '🕯️', title: 'Midwinter',
       text: 'The dark of the year. Every household counts what is left in the loft and hopes it is enough.' }
   };
@@ -572,22 +579,39 @@ var DATA = (function () {
         { label: 'Pay the tribute', sub: '−180 gold, Brannoch weakens their raids', apply: { gold: -180, rival: -12 } },
         { label: 'Send the letter back in pieces', sub: 'Brannoch grows angry', apply: { rival: 14, happy: 8 } }
       ]
-    },
-    {
-      id: 'fire', art: '🔥', title: 'Fire in the Workshops',
-      text: 'A forge spark caught the thatch and half a row burned before dawn.',
-      when: function (s) { return s.buildings.length > 8; },
-      choices: [
-        { label: 'Rebuild at once', sub: '−50 wood, −40 gold', apply: { wood: -50, gold: -40 } },
-        { label: 'Make do', sub: '−12 contentment', apply: { happy: -12 } }
-      ]
     }
   ];
+
+  /* ---------------- royal decrees ----------------
+     Things the ruler can simply order, each with a price and a wait before
+     it can be ordered again. They are the "do something now" buttons. */
+  var DECREES = {
+    feast: { name: 'Feast Day', ic: '🍖', cooldown: 1.0,
+      desc: 'Open the royal larder to the whole town. A lift to every spirit.',
+      effect: '+15 contentment', costPerPop: { food: 2.5 } },
+    shifts: { name: 'Double Shifts', ic: '⚒️', cooldown: 2.0,
+      desc: 'Every workshop works late for half a season. Output jumps — and the people are worn out after.',
+      effect: '+30% output for half a season, then −10 contentment' },
+    levy: { name: 'Levy a Tax', ic: '💰', cooldown: 1.0,
+      desc: 'Send the reeves round with the tally sticks. Coin now; grumbling for a while.',
+      effect: '+5 gold per villager, −10 contentment' },
+    settlers: { name: 'Call for Settlers', ic: '⛵', cooldown: 2.0,
+      desc: 'Send word to the mainland that Ashveil has land and work. A boat of families arrives.',
+      effect: '+6 villagers (needs empty homes)', cost: { gold: 90, food: 40 } }
+  };
+
+  /* how readily each kind of building catches fire: thatch, ovens and forges
+     burn; stone does not. Arrays follow the building's level or tier. */
+  var FIRE_RISK = {
+    house: [1.0, 0.55, 0.12], castle: [0.7, 0, 0, 0], bakery: 1.6, smith: 1.5, tavern: 1.2,
+    lumber: 1.1, sawmill: 1.2, granary: 0.9, farm: 0.6, pasture: 0.35, weaver: 0.9, fishery: 0.7,
+    market: 0.7, warehouse: 0.8, barracks: 0.8, range: 0.5, windmill: 0.8, manor: 0.35, hunter: 0.9
+  };
 
   return {
     SEASON_LEN: SEASON_LEN, SEASONS: SEASONS, TERRAIN: TERRAIN, RES: RES,
     B: B, CATS: CATS, CASTLE: CASTLE, TECH: TECH, UNITS: UNITS, FOE_UNITS: FOE_UNITS,
-    QUESTS: QUESTS, CHAPTERS: CHAPTERS, EVENTS: EVENTS, RAID_CAUSES: RAID_CAUSES, FESTIVALS: FESTIVALS,
+    QUESTS: QUESTS, CHAPTERS: CHAPTERS, DECREES: DECREES, FIRE_RISK: FIRE_RISK, EVENTS: EVENTS, RAID_CAUSES: RAID_CAUSES, FESTIVALS: FESTIVALS,
     TRADE: TRADE, TRADE_LOT: TRADE_LOT, UPGRADE: UPGRADE, FORMATIONS: FORMATIONS, GROUNDS: GROUNDS,
     HOUSE_TIERS: HOUSE_TIERS, CLOTH_PER_FINE_HOUSE: CLOTH_PER_FINE_HOUSE
   };

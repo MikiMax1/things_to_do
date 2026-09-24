@@ -260,6 +260,10 @@ var RENDER = (function () {
       if (!onScreen(a.x, a.y, 40)) return;
       items.push({ k: 'ani', a: a, d: a.x + a.y + 0.02 });
     });
+    (G.finds || []).forEach(function (f, i) {
+      if (onScreen(f.x, f.y, 40)) items.push({ k: 'find', f: f, d: f.x + f.y });
+    });
+    if (G.ship && onScreen(G.ship.x, G.ship.y, 120)) items.push({ k: 'ship', d: G.ship.x + G.ship.y });
     items.sort(function (p, q) { return p.d - q.d; });
 
     /* ---- 3. ground cover: fields, then every shadow ---- */
@@ -285,10 +289,21 @@ var RENDER = (function () {
 
     /* ---- 4. the world, back to front ---- */
     var wind = Math.sin(time * 0.7) * 0.5 + Math.sin(time * 1.9) * 0.25;
+    // trees standing just in front of a building thin out so it can be seen
+    var screenT = {};
+    G.buildings.forEach(function (b) {
+      var w = b.def.w || 1, h = b.def.h || 1;
+      for (var oy = 0; oy < h + 2; oy++) for (var ox = 0; ox < w + 2; ox++) {
+        if (ox < w && oy < h) continue;
+        screenT[(b.x + ox) + ',' + (b.y + oy)] = 1;
+      }
+    });
     items.forEach(function (it) {
       if (it.k === 'tree') {
         var tr = it.o, sp = ART.tree(tr.kind, season, tr.v);
         var s = toScreen(tr.x, tr.y), k = cam.z / sp.s * tr.s * 0.82;
+        var thin = screenT[Math.floor(tr.x) + ',' + Math.floor(tr.y)];
+        if (thin) g.globalAlpha = 0.42;
         // trees lean a touch in the wind, from the root
         if (z > 44) {
           var lean = (wind + Math.sin(time * 1.3 + tr.ph) * 0.35) * 0.018;
@@ -298,10 +313,15 @@ var RENDER = (function () {
         } else {
           g.drawImage(sp.c, s.x - sp.ax * k, s.y - sp.ay * k, sp.c.width * k, sp.c.height * k);
         }
+        if (thin) g.globalAlpha = 1;
       } else if (it.k === 'rock') {
         drawSprite(ART.rock(it.o.v, season), it.o.x, it.o.y, 1, it.o.s);
       } else if (it.k === 'bld') {
         drawBuilding(it.b, z, night, season);
+      } else if (it.k === 'find') {
+        drawFind(it.f, z);
+      } else if (it.k === 'ship') {
+        drawShip(G.ship, z);
       } else if (it.k === 'vil') {
         var sp2 = toScreen(it.a.x, it.a.y);
         AGENTS.draw(g, it.a, sp2.x, sp2.y, z);
@@ -322,7 +342,8 @@ var RENDER = (function () {
       var sz = p.sz * z;
       if (p.kind === 'smoke') {
         g.globalAlpha = U.clamp(p.life / p.max, 0, 1) * 0.34;
-        g.fillStyle = night > 0.5 ? '#8a8a96' : '#d8d4cc';
+        g.fillStyle = p.dark ? (night > 0.5 ? '#3a3638' : '#4a4644') : night > 0.5 ? '#8a8a96' : '#d8d4cc';
+        if (p.dark) g.globalAlpha = Math.min(0.55, g.globalAlpha * 1.8);
         g.beginPath(); g.arc(s.x, sy, sz * 1.6, 0, 6.3); g.fill();
       } else if (p.kind === 'puff') {
         g.globalAlpha = U.clamp(p.life * 2, 0, 1) * 0.85;
@@ -342,6 +363,7 @@ var RENDER = (function () {
     /* ---- 7. light ---- */
     if (!DBG.noGrade) grade(night, golden, season);
     if (night > 0.15) drawLights(night, z);
+    drawFireGlow(z);
 
     /* ---- 8. weather over everything ---- */
     if (!DBG.noWeather) drawWeather();
@@ -524,6 +546,21 @@ var RENDER = (function () {
     g.globalCompositeOperation = 'source-over';
   }
 
+  function drawFireGlow(z) {
+    var fires = SIM.burning ? SIM.burning() : [];
+    if (!fires.length) return;
+    var gs = glow();
+    g.globalCompositeOperation = 'lighter';
+    fires.forEach(function (b) {
+      var s = toScreen(b.x + (b.def.w || 1) / 2, b.y + (b.def.h || 1) / 2);
+      var r = z * (1.1 + Math.sin(time * 9 + b.uid) * 0.08) * Math.sqrt(b.def.w || 1);
+      g.globalAlpha = 0.55 * b.fire.hp + 0.2;
+      g.drawImage(gs, s.x - r, s.y - r * 0.9, r * 2, r * 2);
+    });
+    g.globalAlpha = 1;
+    g.globalCompositeOperation = 'source-over';
+  }
+
   function drawWeather() {
     for (var i = 0; i < weather.length; i++) {
       var w = weather[i];
@@ -579,6 +616,112 @@ var RENDER = (function () {
       }
     }
     if (b.id === 'smith' && b.workers > 0 && Math.random() < 0.05) spark(b.x + 0.7, b.y + 0.85, 0.15);
+    if (b.fire) drawFire(b, sp, z);
+  }
+
+  /* ---------------- fire ---------------- */
+  function drawFire(b, sp, z) {
+    var f = b.fire, w = b.def.w || 1, h = b.def.h || 1;
+    var cx = b.x + w / 2, cy = b.y + h / 2;
+    var s = toScreen(cx, cy), top = s.y - (sp.top || 0.8) * z * 0.5;
+    var size = z * (0.18 + f.hp * 0.22) * Math.sqrt(w);
+    var n = 5 + Math.round(f.hp * 4);
+    for (var i = 0; i < n; i++) {
+      var ph = time * (7 + i) + i * 2.1 + b.uid;
+      var ox = (i / (n - 1) - 0.5) * z * 0.5 * w + Math.sin(ph * 0.7) * z * 0.03;
+      var fh = size * (0.7 + 0.45 * Math.sin(ph)) * (1 - Math.abs(i / (n - 1) - 0.5));
+      var base = top + z * 0.12 + Math.abs(ox) * 0.25;
+      var gr = g.createLinearGradient(0, base, 0, base - fh * 1.6);
+      gr.addColorStop(0, 'rgba(255,90,20,.9)'); gr.addColorStop(0.45, 'rgba(255,170,40,.85)'); gr.addColorStop(1, 'rgba(255,240,160,0)');
+      g.fillStyle = gr;
+      g.beginPath();
+      g.moveTo(s.x + ox - fh * 0.32, base);
+      g.quadraticCurveTo(s.x + ox - fh * 0.3, base - fh * 0.9, s.x + ox + Math.sin(ph * 1.3) * fh * 0.2, base - fh * 1.6);
+      g.quadraticCurveTo(s.x + ox + fh * 0.3, base - fh * 0.9, s.x + ox + fh * 0.32, base);
+      g.closePath(); g.fill();
+    }
+    if (Math.random() < 0.5) particles.push({ kind: 'smoke', dark: true, x: cx + (Math.random() - .5) * 0.4 * w, y: cy - 0.2, h: (sp.top || 0.8) * 0.9,
+      vx: 0.12, vy: -0.05, vh: 0.5 + Math.random() * 0.3, life: 3 + Math.random() * 2, max: 5, sz: 0.05 + Math.random() * 0.03 });
+    if (Math.random() < 0.3) spark(cx + (Math.random() - .5) * 0.5, cy, (sp.top || 0.8) * 0.8);
+  }
+
+  /* ---------------- flotsam and the merchant cog ---------------- */
+  function drawFind(f, z) {
+    var s = toScreen(f.x, f.y), u = z / 100;
+    var pulse = 0.5 + Math.sin(time * 3 + f.x) * 0.5;
+    g.strokeStyle = 'rgba(255,230,140,' + (0.35 + pulse * 0.45).toFixed(2) + ')'; g.lineWidth = 2;
+    g.beginPath(); g.ellipse(s.x, s.y, z * (0.26 + pulse * 0.05), z * (0.13 + pulse * 0.025), 0, 0, 6.3); g.stroke();
+    g.fillStyle = 'rgba(0,0,0,.25)'; g.beginPath(); g.ellipse(s.x + 3 * u, s.y + 1, 18 * u, 6 * u, 0, 0, 6.3); g.fill();
+    if (f.kind === 'drift') {
+      // bleached planks and a spar
+      g.save(); g.translate(s.x, s.y);
+      [[-10, -2, 0.3], [2, 2, -0.2], [-4, -6, 0.1]].forEach(function (p) {
+        g.save(); g.translate(p[0] * u, p[1] * u); g.rotate(p[2]);
+        g.fillStyle = '#b8a07a'; g.fillRect(-12 * u, -2 * u, 24 * u, 4 * u);
+        g.fillStyle = 'rgba(0,0,0,.2)'; g.fillRect(-12 * u, 1 * u, 24 * u, 1.2 * u);
+        g.restore();
+      });
+      g.restore();
+    } else {
+      // a stove-in chest and a barrel
+      g.fillStyle = '#6b4a2e'; g.fillRect(s.x - 12 * u, s.y - 10 * u, 16 * u, 10 * u);
+      g.fillStyle = '#8a6440'; g.fillRect(s.x - 12 * u, s.y - 13 * u, 16 * u, 4 * u);
+      g.fillStyle = '#e0b23c'; g.fillRect(s.x - 5 * u, s.y - 8 * u, 3 * u, 3 * u);
+      g.fillStyle = '#7a5634'; g.beginPath(); g.ellipse(s.x + 10 * u, s.y - 3 * u, 5 * u, 7 * u, 0.4, 0, 6.3); g.fill();
+      g.strokeStyle = '#3d2c1c'; g.lineWidth = 1; g.stroke();
+    }
+    // a glint to draw the eye
+    if (pulse > 0.8) { g.fillStyle = '#fff8d8'; g.fillRect(s.x - 1, s.y - z * 0.22, 2, 2); }
+  }
+  function drawShip(sh, z) {
+    var s = toScreen(sh.x, sh.y), L = z * 0.55;
+    var rock = Math.sin(time * 1.2) * 0.04;
+    g.save(); g.translate(s.x, s.y); g.rotate(rock);
+    g.fillStyle = 'rgba(10,30,50,.3)'; g.beginPath(); g.ellipse(0, 2, L * 0.9, L * 0.22, 0, 0, 6.3); g.fill();
+    g.scale(sh.face || 1, 1);
+    // hull: a broad cog with raised castles fore and aft
+    var hg = g.createLinearGradient(0, -L * 0.35, 0, L * 0.15);
+    hg.addColorStop(0, '#8a5a34'); hg.addColorStop(1, '#4a3020');
+    g.fillStyle = hg;
+    g.beginPath(); g.moveTo(-L * 0.8, -L * 0.28); g.quadraticCurveTo(-L * 0.2, L * 0.2, L * 0.8, -L * 0.3);
+    g.lineTo(L * 0.72, -L * 0.45); g.lineTo(-L * 0.75, -L * 0.42); g.closePath(); g.fill();
+    g.fillStyle = '#6b4a2e'; g.fillRect(-L * 0.78, -L * 0.62, L * 0.3, L * 0.2); g.fillRect(L * 0.46, -L * 0.6, L * 0.28, L * 0.18);
+    g.strokeStyle = 'rgba(255,230,180,.35)'; g.lineWidth = 1;
+    for (var i = 0; i < 3; i++) { g.beginPath(); g.moveTo(-L * 0.7, -L * (0.36 - i * 0.07)); g.lineTo(L * 0.7, -L * (0.37 - i * 0.07)); g.stroke(); }
+    // mast and a square sail in foreign colours
+    g.strokeStyle = '#3d2c1c'; g.lineWidth = Math.max(1.5, L * 0.04);
+    g.beginPath(); g.moveTo(0, -L * 0.4); g.lineTo(0, -L * 1.9); g.stroke();
+    var billow = Math.sin(time * 2) * L * 0.04;
+    g.fillStyle = '#efe4c8';
+    g.beginPath(); g.moveTo(-L * 0.45, -L * 1.75); g.lineTo(L * 0.45, -L * 1.75);
+    g.quadraticCurveTo(L * 0.55 + billow, -L * 1.2, L * 0.45, -L * 0.75); g.lineTo(-L * 0.45, -L * 0.75);
+    g.quadraticCurveTo(-L * 0.35 + billow, -L * 1.2, -L * 0.45, -L * 1.75); g.fill();
+    g.fillStyle = '#2f6a5a';
+    g.fillRect(-L * 0.45, -L * 1.45, L * 0.9, L * 0.14); g.fillRect(-L * 0.45, -L * 1.12, L * 0.9, L * 0.14);
+    g.fillStyle = '#c9402f';
+    g.beginPath(); g.moveTo(0, -L * 1.9); g.lineTo(L * 0.3, -L * 1.84); g.lineTo(0, -L * 1.78); g.fill();
+    g.restore();
+    if (sh.phase === 'anchored' && sh.offers.length) {
+      var pulse = 0.5 + Math.sin(time * 3) * 0.5;
+      g.fillStyle = 'rgba(24,18,12,.85)';
+      ART.rr(g, s.x - 16, s.y - L * 2.3 - 22, 32, 22, 11); g.fill();
+      g.strokeStyle = 'rgba(224,178,60,' + (0.5 + pulse * 0.5).toFixed(2) + ')'; g.lineWidth = 2; g.stroke();
+      g.font = '14px sans-serif'; g.textAlign = 'center'; g.fillStyle = '#fff'; g.fillText('💰', s.x, s.y - L * 2.3 - 6); g.textAlign = 'left';
+    }
+  }
+  function pickFind(sx, sy) {
+    var fs = (SIM.G && SIM.G.finds) || [];
+    for (var i = 0; i < fs.length; i++) {
+      var s = toScreen(fs[i].x, fs[i].y);
+      if (Math.abs(sx - s.x) < Math.max(26, cam.z * 0.35) && Math.abs(sy - (s.y - cam.z * 0.05)) < Math.max(22, cam.z * 0.25)) return i;
+    }
+    return -1;
+  }
+  function pickShip(sx, sy) {
+    var sh = SIM.G && SIM.G.ship;
+    if (!sh || sh.phase !== 'anchored') return false;
+    var s = toScreen(sh.x, sh.y), L = cam.z * 0.55;
+    return Math.abs(sx - s.x) < Math.max(30, L) && sy < s.y + 12 && sy > s.y - L * 2.6 - 24;
   }
 
   function drawBadges(b, z) {
@@ -686,7 +829,7 @@ var RENDER = (function () {
   }
 
   return {
-    init: init, resize: resize, draw: draw, pickBuilding: pickBuilding,
+    init: init, resize: resize, draw: draw, pickBuilding: pickBuilding, pickFind: pickFind, pickShip: pickShip,
     toScreen: toScreen, toWorld: toWorld, tileAtScreen: tileAtScreen,
     centreOn: centreOn, pan: pan, zoomAt: zoomAt,
     get cam() { return cam; },

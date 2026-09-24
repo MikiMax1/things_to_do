@@ -30,6 +30,8 @@ var SIM = (function () {
       army: { militia: 4 },
       rival: { str: 30, anger: 0, nextRaid: DATA.SEASON_LEN * 6.5, warned: false },
       quests: {}, questShown: [], chapter: 0, won: false, weather: 'clear', weatherTimer: 40,
+      mkt: {}, decrees: {}, shiftUntil: -1, finds: [], findTimer: DATA.SEASON_LEN * 0.8,
+      ship: null, shipTimer: DATA.SEASON_LEN * 2.2, fireTimer: 5,
       stats: { wins: 0, losses: 0, built: 0, raidsSurvived: 0, techDone: 0, upgrades: 0, traded: 0 },
       vets: {}, formation: 'line', campaign: null,
       eventTimer: DATA.SEASON_LEN * 1.6,
@@ -248,6 +250,7 @@ var SIM = (function () {
     var total = 0;
     G.buildings.forEach(function (b) {
       if (!b.built || b.paused || !b.def.produces) return;
+      if (b.def.seasonal) { total += farmYearly(b) * GOODS_VALUE.food; return; }
       var o = output(b);
       Object.keys(o).forEach(function (k) {
         if (o[k] > 0 && GOODS_VALUE[k]) total += o[k] * GOODS_VALUE[k];
@@ -318,6 +321,7 @@ var SIM = (function () {
     if (felled) {
       G.res.wood = Math.min(cap('wood'), G.res.wood + 12 * felled);
       emit('cleared', { x: x, y: y, gain: 12 * felled });
+      rootTreasure(x, y);
     }
     if (def.build <= 0) { b.built = true; b.prog = 1; }
     commit(b);
@@ -338,7 +342,10 @@ var SIM = (function () {
     b.built = true; b.workers = jobsOf(b);
     if (def.trade) b._mIdx = G.count[id] || 0;
     var parts = [];
-    if (def.produces || def.trade) {
+    if (def.seasonal) {
+      var yr = farmPotential(b) * DATA.SEASON_LEN * (GARDEN * 3.4 + CROP_RATE * 2.3);
+      parts.push('≈+' + Math.round(yr) + ' 🌾 a year, most at harvest');
+    } else if (def.produces || def.trade) {
       var o = output(b);
       Object.keys(o).forEach(function (k) {
         if (o[k] > 0.004) {
@@ -542,10 +549,16 @@ var SIM = (function () {
       else if (ratio > 0.92) need -= 0.75;      // barns are full; go do something else
       p[k] = Math.max(0.12, need);
     });
+    // food is judged over the year, with the crop still standing counted in
+    var ft = foodTrend(net), stock = G.res.food + standingCrop() * 0.8;
+    p.food = 1 + (ft < 0 ? 1.5 : 0);
+    var fr = cap('food') > 0 ? stock / cap('food') : 0;
+    if (fr < 0.10) p.food += 1.3; else if (fr < 0.30) p.food += 0.55; else if (fr > 0.92) p.food -= 0.75;
+    p.food = Math.max(0.12, p.food);
     // starving is not a resource problem, it is an emergency
     if (G.res.food < G.pop * 2) p.food += 2.6;
-    else if (G.res.food < G.pop * 5) p.food += 1.1;
-    if (net.food < 0) p.food += 1.0;
+    else if (stock < G.pop * 5) p.food += 1.1;
+    if (ft < 0) p.food += 1.0;
     // bare hands slow every trade in the realm, so a smithy is urgent
     if ((G.toolCov || 0) < 0.5 && G.count.smith > 0) p.tools += 1.6;
     if ((G.breadCov || 0) < 0.6 && G.count.bakery > 0 && G.res.food > G.pop * 4) p.bread += 1.2;
@@ -574,6 +587,7 @@ var SIM = (function () {
     // a farm on bad ground is a poor use of a pair of hands
     if (b.def.soilBonus) s *= 0.3 + 0.7 * soilMul(b);
     if (b.def.seasonal) s *= (0.55 + foodSeasonMul() * 0.6);      // nobody farms hard in deep winter
+    if (b.def.seasonal && harvesting() && b.crop > 1) s *= 1.8;     // everyone to the fields
     return Math.max(0.05, s);
   }
 
@@ -737,18 +751,86 @@ var SIM = (function () {
   }
 
   /* production of one building, per second */
+  /* ---------------------------------------------------------
+     The harvest. A farm's kitchen garden feeds the town a little through
+     the growing months, but most of its yield stands in the fields until
+     autumn, when it is brought in over the first part of the season. Store
+     it well: nothing grows in winter, and a crop left standing when the
+     snow comes is lost.
+     --------------------------------------------------------- */
+  var GARDEN = 0.35, CROP_RATE = 1.08, HARVEST_LEN = 0.45;
+  function gardenMul() {
+    var k = season().key;
+    if (k === 'winter') return G.tech.irrigation ? 0.4 : 0;
+    return season().food;
+  }
+  function growMul() {
+    var k = season().key;
+    return (k === 'spring' ? 1.0 : k === 'summer' ? 1.3 : 0) * rainMul() * (G.tech.irrigation ? 1.25 : 1);
+  }
+  /* what a farm would yield per second at this moment, before the season */
+  function farmPotential(b) {
+    if (!b.built || b.paused || b.fire) return 0;
+    var ratio = staffRatio(b);
+    if (ratio <= 0) return 0;
+    var toolBoost = 1 + TOOL_BONUS * (G.toolCov || 0);
+    if (G.tech.iron_ploughs) toolBoost += 0.25 * (G.toolCov || 0);
+    return b.def.produces.food * efficiency() * ratio * auraFor(b) * lvlMul(b) * toolBoost *
+      techMul('food') * soilMul(b) * shiftMul();
+  }
+  function cropRate(b) { return farmPotential(b) * CROP_RATE * growMul(); }
+  function harvesting() { return season().key === 'autumn' && seasonProgress() < HARVEST_LEN + 0.02; }
+  function harvestRate(b) {
+    if (!harvesting() || !(b.crop > 0) || !b.built || b.fire) return 0;
+    var full = (b.cropStart || b.crop) / (HARVEST_LEN * DATA.SEASON_LEN);
+    // hands bring it in faster; even an unstaffed farm's family gets some in
+    return full * Math.max(0.3, staffRatio(b));
+  }
+  function standingCrop() {
+    var n = 0;
+    G.buildings.forEach(function (b) { if (b.def.seasonal) n += b.crop || 0; });
+    return n;
+  }
+  function tickHarvest(dt) {
+    G.buildings.forEach(function (b) {
+      if (!b.def.seasonal || !b.built) return;
+      var h = harvestRate(b);
+      if (h > 0) b.crop = Math.max(0, b.crop - h * dt);
+      else if (!harvesting()) b.crop = (b.crop || 0) + cropRate(b) * dt;
+    });
+  }
+
+  function shiftMul() { return G.shiftUntil > G.time ? 1.3 : 1; }
+
+  /* A farm's yield averaged over the whole year, per second. */
+  function farmYearly(b) { return farmPotential(b) * (GARDEN * 3.4 + CROP_RATE * 2.3) / 4; }
+  /* Food balance judged over the year rather than this very second: the
+     harvest's share is spread evenly instead of arriving in autumn. Anything
+     that decides whether the realm is short of food should use this, or
+     every spring looks like a famine and every autumn like a glut. */
+  function foodTrend(net) {
+    net = net || ledger();
+    var f = net.food;
+    G.buildings.forEach(function (b) {
+      if (!b.def.seasonal || !b.built) return;
+      var o = output(b);
+      f += farmYearly(b) - (o.food || 0) - harvestRate(b);
+    });
+    return f;
+  }
+
   function output(b) {
     var out = {};
-    if (!b.built || b.paused) return out;
+    if (!b.built || b.paused || b.fire) return out;
     var ratio = staffRatio(b);
     if (ratio <= 0 && jobsOf(b) > 0) return out;
     var toolBoost = (b.id === 'smith') ? 1 : 1 + TOOL_BONUS * (G.toolCov || 0);
     if (G.tech.iron_ploughs && (b.def.seasonal || b.def.seasonalWool)) toolBoost += 0.25 * (G.toolCov || 0);
-    var eff = efficiency() * ratio * auraFor(b) * lvlMul(b) * toolBoost;
+    var eff = efficiency() * ratio * auraFor(b) * lvlMul(b) * toolBoost * shiftMul();
     if (b.def.produces) {
       Object.keys(b.def.produces).forEach(function (k) {
         var v = b.def.produces[k] * eff * techMul(k);
-        if (b.def.seasonal && k === 'food') v *= foodSeasonMul() * rainMul();
+        if (b.def.seasonal && k === 'food') v *= GARDEN * gardenMul();
         if (b.def.seasonalWool) v *= (0.55 + season().food * 0.45);
         if (b.def.scaleNear) {
           var n = W.nearCount(b.x, b.y, b.def.scaleNear.terrain, 1);
@@ -781,6 +863,7 @@ var SIM = (function () {
       var o = output(b);
       Object.keys(o).forEach(function (k) { net[k] += o[k]; });
       if (b.built && b.def.upkeep) net.gold -= b.def.upkeep;
+      if (b.def.seasonal) net.food += harvestRate(b);
     });
     // villagers with no post left to fill turn their hands to foraging and
     // hauling — far less than a proper job, but never nothing
@@ -945,6 +1028,16 @@ var SIM = (function () {
     }
 
     tickWeather(dt);
+    tickHarvest(dt);
+    tickFire(dt);
+    tickMarket(dt);
+    tickFinds(dt);
+    tickShip(dt);
+    if (G.shiftUntil > 0 && G.shiftUntil <= G.time) {
+      G.shiftUntil = -1;
+      G.happy = U.clamp(G.happy - 10, 0, 100);
+      emit('toast', { msg: 'The double shifts are over. Everyone is exhausted.', kind: 'war' });
+    }
     regrow(dt);
     checkRelief(dt);
     tickCampaign(dt);
@@ -960,6 +1053,16 @@ var SIM = (function () {
     if (seasonIndex() !== prevSeason) {
       U.sfx.season();
       emit('season', season());
+      if (season().key === 'autumn') {
+        var any = 0;
+        G.buildings.forEach(function (b) { if (b.def.seasonal && b.built) { b.cropStart = b.crop || 0; any += b.crop || 0; } });
+        if (any > 1) emit('harvest', Math.round(any));
+      }
+      if (season().key === 'winter') {
+        var lost = 0;
+        G.buildings.forEach(function (b) { if (b.def.seasonal) { lost += b.crop || 0; b.crop = 0; } });
+        if (lost > 8) emit('toast', { msg: Math.round(lost) + ' food was never brought in and rotted in the snow. More farmhands next autumn.', kind: 'bad' });
+      }
       // the season's occasion, once a year, every year
       var key = season().key, yr = year();
       if (!G.festivals) G.festivals = {};
@@ -990,15 +1093,291 @@ var SIM = (function () {
   function rainMul() { return G.weather === 'rain' ? 1.12 : 1; }
 
   /* ---------------------------------------------------------
+     Fire. Thatch, ovens and forges catch; stone does not. A fire spreads
+     to its neighbours if it is left, and burns the building down in about
+     half a minute. Villagers fight it with buckets — slowly on their own,
+     quickly with a well close by, and fastest when the ruler calls out a
+     bucket brigade. Rain helps. Nothing burns in your first few seasons.
+     --------------------------------------------------------- */
+  var FIRE_GRACE = 5;
+  function fireRisk(b) {
+    var r = DATA.FIRE_RISK[b.id];
+    if (Array.isArray(r)) r = r[Math.min(r.length - 1, b.id === 'castle' ? G.castle : (b.level || 1) - 1)];
+    return r || 0;
+  }
+  function centre(b) { return { x: b.x + (b.def.w || 1) / 2, y: b.y + (b.def.h || 1) / 2 }; }
+  function wellsNear(b, rad) {
+    var c = centre(b), n = 0;
+    G.buildings.forEach(function (w) {
+      if (w.built && w.id === 'well') { var d = centre(w); if (U.dist(c.x, c.y, d.x, d.y) <= rad) n++; }
+    });
+    return n;
+  }
+  function ignite(b) {
+    if (b.fire || !b.built) return;
+    b.fire = { hp: 1, dmg: 0, brigade: 0, spread: 7 };
+    emit('fire', b);
+  }
+  function burning() { return G.buildings.filter(function (b) { return !!b.fire; }); }
+  function rallyBrigade(b) {
+    if (!b || !b.fire) return { ok: false, why: 'Nothing is burning there' };
+    b.fire.brigade = 10;
+    return { ok: true };
+  }
+  function tickFire(dt) {
+    G.fireTimer = (G.fireTimer || 5) - dt;
+    if (G.fireTimer <= 0) {
+      G.fireTimer = 5;
+      if (seasonIndex() >= FIRE_GRACE && G.weather !== 'rain') {
+        var sk = season().key, sm = sk === 'winter' ? 1.5 : sk === 'summer' ? 1.3 : 1;
+        G.buildings.forEach(function (b) {
+          if (!b.built || b.fire) return;
+          var risk = fireRisk(b);
+          if (!risk) return;
+          var p = 0.00042 * risk * sm * (wellsNear(b, 4) ? 0.4 : 1);
+          if (Math.random() < p) ignite(b);
+        });
+      }
+    }
+    burning().forEach(function (b) {
+      var f = b.fire;
+      f.dmg += dt / 34;
+      f.brigade = Math.max(0, f.brigade - dt);
+      var douse = 0.028 + 0.05 * Math.min(2, wellsNear(b, 5)) + (f.brigade > 0 ? 0.14 : 0) + (G.weather === 'rain' ? 0.1 : 0);
+      f.hp -= douse * dt;
+      if (f.hp <= 0) {
+        b.fire = null;
+        G.stats.firesOut = (G.stats.firesOut || 0) + 1;
+        emit('fire-out', b);
+        return;
+      }
+      if (f.dmg >= 1) { burnDown(b); return; }
+      f.spread -= dt;
+      if (f.spread <= 0) {
+        f.spread = 6;
+        if (f.dmg > 0.25) {
+          var c = centre(b);
+          var near = G.buildings.filter(function (o) {
+            if (o === b || !o.built || o.fire || !fireRisk(o)) return false;
+            var d = centre(o);
+            return U.dist(c.x, c.y, d.x, d.y) <= 1.2 + ((b.def.w || 1) + (o.def.w || 1)) / 2;
+          });
+          if (near.length && Math.random() < 0.3) ignite(near[Math.floor(Math.random() * near.length)]);
+        }
+      }
+    });
+  }
+  function burnDown(b) {
+    b.fire = null;
+    var i = G.buildings.indexOf(b);
+    if (i < 0 || b.id === 'castle') { if (b.id === 'castle') G.res.gold = Math.max(0, G.res.gold - 60); return; }
+    G.buildings.splice(i, 1);
+    markPathsDirty();
+    W.footprint(b.def, b.x, b.y).forEach(function (c) {
+      var t = W.at(c.x, c.y);
+      if (t && t.bld === b) t.bld = null;
+    });
+    AGENTS.dropJob(b);
+    G.stats.burned = (G.stats.burned || 0) + 1;
+    G.happy = U.clamp(G.happy - 6, 0, 100);
+    refreshCounts();
+    emit('burned', b);
+  }
+
+  /* ---------------------------------------------------------
+     Prices that answer back. Sell a lot of one thing and it fetches
+     less for a while; buy a lot and it costs more. Both drift home.
+     --------------------------------------------------------- */
+  function mktOf(res) { if (!G.mkt) G.mkt = {}; return G.mkt[res] || 1; }
+  function tickMarket(dt) {
+    if (!G.mkt) G.mkt = {};
+    Object.keys(G.mkt).forEach(function (k) {
+      G.mkt[k] += (1 - G.mkt[k]) * Math.min(1, dt * 0.012);
+      if (Math.abs(G.mkt[k] - 1) < 0.005) delete G.mkt[k];
+    });
+  }
+
+  /* ---------------------------------------------------------
+     Royal decrees: things you can simply order, each with a wait.
+     --------------------------------------------------------- */
+  function decreeReady(id) {
+    var at = (G.decrees || {})[id] || 0;
+    return Math.max(0, at - G.time);
+  }
+  function decreeCost(id) {
+    var d = DATA.DECREES[id], out = {};
+    if (d.cost) Object.keys(d.cost).forEach(function (k) { out[k] = d.cost[k]; });
+    if (d.costPerPop) Object.keys(d.costPerPop).forEach(function (k) { out[k] = Math.round(d.costPerPop[k] * Math.max(6, G.pop)); });
+    return out;
+  }
+  function decree(id) {
+    var d = DATA.DECREES[id];
+    if (!d) return { ok: false, why: 'No such decree' };
+    if (decreeReady(id) > 0) return { ok: false, why: 'Not yet — the people remember the last one' };
+    var cost = decreeCost(id);
+    if (!canAfford(cost)) return { ok: false, why: 'Not enough ' + short(cost) };
+    if (id === 'settlers' && housing() - G.pop < 6) return { ok: false, why: 'There are no empty homes for them' };
+    if (id === 'shifts' && G.shiftUntil > G.time) return { ok: false, why: 'The shifts are already doubled' };
+    pay(cost);
+    if (id === 'feast') G.happy = U.clamp(G.happy + 15, 0, 100);
+    if (id === 'shifts') G.shiftUntil = G.time + DATA.SEASON_LEN * 0.5;
+    if (id === 'levy') { var coin = Math.round(5 * G.pop); G.res.gold = Math.min(cap('gold'), G.res.gold + coin); G.happy = U.clamp(G.happy - 10, 0, 100); cost = { coin: coin }; }
+    if (id === 'settlers') G.pop = Math.min(housing(), G.pop + 6);
+    if (!G.decrees) G.decrees = {};
+    G.decrees[id] = G.time + d.cooldown * DATA.SEASON_LEN;
+    emit('decree', { id: id, cost: cost });
+    emit('change');
+    return { ok: true };
+  }
+
+  /* ---------------------------------------------------------
+     Things washed up. Now and then the sea leaves driftwood or a wreck
+     on the beach for whoever walks down to look.
+     --------------------------------------------------------- */
+  function beachTiles() {
+    return W.tiles.filter(function (t) {
+      return (t.terr === 'sand' || t.terr === 'grass') && !t.bld && W.nearCount(t.x, t.y, ['water', 'shore'], 1) >= 2;
+    });
+  }
+  function tickFinds(dt) {
+    if (!G.finds) G.finds = [];
+    G.findTimer = (G.findTimer === undefined ? 40 : G.findTimer) - dt;
+    if (G.findTimer > 0) return;
+    G.findTimer = DATA.SEASON_LEN * (0.7 + Math.random() * 0.8);
+    if (G.finds.length >= 2) return;
+    var spots = beachTiles();
+    if (!spots.length) return;
+    var t = spots[Math.floor(Math.random() * spots.length)];
+    var kind = Math.random() < 0.72 ? 'drift' : 'wreck';
+    G.finds.push({ kind: kind, x: t.x + 0.3 + Math.random() * 0.4, y: t.y + 0.3 + Math.random() * 0.4, at: G.time });
+    emit('find', kind);
+  }
+  function collectFind(i) {
+    var f = G.finds && G.finds[i];
+    if (!f) return null;
+    G.finds.splice(i, 1);
+    var got = {};
+    if (f.kind === 'drift') { got.wood = 18 + Math.floor(Math.random() * 26); if (Math.random() < 0.3) got.food = 15 + Math.floor(Math.random() * 20); }
+    else {
+      var r = Math.random();
+      if (r < 0.5) got.gold = 50 + Math.floor(Math.random() * 60);
+      else if (r < 0.8) { got.iron = 15 + Math.floor(Math.random() * 20); got.wood = 20; }
+      else { got.cloth = 10 + Math.floor(Math.random() * 12); got.gold = 30; }
+    }
+    Object.keys(got).forEach(function (k) { G.res[k] = Math.min(cap(k), G.res[k] + got[k]); if (got[k] > 0) G.seen[k] = 1; });
+    G.stats.finds = (G.stats.finds || 0) + 1;
+    emit('change');
+    return { kind: f.kind, got: got, x: f.x, y: f.y };
+  }
+
+  /* ---------------------------------------------------------
+     Merchant ships. Once you have a market, a trading cog calls every
+     couple of years, anchors off your coast for a season, and offers
+     better terms than the market square — for what you lack, and for
+     what you have too much of.
+     --------------------------------------------------------- */
+  function seaSpots() {
+    return W.tiles.filter(function (t) {
+      return t.terr === 'water' && W.nearCount(t.x, t.y, ['shore'], 1) > 0 && W.nearCount(t.x, t.y, ['sand', 'grass', 'meadow', 'forest'], 2) > 0;
+    });
+  }
+  function shipOffers() {
+    var goods = ['food', 'wood', 'stone', 'iron', 'tools', 'wool', 'cloth', 'bread'];
+    var ratio = function (k) { return G.res[k] / Math.max(1, cap(k)); };
+    var lack = goods.filter(function (k) { return k !== 'bread' && k !== 'cloth' && k !== 'wool'; })
+      .sort(function (a, b) { return ratio(a) - ratio(b); })[0];
+    var glut = goods.slice().sort(function (a, b) { return ratio(b) - ratio(a); })[0];
+    var offers = [];
+    var n1 = 60;
+    offers.push({ kind: 'sell', res: lack, amount: n1, price: Math.round(DATA.TRADE[lack].base * n1 * 1.05) });
+    if (glut !== lack && G.res[glut] >= 40) {
+      var n2 = Math.min(80, Math.floor(G.res[glut] / 10) * 10);
+      offers.push({ kind: 'buy', res: glut, amount: n2, price: Math.round(DATA.TRADE[glut].base * n2 * 1.3) });
+    }
+    var rare = Math.random();
+    if (rare < 0.4) offers.push({ kind: 'relic', label: 'A saint\'s relic for the chapel', price: 160, happy: 10 });
+    else if (rare < 0.75) offers.push({ kind: 'sell', res: 'cloth', amount: 20, price: Math.round(DATA.TRADE.cloth.base * 20 * 1.0) });
+    else offers.push({ kind: 'sell', res: 'tools', amount: 30, price: Math.round(DATA.TRADE.tools.base * 30 * 1.0) });
+    return offers;
+  }
+  function tickShip(dt) {
+    G.shipTimer = (G.shipTimer === undefined ? 120 : G.shipTimer) - dt;
+    var s2 = G.ship;
+    if (!s2) {
+      if (G.shipTimer > 0 || !(G.count.market > 0)) return;
+      var spots = seaSpots();
+      if (!spots.length) { G.shipTimer = 60; return; }
+      var t = spots[Math.floor(Math.random() * spots.length)];
+      var from = Math.random() < 0.5 ? { x: -3, y: t.y } : { x: t.x, y: -3 };
+      G.ship = { x: from.x, y: from.y, tx: t.x + 0.5, ty: t.y + 0.5, phase: 'in', left: DATA.SEASON_LEN * 1.1, offers: shipOffers(), face: 1 };
+      return;
+    }
+    var dx = s2.tx - s2.x, dy = s2.ty - s2.y, d = Math.hypot(dx, dy);
+    if (d > 0.05) {
+      var sp = Math.min(d, 0.9 * dt);
+      s2.x += dx / d * sp; s2.y += dy / d * sp;
+      s2.face = (dx - dy) >= 0 ? 1 : -1;
+    } else if (s2.phase === 'in') {
+      s2.phase = 'anchored';
+      emit('ship');
+    } else if (s2.phase === 'out') {
+      G.ship = null;
+      G.shipTimer = DATA.SEASON_LEN * (2.2 + Math.random() * 1.5);
+      return;
+    }
+    if (s2.phase === 'anchored') {
+      s2.left -= dt;
+      if (s2.left <= 0 || !s2.offers.length) shipLeaves();
+    }
+  }
+  function shipLeaves() {
+    if (!G.ship) return;
+    G.ship.phase = 'out';
+    G.ship.tx = G.ship.x < W.COLS / 2 ? -4 : W.COLS + 4;
+    G.ship.ty = G.ship.y;
+  }
+  function takeOffer(i) {
+    var s2 = G.ship, o = s2 && s2.offers[i];
+    if (!o) return { ok: false, why: 'That offer is gone' };
+    if (o.kind === 'sell') {
+      if (G.res.gold < o.price) return { ok: false, why: 'Not enough gold' };
+      G.res.gold -= o.price;
+      G.res[o.res] = Math.min(cap(o.res), G.res[o.res] + o.amount);
+      G.seen[o.res] = 1;
+    } else if (o.kind === 'buy') {
+      if (G.res[o.res] < o.amount) return { ok: false, why: 'You no longer have ' + o.amount + ' ' + o.res };
+      G.res[o.res] -= o.amount;
+      G.res.gold = Math.min(cap('gold'), G.res.gold + o.price);
+    } else {
+      if (G.res.gold < o.price) return { ok: false, why: 'Not enough gold' };
+      G.res.gold -= o.price;
+      G.happy = U.clamp(G.happy + o.happy, 0, 100);
+    }
+    s2.offers.splice(i, 1);
+    G.stats.traded = (G.stats.traded || 0) + 1;
+    U.sfx.coin();
+    emit('change');
+    return { ok: true, offer: o };
+  }
+
+  /* ---------------------------------------------------------
      woodland: always fellable, and it grows back
      --------------------------------------------------------- */
   function canFell(t) { return !!t && t.terr === 'forest' && !t.bld; }
+  /* now and then, clearing woodland turns up something someone buried */
+  function rootTreasure(x, y) {
+    if (Math.random() > 0.07) return;
+    var g = 30 + Math.floor(Math.random() * 50);
+    G.res.gold = Math.min(cap('gold'), G.res.gold + g);
+    emit('treasure', { x: x, y: y, gain: g });
+  }
   function fell(t) {
     if (!canFell(t)) return { ok: false, why: 'Nothing to fell here' };
     t.terr = 'grass'; t.cleared = true;
     var gain = (DATA.TERRAIN.forest.clearGain || { wood: 12 }).wood;
     G.res.wood = Math.min(cap('wood'), G.res.wood + gain);
     emit('felled', { t: t, gain: gain });
+    rootTreasure(t.x, t.y);
     checkQuests();
     return { ok: true, gain: gain };
   }
@@ -1048,10 +1427,11 @@ var SIM = (function () {
   function priceOf(res) {
     var t = DATA.TRADE[res];
     if (!t) return null;
-    var sp = tradeSpread();
+    var sp = tradeSpread(), m = mktOf(res);
     return {
-      sell: Math.max(1, Math.round(t.base * sp.sell * DATA.TRADE_LOT)),
-      buy: Math.max(2, Math.round(t.base * sp.buy * DATA.TRADE_LOT))
+      sell: Math.max(1, Math.round(t.base * sp.sell * m * DATA.TRADE_LOT)),
+      buy: Math.max(2, Math.round(t.base * sp.buy * m * DATA.TRADE_LOT)),
+      trend: m
     };
   }
   function sell(res, lots) {
@@ -1065,6 +1445,7 @@ var SIM = (function () {
     }
     G.res[res] -= amount;
     G.res.gold = Math.min(cap('gold'), G.res.gold + gain);
+    G.mkt[res] = Math.max(0.55, mktOf(res) * Math.pow(0.93, lots));
     G.stats.traded = (G.stats.traded || 0) + 1;
     U.sfx.coin();
     emit('change');
@@ -1081,6 +1462,7 @@ var SIM = (function () {
     }
     G.res.gold -= price;
     G.res[res] = Math.min(cap(res), G.res[res] + amount);
+    G.mkt[res] = Math.min(1.6, mktOf(res) * Math.pow(1.06, lots));
     G.stats.traded = (G.stats.traded || 0) + 1;
     U.sfx.coin();
     emit('change');
@@ -1386,10 +1768,17 @@ var SIM = (function () {
     if (_issCache && Math.abs(G.time - _issAt) < 0.5) return _issCache;
     var out = [], net = ledger();
 
+    burning().forEach(function (b) {
+      out.push({ sev: 2, ic: '🔥', text: b.def.name + ' is on fire!', b: b,
+        hint: 'Tap it and call the bucket brigade' + (wellsNear(b, 5) ? '' : ' — there is no well nearby') });
+    });
+    if (G.ship && G.ship.phase === 'anchored' && G.ship.offers.length) {
+      out.push({ sev: 0, ic: '⛵', text: 'A merchant ship is at anchor', hint: 'Tap the ship to see what they offer', ship: true });
+    }
     if (G.res.food <= 0.5 && G.pop > 1) {
       out.push({ sev: 2, ic: '💀', text: 'Your people are starving', hint: 'Anything that makes food, now' });
-    } else if (net.food < -0.01) {
-      var seasons = G.res.food / (-net.food) / DATA.SEASON_LEN;
+    } else if (foodTrend(net) < -0.01) {
+      var seasons = (G.res.food + standingCrop() * 0.8) / (-foodTrend(net)) / DATA.SEASON_LEN;
       out.push({ sev: seasons < 1.5 ? 2 : 1, ic: '🌾',
         text: 'Food is falling — about ' + seasons.toFixed(1) + ' seasons left',
         hint: 'Build farms, or a fishing hut by the water' });
@@ -1455,7 +1844,7 @@ var SIM = (function () {
       if (q.need.bld) Object.keys(q.need.bld).forEach(function (k) { need(k, 'For your chapter: ' + q.label.toLowerCase()); });
       if (q.need.pop) need('house', 'For your chapter: more homes, more villagers');
     });
-    if (G.res.food < G.pop * 3 || net.food < -0.01) {
+    if (G.res.food < G.pop * 3 || foodTrend(net) < -0.01) {
       need('farm', 'Food is running short');
       var coast = W.tiles.some(function (t) { return (t.terr === 'sand' || t.terr === 'grass') && !t.bld && W.nearCount(t.x, t.y, ['water', 'shore'], 1) > 0; });
       if (coast) need('fishery', 'Food is running short — fish don\'t mind winter');
@@ -1465,6 +1854,11 @@ var SIM = (function () {
       if (!G.count.well) need('well', 'The people are unhappy');
       need('tavern', 'The people are unhappy');
       need('chapel', 'The people are unhappy');
+    }
+    if (G.count.bakery > 0 && (G.breadCov || 0) < 0.5 && G.pop > 20) need('bakery', 'Not enough bread for everyone — homes won\'t improve without it');
+    if (!G.count.bakery && G.pop > 30) need('bakery', 'Bread lets homes become townhouses');
+    if (season().key === 'autumn' || season().key === 'winter') {
+      if (foodTrend(net) < 0.2 || G.res.food < G.pop * 6) need('hunter', 'Winter: the forest still feeds you when the fields do not');
     }
     if (net.wood < 0.05 && G.res.wood < 90) need('lumber', 'Timber is running low');
     if ((G.count.quarry || 0) === 0 && G.res.stone < 60) need('quarry', 'Nothing brings in stone');
@@ -1502,12 +1896,14 @@ var SIM = (function () {
       time: G.time, res: G.res, pop: G.pop, happy: G.happy,
       castle: G.castle, tech: G.tech, research: G.research,
       army: G.army, rival: G.rival, quests: G.quests, stats: G.stats, chapter: G.chapter || 0, won: !!G.won,
+      mkt: G.mkt || {}, decrees: G.decrees || {}, shiftUntil: G.shiftUntil || -1, finds: G.finds || [],
+      shipTimer: G.shipTimer, findTimer: G.findTimer,
       vets: G.vets || {}, formation: G.formation || 'line', seen: G.seen || {}, campaign: G.campaign || null,
       festivals: G.festivals || {}, fairUntil: G.fairUntil || -1,
       eventTimer: G.eventTimer, speed: G.speed,
       buildings: G.buildings.map(function (b) {
         return [b.id, b.x, b.y, b.built ? 1 : 0, Number(b.prog.toFixed(3)),
-                b.paused ? 1 : 0, b.level || 1, b.compact ? 1 : 0];
+                b.paused ? 1 : 0, b.level || 1, b.compact ? 1 : 0, Math.round(b.crop || 0), Math.round(b.cropStart || 0)];
       })
     };
     return U.save(d);
@@ -1529,6 +1925,8 @@ var SIM = (function () {
       castle: d.castle || 0, army: d.army || {}, rival: d.rival,
       quests: d.quests || {}, stats: st, eventTimer: d.eventTimer,
       chapter: d.chapter || 0, won: !!d.won, weather: 'clear', weatherTimer: 30,
+      mkt: d.mkt || {}, decrees: d.decrees || {}, shiftUntil: d.shiftUntil || -1, finds: d.finds || [],
+      ship: null, shipTimer: d.shipTimer || DATA.SEASON_LEN * 2, findTimer: d.findTimer || 40, fireTimer: 5,
       vets: d.vets || {}, formation: d.formation || 'line',
       growTimer: 6, reliefTimer: 30, reliefCooldown: 0,
       speed: d.speed || 1, log: []
@@ -1538,6 +1936,7 @@ var SIM = (function () {
       var b = mkBuilding(a[0], a[1], a[2]);
       b.built = !!a[3]; b.prog = a[4]; b.paused = !!a[5];
       b.level = a[6] || 1;
+      b.crop = a[8] || 0; b.cropStart = a[9] || 0;
       // Farms and pastures became 2×2 plots. One saved before that keeps its
       // single tile rather than spilling onto its neighbours.
       if (a[7] || (d.v < 4 && (b.def.w || 1) > 1 && b.id !== 'castle')) makeCompact(b);
@@ -1598,6 +1997,10 @@ var SIM = (function () {
     unitAvailable: unitAvailable, recruit: recruit, disband: disband,
     activeQuests: activeQuests, applyEffects: applyEffects, checkQuests: checkQuests,
     goalProgress: goalProgress, chapter: chapter, lockReason: lockReason, countAll: countAll, rainMul: rainMul,
+    cropRate: cropRate, harvestRate: harvestRate, foodTrend: foodTrend, farmYearly: farmYearly, harvesting: harvesting, standingCrop: standingCrop, gardenMul: gardenMul,
+    ignite: ignite, rallyBrigade: rallyBrigade, burning: burning, wellsNear: wellsNear, fireRisk: fireRisk,
+    decree: decree, decreeReady: decreeReady, decreeCost: decreeCost, shiftMul: shiftMul,
+    collectFind: collectFind, takeOffer: takeOffer, shipLeaves: shipLeaves, mktOf: mktOf,
     issues: issues, issueCount: issueCount, advice: advice,
     happyTarget: happyTarget
   };

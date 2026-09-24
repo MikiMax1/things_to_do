@@ -1,5 +1,44 @@
 # Kingdom of Ashveil — the redesign plan
 
+## v3.1: more fun, more real (done)
+
+Asked for: better gameplay and mechanics, a bit more fun, a bit more realism.
+
+- **The harvest.** A farm's kitchen garden feeds the town a little through the
+  growing months (35% of its yield); the rest stands in the fields and is
+  brought in over the first half of autumn. Nothing grows in winter, and a crop
+  still standing when the snow comes rots. Farms get extra hands at harvest.
+  Irrigation now means +25% harvest and gardens that keep giving in winter.
+  Everything that asks "is the realm short of food?" — work allocation, the
+  attention list, the Suggested tab, market income — now judges food over the
+  year (`SIM.foodTrend`), with the standing crop counted, so spring is not a
+  false famine and autumn not a false glut.
+- **Fire.** Thatch, ovens and forges catch (`DATA.FIRE_RISK`); stone does not;
+  none in the first five seasons; rain stops it. A fire spreads to neighbours,
+  burns a building down in ~34s, and is fought by villagers who run over with
+  buckets — slowly alone, fast with a well within five tiles, fastest when you
+  tap the building and call the bucket brigade. Measured: ~4–5 fires a decade
+  and ~1.4 buildings lost if nobody ever responds.
+- **Things to tap.** Driftwood and wreckage wash up on beaches; a merchant cog
+  calls every couple of years once you have a market, anchors for a season and
+  offers better-than-market deals for what you lack and what you have too much
+  of; clearing woodland sometimes turns up a coin hoard.
+- **Royal decrees** (👑): Feast Day, Double Shifts (+30% output for half a
+  season, then everyone is exhausted), Levy a Tax, Call for Settlers — each
+  with a price and a wait.
+- **Prices answer back.** Selling a lot of one thing depresses its price and
+  buying raises it; both drift home.
+- **Hunter's Lodge** — food from woodland that keeps coming in winter; deer
+  roam the forests and bolt when people come near.
+- **Villagers keep hours.** They walk home at dusk and sleep; the lanes empty.
+- Trees standing just in front of a building turn see-through.
+- **Bug fixed:** a tap that opened a card (ship, event, inspector) could also
+  press the button now under the finger — phones send a click after the touch.
+  Cards and the inspector ignore clicks for a moment after opening.
+- **Harness fixed:** it counted down one shared build plan, so every simulated
+  kingdom after the first followed a plan of single buildings. Each now gets
+  its own copy, and it reports fires, bread and chapter pacing.
+
 ## v3: the rework (done)
 
 The brief was "make it as good as possible, as visually realistic as possible,
