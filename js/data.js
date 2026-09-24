@@ -121,7 +121,7 @@ var DATA = (function () {
     },
     pasture: {
       id: 'pasture', name: 'Pasture', cat: 'industry', ic: '🐑', w: 2, h: 2, noYard: true,
-      cost: { wood: 28, gold: 30 }, build: 6, jobs: 2, produces: { wool: 0.100 }, upkeep: 0.02,
+      cost: { wood: 28, gold: 30 }, build: 6, jobs: 2, produces: { wool: 0.100 }, upkeep: 0.02, radius: 3, aura: { weaver: 0.2 },
       terrain: ['grass', 'meadow'], seasonalWool: true,
       desc: 'Grazes sheep on open grass for wool. Needs room — it will not thrive on sand or in the hills.'
     },
@@ -142,7 +142,7 @@ var DATA = (function () {
     mine: {
       id: 'mine', name: 'Iron Mine', cat: 'industry', ic: '⛰️', tech: 'mining',
       cost: { wood: 45, stone: 30, gold: 50 }, build: 11, jobs: 2, produces: { iron: 0.14 }, upkeep: 0.06,
-      terrain: ['hill'], near: { terrain: ['rock'], min: 1 },
+      terrain: ['hill'], near: { terrain: ['rock'], min: 1 }, radius: 3, aura: { smith: 0.2 },
       desc: 'Iron for arms and armour. Needs a crag next door.'
     },
     smith: {
@@ -461,6 +461,23 @@ var DATA = (function () {
      One per season, every year, in a known order. Unlike a random event
      you can see these coming and lay something by for them, which is the
      whole point: preparing is the decision. */
+  /* Great works: realm-wide projects paid for as they go up, over about a
+     season each. They are where a rich late-game treasury goes. */
+  var PROJECTS = {
+    harbour:  { name: 'Stone Harbour', ic: '⚓', cost: { gold: 700, stone: 160, wood: 60 }, need: 2,
+                desc: 'A proper quay. Merchant ships call twice as often, outposts send a quarter more, and the Carrow route pays half as much again.' },
+    streets:  { name: 'Paved Streets', ic: '🧱', cost: { gold: 600, stone: 220 }, need: 2,
+                desc: 'Cobbles in place of mud. Everyone gets about faster: +8% to all work.' },
+    stores:   { name: 'Winter Stores', ic: '🏚️', cost: { gold: 520, wood: 120, stone: 60 }, need: 2,
+                desc: 'Cool cellars and tithe barns. +400 food storage and winter spoilage halved.' },
+    gardens:  { name: 'Royal Gardens', ic: '🌷', cost: { gold: 640, wood: 60, stone: 60 }, need: 3,
+                desc: 'Walks, fountains and a maze for the court and the town alike. +8 contentment for good.' },
+    academy:  { name: 'The Academy', ic: '🎓', cost: { gold: 800, stone: 120, wood: 40 }, need: 3,
+                desc: 'Masters and pupils under one roof. Research runs 40% faster.' },
+    monument: { name: 'The Founders\' Column', ic: '🗽', cost: { gold: 1500, stone: 260, iron: 40 }, need: 4,
+                desc: 'Tall enough to be seen from Carrow. +6 contentment and a great deal of glory at the end of the reign.' }
+  };
+
   var FESTIVALS = {
     spring: { key: 'spring', art: '🎪', title: 'The Spring Fair',
       text: 'Traders and tinkers set up along the road for the fair. For a season, coin goes further and goods fetch more.' },
@@ -598,6 +615,9 @@ var DATA = (function () {
     levy: { name: 'Levy a Tax', ic: '💰', cooldown: 1.0,
       desc: 'Send the reeves round with the tally sticks. Coin now; grumbling for a while.',
       effect: '+5 gold per villager, −10 contentment' },
+    ration: { name: 'Ration the Stores', ic: '🥣', cooldown: 1.5,
+      desc: 'Smaller bowls for a season. It stretches the barns through a lean winter, and nobody enjoys it.',
+      effect: 'food eaten −35% for a season, contentment falls' },
     settlers: { name: 'Call for Settlers', ic: '⛵', cooldown: 2.0,
       desc: 'Send word to the mainland that Ashveil has land and work. A boat of families arrives.',
       effect: '+6 villagers (needs empty homes)', cost: { gold: 90, food: 40 } }
@@ -614,7 +634,7 @@ var DATA = (function () {
   return {
     SEASON_LEN: SEASON_LEN, SEASONS: SEASONS, TERRAIN: TERRAIN, RES: RES,
     B: B, CATS: CATS, CASTLE: CASTLE, TECH: TECH, UNITS: UNITS, FOE_UNITS: FOE_UNITS,
-    QUESTS: QUESTS, CHAPTERS: CHAPTERS, DECREES: DECREES, FIRE_RISK: FIRE_RISK, EVENTS: EVENTS, RAID_CAUSES: RAID_CAUSES, FESTIVALS: FESTIVALS,
+    QUESTS: QUESTS, CHAPTERS: CHAPTERS, DECREES: DECREES, PROJECTS: PROJECTS, FIRE_RISK: FIRE_RISK, EVENTS: EVENTS, RAID_CAUSES: RAID_CAUSES, FESTIVALS: FESTIVALS,
     TRADE: TRADE, TRADE_LOT: TRADE_LOT, UPGRADE: UPGRADE, FORMATIONS: FORMATIONS, GROUNDS: GROUNDS,
     HOUSE_TIERS: HOUSE_TIERS, CLOTH_PER_FINE_HOUSE: CLOTH_PER_FINE_HOUSE
   };

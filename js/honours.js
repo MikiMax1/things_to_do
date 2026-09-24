@@ -89,7 +89,8 @@ var HONOURS = (function () {
       if (have[h.id]) return;
       var ok = false;
       try { ok = h.test(g); } catch (e) { ok = false; }
-      if (ok) { have[h.id] = Date.now(); fresh.push(h); }
+      // earned with the villagers building for you: still yours, marked as such
+      if (ok) { have[h.id] = (typeof STEWARD !== 'undefined' && STEWARD.on()) ? { t: Date.now(), help: true } : Date.now(); fresh.push(h); }
     });
     if (fresh.length) {
       try { localStorage.setItem(KEY, JSON.stringify(have)); } catch (e) {}

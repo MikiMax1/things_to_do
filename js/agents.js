@@ -381,6 +381,13 @@ var AGENTS = (function () {
     g.lineTo(px + w * (a.fem ? 0.52 : 0.46), y0 - h * hem); g.lineTo(px - w * (a.fem ? 0.52 : 0.46), y0 - h * hem); g.closePath(); g.fill();
     // belt
     g.fillStyle = 'rgba(40,26,14,.7)'; g.fillRect(px - w * 0.42, y0 - h * 0.47, w * 0.84, Math.max(1, h * 0.05));
+    // in winter, a wool cloak over the shoulders
+    if (SIM.season().key === 'winter') {
+      g.fillStyle = a.fem ? '#5a4a6a' : '#4a3d30';
+      g.beginPath();
+      g.moveTo(px - w * 0.3, y0 - h * 0.8); g.lineTo(px + w * 0.3, y0 - h * 0.8);
+      g.lineTo(px + w * 0.55, y0 - h * 0.36); g.lineTo(px - w * 0.55, y0 - h * 0.36); g.closePath(); g.fill();
+    }
     // arms
     var as = moving ? -step * w * 0.3 : 0;
     g.strokeStyle = shade(a.shirt, 0.8); g.lineWidth = Math.max(1.1, w * 0.2);
@@ -391,7 +398,7 @@ var AGENTS = (function () {
     // head and hair
     g.fillStyle = a.sick ? '#c9cf9a' : a.skin;
     g.beginPath(); g.arc(px, y0 - h * 0.85, w * 0.3, 0, 6.3); g.fill();
-    g.fillStyle = a.hair;
+    g.fillStyle = SIM.season().key === 'winter' ? (a.fem ? '#5a4a6a' : '#4a3d30') : a.hair;   // a hood against the cold
     g.beginPath(); g.arc(px, y0 - h * 0.9, w * 0.31, Math.PI * 1.05, Math.PI * 1.95); g.fill();
     // carried goods on the shoulder
     if (a.carry) {

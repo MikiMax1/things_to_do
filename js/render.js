@@ -55,6 +55,7 @@ var RENDER = (function () {
   }
 
   var calm = document.documentElement.classList.contains('calm');
+  var fineLow = 0;
   function init(canvas) {
     cv = canvas; g = cv.getContext('2d');
     resize();
@@ -139,7 +140,8 @@ var RENDER = (function () {
 
   /* ---------------- particles ---------------- */
   function smoke(x, y, h) {
-    particles.push({ kind: 'smoke', x: x, y: y, h: h, vx: 0.05 + Math.random() * .04, vy: -0.03, vh: 0.28 + Math.random() * .15,
+    var wd = SCENERY.wind();
+    particles.push({ kind: 'smoke', x: x, y: y, h: h, vx: (0.03 + Math.random() * .03) * wd * 1.6, vy: -0.03 * wd, vh: 0.28 / Math.max(0.8, wd * 0.8) + Math.random() * .15,
       life: 3 + Math.random() * 2, max: 5, sz: 0.018 + Math.random() * 0.012 });
   }
   function puff(x, y, col, n) {
@@ -178,7 +180,7 @@ var RENDER = (function () {
   function updateWeather(dt, season) {
     var rainy = SIM.G && SIM.G.weather === 'rain';
     var kind = season === 'winter' ? 'snow' : rainy ? 'rain' : season === 'autumn' ? 'leaf' : season === 'spring' ? 'petal' : null;
-    var rate = kind === 'snow' ? 60 : kind === 'rain' ? 220 : kind === 'leaf' ? 7 : kind === 'petal' ? 6 : 0;
+    var rate = kind === 'snow' ? 60 : kind === 'rain' ? (SIM.G.storm ? 420 : 220) : kind === 'leaf' ? 7 : kind === 'petal' ? 6 : 0;
     if (calm) rate *= (kind === 'leaf' || kind === 'petal') ? 0 : 0.3;   // reduce motion
     var n = rate * dt * (cw / 400) * Q[QLEVEL].weather;
     while (n > 0) {
@@ -216,10 +218,21 @@ var RENDER = (function () {
     g.drawImage(sp.c, s.x - sp.ax * k, s.y - sp.ay * k, sp.c.width * k, sp.c.height * k);
     if (alpha !== undefined && alpha < 1) g.globalAlpha = 1;
   }
+  /* Shadows turn with the sun: long to the west in the morning, short at
+     noon, long to the east towards evening. A shear about the building's
+     base line swings the baked shadow round. */
+  function sunShear() {
+    var p = dayPhase();
+    return U.clamp((p - 0.36) / 0.3, -1, 1) * 0.45;
+  }
   function drawShadow(sp, x, y, scaleMul) {
     if (!sp.sh) return;
     var s = toScreen(x, y), k = cam.z / sp.s * (scaleMul || 1);
-    g.drawImage(sp.sh, s.x - sp.ax * k, s.y - sp.ay * k, sp.c.width * k, sp.c.height * k);
+    var sh = calm ? 0 : sunShear();
+    if (Math.abs(sh) < 0.01) { g.drawImage(sp.sh, s.x - sp.ax * k, s.y - sp.ay * k, sp.c.width * k, sp.c.height * k); return; }
+    g.setTransform(dpr, 0, -dpr * sh, dpr, dpr * (s.x + sh * s.y), dpr * 0);
+    g.drawImage(sp.sh, s.x - sp.ax * k - (s.x), s.y - sp.ay * k, sp.c.width * k, sp.c.height * k);
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
 
   function spriteOf(b, season) {
@@ -241,6 +254,11 @@ var RENDER = (function () {
       }
       lastSeason = season;
     }
+    // close-up detail: repaint the sprites finer when zoomed right in on High
+    var dev = cam.z * dpr;
+    if (QLEVEL === 'high' && dev > 230 && !ART.fine) ART.setFine(true);
+    else if (ART.fine && (dev < 150 || QLEVEL !== 'high')) { fineLow = (fineLow || 0) + dt; if (fineLow > 4) { ART.setFine(false); fineLow = 0; } }
+    else fineLow = 0;
     TERRAIN.sync();
     TERRAIN.step(TERRAIN.detailed ? 5 : 14);
     updateParticles(dt);
@@ -264,6 +282,15 @@ var RENDER = (function () {
     }
 
     if (!DBG.noWater && Q[QLEVEL].glints) drawWater(x0, x1, y0, y1, z);
+
+    // the small life of the island (scenery.js)
+    var sceneApi = { toScreen: toScreen, z: z, cw: cw, ch: ch, x0: x0, x1: x1, y0: y0, y1: y1, onScreen: onScreen,
+                     night: nightAmount(), dayPhase: dayPhase(), calm: calm };
+    SCENERY.update(dt, sceneApi);
+    var rich = QLEVEL !== 'saver';
+    if (!DBG.noWater && rich) SCENERY.drawSurf(g, sceneApi);
+    if (rich) SCENERY.drawPuddles(g, sceneApi);
+    SCENERY.drawJumps(g, sceneApi);
 
     var night = nightAmount(), golden = goldenAmount();
     var sun = 1 - night;
@@ -314,6 +341,7 @@ var RENDER = (function () {
       WAR.state.ships.forEach(function (s) { if (onScreen(s.x, s.y, 120)) items.push({ k: 'wship', s: s, d: s.x + s.y }); });
       WAR.state.units.forEach(function (u) { if ((!u.dead || u.fade > 0) && !u.fled && onScreen(u.x, u.y, 40)) items.push({ k: 'war', u: u, d: u.x + u.y + (u.dead ? -0.3 : 0.03) }); });
     }
+    if (rich) SCENERY.homeItems(items, sceneApi);
     items.sort(function (p, q) { return p.d - q.d; });
 
     /* ---- 3. ground cover: fields, then every shadow ---- */
@@ -338,7 +366,7 @@ var RENDER = (function () {
     }
 
     /* ---- 4. the world, back to front ---- */
-    var wind = Math.sin(time * 0.7) * 0.5 + Math.sin(time * 1.9) * 0.25;
+    var wind = SCENERY.wind() * 0.75 + Math.sin(time * 1.9) * 0.2;
     // trees standing just in front of a building thin out so it can be seen
     var screenT = {};
     G.buildings.forEach(function (b) {
@@ -376,6 +404,8 @@ var RENDER = (function () {
         var ss = toScreen(it.s.x, it.s.y); WAR.drawShip(g, it.s, ss.x, ss.y, z);
       } else if (it.k === 'war') {
         var su = toScreen(it.u.x, it.u.y); WAR.drawUnit(g, it.u, su.x, su.y, z);
+      } else if (it.k === 'scn') {
+        it.o.draw(g);
       } else if (it.k === 'site') {
         drawSite(it.s, z);
       } else if (it.k === 'scout') {
@@ -431,8 +461,11 @@ var RENDER = (function () {
 
     /* ---- 8. weather over everything ---- */
     if (!DBG.noWeather) drawWeather();
+    SCENERY.drawSky(g, sceneApi);
 
     /* ---- 9. overlays ---- */
+    drawPlans(z);
+    if (showClear) drawClear(z);
     if (ghost) drawGhost(z);
     if (selected && selected.b) drawSelection(selected.b, z);
     if (selected && selected.t) drawTileSelection(selected.t, z);
@@ -789,6 +822,7 @@ var RENDER = (function () {
     g.globalAlpha = 0.93;
     g.drawImage(fc, 0, 0, W.COLS, W.ROWS);
     screenTransform();
+    if (QLEVEL !== 'high') { g.globalAlpha = 1; return; }   // the lifted layer is a luxury
     var z0 = cam.z, ox = cw / 2 - (cam.x - cam.y) * z0 / 2, oy = ch / 2 - (cam.x + cam.y) * z0 / 4 - z0 * 0.32;
     g.setTransform(dpr * z0 / 2, dpr * z0 / 4, -dpr * z0 / 2, dpr * z0 / 4, dpr * ox, dpr * oy);
     g.globalAlpha = 0.8;
@@ -927,9 +961,9 @@ var RENDER = (function () {
     var def = ghost.def || DATA.B[ghost.id];
     var wT = def.w || 1, hT = def.h || 1;
     footprintPath(ghost.x, ghost.y, wT, hT, 0.02);
-    g.fillStyle = ghost.ok ? 'rgba(125,212,90,.32)' : 'rgba(212,85,58,.38)';
+    g.fillStyle = ghost.plan ? 'rgba(224,178,60,.30)' : ghost.ok ? 'rgba(125,212,90,.32)' : 'rgba(212,85,58,.38)';
     g.fill();
-    g.strokeStyle = ghost.ok ? '#b4f58a' : '#f59a7a'; g.lineWidth = 2.5; g.stroke();
+    g.strokeStyle = ghost.plan ? '#f0d27a' : ghost.ok ? '#b4f58a' : '#f59a7a'; g.lineWidth = 2.5; g.stroke();
     var sp = ART.building(ghost.b ? { id: ghost.b.id, def: def, level: ghost.b.level, compact: ghost.b.compact } : { id: ghost.id, def: def, level: 1 }, SIM.season().key);
     if (sp) drawSprite(sp, ghost.x, ghost.y, 0.62);
     if (def.radius && def.aura) auraRing(ghost.x + wT / 2, ghost.y + hT / 2, def.radius + .5);
@@ -942,11 +976,47 @@ var RENDER = (function () {
       var tw = g.measureText(ghost.preview).width + 16;
       g.fillStyle = 'rgba(24,18,12,.88)';
       ART.rr(g, s.x - tw / 2, top - 15, tw, 22, 11); g.fill();
-      g.strokeStyle = ghost.ok ? '#8fd06a' : '#e0795f'; g.lineWidth = 1.5; g.stroke();
+      g.strokeStyle = ghost.plan ? '#e0b23c' : ghost.ok ? '#8fd06a' : '#e0795f'; g.lineWidth = 1.5; g.stroke();
       g.fillStyle = '#f4ead0';
       g.fillText(ghost.preview, s.x, top + 1);
       g.textAlign = 'left';
     }
+  }
+
+  /* ground the villagers are told to leave alone */
+  var showClear = false;
+  function drawClear(z) {
+    var c = STEWARD.state().clear;
+    Object.keys(c).forEach(function (k) {
+      var p = k.split(','), x = +p[0], y = +p[1];
+      footprintPath(x, y, 1, 1, 0.04);
+      g.fillStyle = 'rgba(200,70,50,.28)'; g.fill();
+      g.strokeStyle = 'rgba(240,120,90,.8)'; g.lineWidth = 1.2; g.stroke();
+    });
+  }
+
+  /* buildings marked out and waiting for materials: pegs and string */
+  function drawPlans(z) {
+    var ps = SIM.plans;
+    if (!ps.length) return;
+    ps.forEach(function (p, i) {
+      var d = DATA.B[p.id], wT = d.w || 1, hT = d.h || 1;
+      footprintPath(p.x, p.y, wT, hT, 0.06);
+      g.fillStyle = 'rgba(224,178,60,.14)'; g.fill();
+      g.setLineDash([5, 4]); g.strokeStyle = 'rgba(240,210,122,.9)'; g.lineWidth = 1.6; g.stroke(); g.setLineDash([]);
+      var sp = ART.building({ id: p.id, def: d, level: 1 }, SIM.season().key);
+      if (sp && z > 26) drawSprite(sp, p.x, p.y, 0.22);
+      if (z > 30) {
+        var s = toScreen(p.x + wT / 2, p.y + hT / 2);
+        g.fillStyle = 'rgba(24,18,12,.82)'; ART.rr(g, s.x - 11, s.y - 11, 22, 18, 9); g.fill();
+        g.fillStyle = '#f0d98a'; g.font = '700 11px sans-serif'; g.textAlign = 'center';
+        g.fillText(i === 0 ? '⏳' : String(i + 1), s.x, s.y + 3); g.textAlign = 'left';
+      }
+    });
+  }
+  function pickPlan(sx, sy) {
+    var t = tileAtScreen(sx, sy);
+    return SIM.planAt(t.x, t.y);
   }
 
   function drawSelection(b, z) {
@@ -988,7 +1058,7 @@ var RENDER = (function () {
   }
 
   return {
-    init: init, resize: resize, draw: draw, pickBuilding: pickBuilding, pickFind: pickFind, pickShip: pickShip, pickAgent: pickAgent, pickSite: pickSite,
+    init: init, resize: resize, draw: draw, pickBuilding: pickBuilding, pickFind: pickFind, pickShip: pickShip, pickAgent: pickAgent, pickSite: pickSite, pickPlan: pickPlan, setShowClear: function (v) { showClear = v; },
     toScreen: toScreen, toWorld: toWorld, tileAtScreen: tileAtScreen,
     centreOn: centreOn, pan: pan, zoomAt: zoomAt,
     get cam() { return cam; },

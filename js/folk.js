@@ -190,8 +190,29 @@ var FOLK = (function () {
     });
     var open = [];
     Object.keys(count).forEach(function (k) { for (var n = used[k] || 0; n < count[k]; n++) open.push(+k); });
-    pool.forEach(function (p) { if (!p.j && open.length) p.j = open.shift(); });
+    pool.forEach(function (p) { if (!p.j && open.length) { p.j = open.shift(); p.sk = 0; } });
+    // skill: every year at the same trade makes a better craftsman
+    skills = {};
+    g.folk.forEach(function (p) {
+      if (!p.j) return;
+      if (p.jWas !== p.j) { p.jWas = p.j; p.sk = 0; }
+      p.sk = (p.sk || 0) + 1 / YEAR();
+      var s = skills[p.j] || (skills[p.j] = { n: 0, t: 0 });
+      s.n++; s.t += Math.min(3, p.sk);
+    });
+    // little ones do not work; older children help a little
+    var kids = 0;
+    g.folk.forEach(function (p) { if (p.a < 10) kids += 1; else if (p.a < 14) kids += 0.5; });
+    g.kidsOff = kids;
   }
+  var skills = {};
+  /* a workplace staffed by old hands works better: up to +20% at three years */
+  function skillMul(b) {
+    var s = skills[b.uid];
+    if (!s || !s.n) return 1;
+    return 1 + 0.2 * U.clamp(s.t / s.n / 3, 0, 1);
+  }
+  function skillOf(p) { return p.sk || 0; }
   function workRank(p) { return p.a >= 16 && p.a < 62 ? 0 : p.a >= 62 ? 1 : p.a >= 11 ? 2 : 3; }
   function jobOf(p) {
     if (!p.j) return null;
@@ -274,7 +295,7 @@ var FOLK = (function () {
     if (why === 'starve') {
       var weak = g.folk.filter(function (q) { return q.a >= 62 || q.a < 4; });
       p = weak.length ? pick(weak) : pick(g.folk);
-      s.died++;
+      s.died++; g.stats.dead = (g.stats.dead || 0) + 1;
       note(full(p) + ' died in the hunger' + (p.a >= 62 ? ', aged ' + Math.floor(p.a) : p.a < 4 ? ', only a baby' : '') + '.', true);
       remove(p);
       return;
@@ -298,7 +319,7 @@ var FOLK = (function () {
     if (g.levy && g.levy.length > soldiers) {
       var names = [];
       while (g.levy.length > soldiers) { var k = Math.floor(R() * g.levy.length); names.push(g.levy[k].n + ' ' + g.levy[k].f); g.levy.splice(k, 1); }
-      st().died += names.length;
+      st().died += names.length; g.stats.dead = (g.stats.dead || 0) + names.length;
       note('Fell fighting for Ashveil: ' + names.slice(0, 6).join(', ') + (names.length > 6 ? ' and ' + (names.length - 6) + ' more' : '') + '.');
     }
   }
@@ -317,7 +338,7 @@ var FOLK = (function () {
     });
     died.forEach(function (p) {
       if (g.folk.length <= 2) return;
-      st().died++;
+      st().died++; g.stats.dead = (g.stats.dead || 0) + 1;
       g.stats.oldAge = (g.stats.oldAge || 0) + 1;
       note('Old ' + full(p) + ' died peacefully, aged ' + Math.floor(p.a) + '.');
       remove(p);
@@ -369,12 +390,17 @@ var FOLK = (function () {
           var occ = homesOf[b.uid] || [];
           if (!occ.length || b === g.buildings[0]) return;
           var crowd = occ.length / capOf(b);
-          var risk = 0.0045 * crowd * crowd * (servicesOf(b).well ? 0.35 : 1) * sanit * winter * (SIM.diff ? SIM.diff().fever : 1);
+          var noWell = !servicesOf(b).well, sk = SIM.season().key;
+          // winter chills in a cold town; the flux in summer where the water is bad
+          var cause = SIM.cold && SIM.cold() ? 'chills' : sk === 'summer' && noWell ? 'flux' : 'fever';
+          var risk = 0.0045 * crowd * crowd * (noWell ? 1 : 0.35) * sanit * winter * (SIM.diff ? SIM.diff().fever : 1) *
+                     (cause === 'chills' ? 2 : cause === 'flux' ? 1.6 : 1);
           if (R() < risk) {
             var p = pick(occ);
             if (p.sick) return;
             fallSick(p);
-            note('Fever in the ' + (b.def.tierNames ? b.def.tierNames[(b.level || 1) - 1].toLowerCase() : 'house') + ' of the ' + p.f + 's — ' + p.n + ' has taken ill.', true);
+            var illness = cause === 'chills' ? 'Winter chills' : cause === 'flux' ? 'The flux (bad water)' : 'Fever';
+            note(illness + ' in the ' + (b.def.tierNames ? b.def.tierNames[(b.level || 1) - 1].toLowerCase() : 'house') + ' of the ' + p.f + 's — ' + p.n + ' has taken ill.', true);
             SIM.emit('sick', b);
           }
         });
@@ -388,9 +414,10 @@ var FOLK = (function () {
     homes().forEach(function (b) {
       var occ = homesOf[b.uid] || [], ill = occ.filter(function (p) { return p.sick > 0; });
       if (!ill.length) return;
-      var doc = b.physic && b.physic > g.time, well = servicesOf(b).well;
+      var doc = b.physic && b.physic > g.time, well = servicesOf(b).well, care = servicesOf(b).chapel;
       ill.forEach(function (p) {
-        p.sick -= dt * (doc ? 2.5 : 1) * (well ? 1.3 : 1);
+        // the monks at the chapel sit with the sick
+        p.sick -= dt * (doc ? 2.5 : 1) * (well ? 1.3 : 1) * (care ? 1.4 : 1);
         var die = 0.0011 * (p.a >= 60 ? 3 : p.a < 5 ? 2 : 1) * (doc ? 0.3 : 1);
         if (R() < die * dt) dead.push(p);
         else if (p.sick <= 0) { p.sick = 0; p.imm = g.time + DATA.SEASON_LEN * 3; }   // once through it, spared a while
@@ -409,7 +436,7 @@ var FOLK = (function () {
     });
     dead.forEach(function (p) {
       if (g.folk.length <= 2) return;
-      st().died++;
+      st().died++; g.stats.dead = (g.stats.dead || 0) + 1;
       g.stats.fever = (g.stats.fever || 0) + 1;
       note(full(p) + ' died of the fever' + (p.a < 5 ? ', just a baby' : p.a >= 60 ? ', aged ' + Math.floor(p.a) : '') + '.', true);
       remove(p);
@@ -460,7 +487,7 @@ var FOLK = (function () {
   return {
     tick: tick, reset: reset, pack: pack, get: get, full: full, mood: mood, tradeOf: tradeOf, homeOf: homeOf, jobOf: jobOf,
     servicesOf: servicesOf, sickAt: sickAt, sickHomes: sickHomes, physician: physician, families: families, summary: summary,
-    residents: function (b) { return homesOf[b.uid] || []; },
+    residents: function (b) { return homesOf[b.uid] || []; }, skillMul: skillMul, skillOf: skillOf,
     get list() { return (G() && G().folk) || []; }
   };
 })();

@@ -36,6 +36,7 @@ var ART = (function () {
     plaster: '#e2d4b4', plasterW: '#efe6d0', timber: '#4e3826', wood: '#8a6440', woodD: '#5b4029', woodL: '#a98256',
     stone: '#9c9486', stoneL: '#bdb5a5', stoneD: '#6f685c', brick: '#a45a40', thatch: '#c49c58', clay: '#b1563c',
     slate: '#5f6874', shingle: '#7c5c3e', glass: '#2e3f52', gold: '#e0b23c', red: '#a8382a', blue: '#2f5c96',
+    banner: '#e0b23c', banner2: '#a8382a',
     iron: '#4a4d55', snow: '#eef2f7', dark: '#221a12', hay: '#d7b965', cloth1: '#b8453a', cloth2: '#3f6ea5', cloth3: '#d8b64a'
   };
 
@@ -1269,7 +1270,7 @@ var ART = (function () {
       } }), logWall({ deco: function (g, W, H, L, F) { win(g, F, W * 0.4, H * 0.3, 11, 11, L); } }), false);
       gable(sp, 0.45, 0.5, 1.55, 1.2, 0.42, 1.0, 'u', shingleRoof('#6a5238'), logWall());
       chimney(sp, 0.7, 0.72, 0.8, 1.18, true);
-      flag(sp, 1.55, 1.3, 0.9, C.gold, true);
+      flag(sp, 1.55, 1.3, 0.9, C.banner, true);
       palisade(sp, [1.9, 0.1], [1.9, 1.9], 18, 0.36);
       palisade(sp, [0.1, 1.9], [0.8, 1.9], 7, 0.36);
       palisade(sp, [1.2, 1.9], [1.9, 1.9], 7, 0.36);
@@ -1282,7 +1283,7 @@ var ART = (function () {
       curtain(sp, 0.1, 0.1, 1.9, 1.9, 0.42, 0.14, B, 'nu');
       roundTower(sp, 0.16, 0.16, 0.16, 0.6, B, null);
       keep(sp, 0.6, 0.55, 1.4, 1.3, 1.25, B, null);
-      flag(sp, 1.3, 1.2, 1.7, C.gold, true);
+      flag(sp, 1.3, 1.2, 1.7, C.banner, true);
       roundTower(sp, 1.84, 0.16, 0.16, 0.6, B, null);
       roundTower(sp, 0.16, 1.84, 0.16, 0.6, B, null);
       curtain(sp, 0.1, 0.1, 1.9, 1.9, 0.42, 0.14, B, 'u');
@@ -1298,7 +1299,7 @@ var ART = (function () {
       keep(sp, 0.52, 0.48, 1.35, 1.25, 1.35, B, slateRoof(), 0.55);
       box(sp, 1.1, 0.3, 1.5, 0.7, 0, 0.9, stoneWall({ col: B }), stoneWall({ col: B }), flat(C.stoneD));
       hip(sp, 1.1, 0.3, 1.5, 0.7, 0.9, 1.25, slateRoof(), 0.03);
-      flag(sp, 0.95, 0.88, 2.15, C.gold, true);
+      flag(sp, 0.95, 0.88, 2.15, C.banner, true);
       roundTower(sp, 1.84, 0.16, 0.19, 0.78, B, C.slate);
       roundTower(sp, 0.16, 1.84, 0.19, 0.78, B, C.slate);
       curtain(sp, 0.08, 0.08, 1.92, 1.92, 0.5, 0.14, B, 'u');
@@ -1314,14 +1315,14 @@ var ART = (function () {
       roundTower(sp, 1.0, 0.18, 0.16, 1.2, B, C.blue);
       keep(sp, 0.5, 0.46, 1.4, 1.3, 1.6, B, slateRoof('#3e5f86'), 0.6);
       roundTower(sp, 0.5, 0.46, 0.13, 2.0, B, C.blue);
-      flag(sp, 0.5, 0.46, 2.55, C.gold, true);
+      flag(sp, 0.5, 0.46, 2.55, C.banner, true);
       roundTower(sp, 1.4, 1.3, 0.13, 1.9, B, C.blue);
       roundTower(sp, 1.86, 0.14, 0.22, 0.98, B, C.blue);
       roundTower(sp, 0.14, 1.86, 0.22, 0.98, B, C.blue);
       curtain(sp, 0.04, 0.04, 1.96, 1.96, 0.6, 0.15, B, 'u');
       curtain(sp, 0.04, 0.04, 1.96, 1.96, 0.6, 0.15, B, 'v');
       gatehouse(sp, 0.7, 1.3, 1.99, 0.86, B);
-      flag(sp, 0.72, 2.02, 1.15, C.red, true); flag(sp, 1.28, 2.02, 1.15, C.red, true);
+      flag(sp, 0.72, 2.02, 1.15, C.banner2, true); flag(sp, 1.28, 2.02, 1.15, C.banner2, true);
       roundTower(sp, 1.86, 1.86, 0.22, 0.98, B, C.blue);
     }
   ];
@@ -1777,9 +1778,18 @@ var ART = (function () {
     return c;
   }
 
+  var baseSPX = 128, fine = false;
   function bake() {
     var dpr = (typeof window !== 'undefined' && window.devicePixelRatio) || 1;
-    SPX = dpr >= 1.75 ? 128 : 96;
+    baseSPX = SPX = dpr >= 1.75 ? 128 : 96;
+  }
+  /* close-up: sprites re-painted at half as many pixels again, so roof
+     courses, window frames and door boards stay crisp when zoomed right in */
+  function setFine(on) {
+    if (on === fine) return false;
+    fine = on; SPX = on ? Math.round(baseSPX * 1.6) : baseSPX;
+    clearCache();
+    return true;
   }
   function clearCache() { cache = {}; icons = {}; }
 
@@ -1787,6 +1797,8 @@ var ART = (function () {
     bake: bake, building: building, scaffold: scaffold, tree: tree, rock: rock,
     hasField: hasField, field: field, lightsOf: lightsOf, drawSails: drawSails,
     icon: icon, rr: rr, poly: poly, clearCache: clearCache, fishDir: fishDir,
-    get SPX() { return SPX; }
+    /* the ruler's colours fly from every tower of the castle */
+    setBanner: function (a, b) { if (C.banner === a && C.banner2 === b) return; C.banner = a || C.gold; C.banner2 = b || C.red; clearCache(); },
+    get SPX() { return SPX; }, setFine: setFine, get fine() { return fine; }
   };
 })();

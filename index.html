@@ -33,6 +33,7 @@
         <button class="spd active" id="spd-1" type="button">1×</button>
         <button class="spd" id="spd-2" type="button">2×</button>
         <button class="spd" id="spd-3" type="button">4×</button>
+        <button class="spd" id="spd-4" type="button">8×</button>
       </div>
     </div>
     <div class="hud-row3">
@@ -40,6 +41,7 @@
       <span class="mini" id="mini-happy">🙂 0%</span>
       <span class="mini" id="mini-army">⚔️ 0/0</span>
       <span class="mini" id="mini-note"></span>
+      <button class="mini grow-chip" id="grow-chip" type="button">🌱 Growth: off</button>
     </div>
     <button id="goal-card" type="button">
       <span class="gc-ch" id="gc-ch">Chapter I</span>
@@ -50,6 +52,7 @@
 
   <!-- ============ FLOATING SIDE BUTTONS ============ -->
   <div id="side-tools">
+    <button class="tool-btn hidden" id="btn-letters" type="button" title="Letters waiting">📜<span class="tool-badge" id="letter-badge">0</span></button>
     <button class="tool-btn" id="btn-alerts" type="button" title="What needs attention">🔔<span class="tool-badge hidden" id="alert-badge">0</span></button>
     <button class="tool-btn" id="btn-decrees" type="button" title="Royal decrees">👑</button>
     <button class="tool-btn" id="btn-center" type="button" title="Centre on castle">🎯</button>
@@ -77,7 +80,8 @@
   <!-- ============ BUILD GHOST BANNER ============ -->
   <div id="build-banner" class="hidden">
     <span id="build-banner-text">Tap a tile to place</span>
-    <button id="build-cancel" type="button">Cancel</button>
+    <button id="build-row" type="button" title="Drag to lay a row">⟷ Row</button>
+    <button id="build-cancel" type="button">Done</button>
   </div>
 
   <div id="war-hud" class="hidden">
@@ -127,6 +131,7 @@
         <div id="dep-reserve"></div>
         <div id="dep-summary"></div>
         <button id="dep-begin" type="button">Give the order</button>
+        <button id="dep-quick" type="button">⚡ Settle it quickly — no watching</button>
       </div>
     </div>
 
@@ -141,6 +146,7 @@
         <div class="bt-fill theirs" id="bt-foe-bar"></div>
       </div>
       <div id="bt-log"></div>
+      <div id="bt-squads"></div>
       <div id="bt-orders"></div>
       <div id="bt-result" class="hidden">
         <h2 id="bt-result-title">Victory</h2>
@@ -169,6 +175,16 @@
       <button class="primary" id="btn-continue" type="button">Continue</button>
       <button class="primary" id="btn-new" type="button">New Kingdom</button>
       <div id="setup" class="hidden">
+        <p class="setup-label">Your ruler</p>
+        <div class="ruler-row">
+          <input id="ruler-name" maxlength="16" autocomplete="off" aria-label="Your name">
+          <button type="button" class="setup-pill" id="ruler-title">Queen</button>
+        </div>
+        <div class="ruler-row">
+          <span class="house-of">of House</span><input id="ruler-house" maxlength="16" autocomplete="off" aria-label="House">
+          <button type="button" class="setup-pill" id="ruler-dice" title="Roll another">🎲</button>
+        </div>
+        <div class="setup-row banner-row" id="banner-row"></div>
         <p class="setup-label">The island</p><div class="setup-row" data-k="map"></div>
         <p class="setup-label">The world</p><div class="setup-row" data-k="diff"></div>
         <p class="setup-label">The beginning</p><div class="setup-row" data-k="scen"></div>
@@ -177,7 +193,7 @@
         <button class="setup-back" id="btn-setup-back" type="button">Back</button>
       </div>
       <div id="loading" class="hidden"><p>Raising the land…</p><div class="load-bar"><i id="load-fill"></i></div></div>
-      <p class="version">v4.0 · tap · drag · pinch</p>
+      <p class="version">v5.0 · tap · drag · pinch</p>
     </div>
   </div>
 </div>
@@ -191,7 +207,10 @@
 <script src="js/folk.js"></script>
 <script src="js/explore.js"></script>
 <script src="js/honours.js"></script>
+<script src="js/steward.js"></script>
+<script src="js/court.js"></script>
 <script src="js/agents.js"></script>
+<script src="js/scenery.js"></script>
 <script src="js/render.js"></script>
 <script src="js/battle.js"></script>
 <script src="js/war.js"></script>
