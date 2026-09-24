@@ -2402,7 +2402,9 @@ var UI = (function () {
         chronicle('The ' + payload.def.name.toLowerCase() + ' burned down.');
         RENDER.puff(payload.x + .5, payload.y + .5, '#3a3638', 16);
         if (selected && selected.b === payload) clearSelection();
+        if (moveTarget === payload) cancelBuild();
       }
+      if (kind === 'undone') { if (moveTarget === payload) cancelBuild(); if (selected && selected.b === payload) clearSelection(); }
       if (kind === 'find') toast(payload === 'drift' ? '🪵 Something has washed up on the beach — tap it.' : '📦 Wreckage on the shore! Tap it to salvage what you can.', '');
       if (kind === 'ship') { toast('⛵ A merchant cog has dropped anchor. Tap it to trade.', 'good'); chronicle('A merchant ship called at Ashveil.'); U.sfx.coin(); }
       if (kind === 'treasure') { RENDER.floater(payload.x + .5, payload.y + .2, '+' + payload.gain + ' 🪙 buried coins!', '#f0cd6a'); toast('Clearing the roots turned up an old coin hoard: +' + payload.gain + ' gold.', 'good'); U.sfx.coin(); }

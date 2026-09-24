@@ -479,7 +479,9 @@ var SIM = (function () {
     return out;
   }
   function canMove(b, x, y) {
-    if (!b || b.def.unique) return { ok: false, why: 'The castle stays where it is' };
+    // it may have burned down (or been undone) while you were choosing the spot
+    if (!b || G.buildings.indexOf(b) < 0) return { ok: false, why: 'It is no longer standing' };
+    if (b.def.unique) return { ok: false, why: 'The castle stays where it is' };
     if (b.fire) return { ok: false, why: 'Not while it is burning' };
     if (x === b.x && y === b.y) return { ok: false, why: 'That is where it already is' };
     return W.canPlace(b.id, x, y, b.def, b);
@@ -2645,6 +2647,8 @@ var SIM = (function () {
     if (typeof FOLK !== 'undefined') FOLK.tick(0);
     if (typeof EXPLORE !== 'undefined') EXPLORE.tick(0);
     emit('newgame');
+    // an army saved while it waited at the border still has its battle to fight
+    if (G.campaign && G.campaign.phase === 'battle') emit('campaign-arrived');
     return true;
   }
 
