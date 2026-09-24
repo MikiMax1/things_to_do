@@ -341,13 +341,13 @@ var EXPLORE = (function () {
           notes.push('Sea Wolves raided ' + d.name + ' — nothing came home');
           return;
         }
-        var amt = d.amt * (SIM.season().key === 'winter' && sp.k === 'food' ? 0.4 : 1);
+        var amt = d.amt * (SIM.season().key === 'winter' && sp.k === 'food' ? 0.4 : 1) * (SIM.done('harbour') ? 1.25 : 1);
         g.res[d.res] = Math.min(SIM.cap(d.res), (g.res[d.res] || 0) + amt);
         if (g.seen) g.seen[d.res] = 1;
         notes.push('+' + Math.round(amt) + ' ' + d.res + ' from ' + d.name);
       }
       if (sp.route) {
-        var gold = 40 + Math.round(Math.min(60, SIM.goodsValue() * 12));
+        var gold = Math.round((40 + Math.min(60, SIM.goodsValue() * 12)) * (SIM.done('harbour') ? 1.5 : 1));
         g.res.gold = Math.min(SIM.cap('gold'), g.res.gold + gold);
         notes.push('+' + gold + ' gold on the Carrow route');
       }

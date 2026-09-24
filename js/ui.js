@@ -125,6 +125,9 @@ var UI = (function () {
     var note = '';
     if (G.idle) note = '🧺 ' + G.idle + ' labourer' + (G.idle > 1 ? 's' : '');
     if (G.research) note = '📜 ' + Math.round(U.clamp(G.research.prog / DATA.TECH[G.research.id].time, 0, 1) * 100) + '%';
+    if (SIM.zeal() > 1.02) note = '🔥 Settlers\' zeal +' + Math.round((SIM.zeal() - 1) * 100) + '%';
+    if (G.rationUntil > G.time) note = '🥣 Rationing';
+    if (G.workNow) note = DATA.PROJECTS[G.workNow].ic + ' ' + Math.round(SIM.workProgress(G.workNow) * 100) + '%' + (G.workWaiting ? ' — needs ' + G.workWaiting : '');
     mn.textContent = note;
     mn.className = 'mini dim' + (note ? '' : ' hidden');
 
@@ -619,6 +622,7 @@ var UI = (function () {
         '<div class="stat-line"><span>Next raid on you</span><b>' + (SIM.atPeace() ? 'none — you have a treaty' : grace > 0 ? 'at peace for ' + grace + ' more season' + (grace > 1 ? 's' : '') : '~' + Math.max(0, Math.round(r.nextRaid / DATA.SEASON_LEN * 10) / 10) + ' seasons') + '</b></div>' +
         '<div class="stat-line"><span>Battles won / lost</span><b>' + G.stats.wins + ' / ' + G.stats.losses + '</b></div>' +
         '</div>'));
+      banditCard(box);
       box.appendChild(h('<p class="sect-label">Formation</p>'));
       Object.keys(DATA.FORMATIONS).forEach(function (fk) {
         var f = DATA.FORMATIONS[fk];
@@ -724,6 +728,39 @@ var UI = (function () {
     box.appendChild(h('<p class="hint">Beating Brannoch in battle sours most lords — though a <b>wary</b> one respects it. Storming their town earns a year of tribute. Marching on them breaks any pact. <b>The Sea Wolves</b> talk to nobody: keep soldiers and walls for them whatever you sign.</p>'));
   }
 
+  /* the outlaws in the hills: a fight you can pick any season */
+  function banditCard(box) {
+    var G = SIM.G, pw = SIM.banditPower(), odds = estimateOdds(pw, 'raid', 'bandits'), ready = SIM.banditReady();
+    var col = odds > 60 ? '#8fd06a' : odds > 38 ? '#e0b23c' : '#e0795f';
+    var c = h('<div class="card"><h4 style="font-family:var(--font);font-size:15px">🏴 The Bandit Camp</h4>' +
+      '<p style="font-size:12px;color:#c3b18e;margin:4px 0 8px">Outlaws in the hills, preying on the roads. Clear them out whenever you like — once a season.</p>' +
+      '<div class="stat-line"><span>Your odds</span><b style="color:' + col + '">' + odds + '%</b></div>' +
+      '<div class="stat-line"><span>Plunder if you win</span><b>~' + Math.round(90 + pw * 1.6) + ' gold</b></div></div>');
+    var row = h('<div style="display:flex;gap:6px;margin-top:8px"></div>');
+    var why = SIM.armyCount() < 3 ? 'You need at least 3 soldiers' : !ready ? 'They are still licking their wounds' : G.campaign ? 'Your army is away' : '';
+    var fight = h('<button class="btn" style="flex:1">⚔️ Lead the attack</button>');
+    var auto = h('<button class="btn sec" style="flex:1">⚡ Send them in</button>');
+    [fight, auto].forEach(function (b) { b.disabled = !!why; });
+    fight.addEventListener('click', function () {
+      G.banditAt = G.time; closeSheet();
+      startBattle('raid', { power: pw, name: 'Bandits', flavour: 'bandits' });
+    });
+    auto.addEventListener('click', function () {
+      G.banditAt = G.time;
+      var r = SIM.autoBattle({ power: pw, flavour: 'bandits' });
+      var fallen = Object.keys(r.lost).map(function (k) { return r.lost[k] + '× ' + DATA.UNITS[k].name; }).join(', ');
+      chronicle(r.won ? 'Cleared the bandit camp.' : 'Beaten back from the bandit camp.');
+      storyCard(r.won ? '🏴' : '🩸', r.won ? 'The Camp Is Cleared' : 'Beaten Back',
+        (r.won ? 'Your captain sends word: the outlaws are scattered and their hoard is ours. +' + r.loot.gold + ' gold.' : 'The outlaws held the pass. Your soldiers fall back to Ashveil.') +
+        '\n\n' + (r.lostN ? 'Fallen: ' + fallen : 'Not a soldier lost.'), [{ label: 'Good' }]);
+      renderSheet(); refreshHUD();
+    });
+    row.appendChild(fight); row.appendChild(auto);
+    c.appendChild(row);
+    if (why) c.appendChild(h('<p class="hint" style="margin:6px 0 0">' + why + '.</p>'));
+    box.appendChild(c);
+  }
+
   function fieldStrength(extraDef) { return SIM.fieldStrength(extraDef); }
 
   /* score the enemy the same way, from the army they would actually field */
@@ -804,6 +841,34 @@ var UI = (function () {
   }
 
   /* ---------------- WORLD ---------------- */
+  /* great works: one at a time, paid for as they rise */
+  function worksList(box) {
+    var G = SIM.G;
+    box.appendChild(h('<p class="sect-label">Great works</p>'));
+    box.appendChild(h('<p class="hint" style="margin-top:0">Realm-wide projects, paid for a little at a time over about a season while the masons work. One at a time.</p>'));
+    Object.keys(DATA.PROJECTS).forEach(function (id) {
+      var p = DATA.PROJECTS[id], prog = SIM.workProgress(id), fin = SIM.done(id), avail = SIM.workAvailable(id), now = G.workNow === id;
+      var c = h('<div class="card' + (avail || fin ? '' : ' locked') + '" style="' + (now ? 'border-color:#e0b23c' : '') + '"><div class="card-row">' +
+        '<div class="card-ic" style="font-size:22px">' + p.ic + '</div><div class="card-main"><h4>' + p.name + (fin ? ' ✓' : '') + '</h4><p>' + p.desc + '</p>' +
+        (fin ? '' : '<div class="cost">' + costPills(p.cost) + '</div>') +
+        (prog > 0 && !fin ? '<div class="meter"><i style="width:' + (prog * 100).toFixed(1) + '%"></i></div>' : '') +
+        (now && G.workWaiting ? '<p style="color:#e0b23c;margin-top:5px">Waiting for ' + G.workWaiting + '</p>' : '') +
+        (!avail && !fin ? '<p style="color:#8a7a5e;margin-top:5px">🔒 Later in your reign (Chapter ' + ROMAN[p.need - 1] + ')</p>' : '') +
+        '</div></div></div>');
+      if (!fin && avail) {
+        var b = h('<button class="btn wide' + (now ? ' sec' : '') + '">' + (now ? '⏸ Pause the work' : prog > 0 ? '▶ Carry on building' : '🏗️ Begin') + '</button>');
+        b.addEventListener('click', function () {
+          if (now) { G.workNow = null; U.sfx.tap(); renderSheet(); return; }
+          var r = SIM.startWork(id);
+          if (!r.ok) { toast(r.why, 'bad'); return; }
+          U.sfx.build(); toast('The masons start on ' + p.name + '.', 'good'); renderSheet();
+        });
+        c.appendChild(b);
+      }
+      box.appendChild(c);
+    });
+  }
+
   function honoursBody(box) {
     var sc = HONOURS.score(), best = HONOURS.best(), have = HONOURS.earned(), D = SIM.diff();
     box.appendChild(h('<div class="card score-card"><p class="sect-label" style="margin:0">Reign score</p>' +
@@ -919,6 +984,7 @@ var UI = (function () {
       } else {
         box.appendChild(h('<p class="hint">Your castle can rise no further. Ashveil is complete.</p>'));
       }
+      worksList(box);
       box.appendChild(h('<p class="sect-label">Realm at a glance</p>'));
       var built = G.buildings.filter(function (b2) { return b2.built; }).length;
       box.appendChild(h('<div class="card">' +
@@ -2113,6 +2179,7 @@ var UI = (function () {
       }
       if (kind === 'voyage') { toast('⛵ ' + payload.msg, 'good'); chronicle(payload.msg); U.sfx.quest(); if (openPanel === 'world') renderSheet(); }
       if (kind === 'honour') { toast('🏅 Honour earned: ' + payload.name + ' — ' + payload.desc, 'good'); chronicle('Honour earned: ' + payload.name + '.'); U.sfx.victory(); }
+      if (kind === 'work-done') { var wp = DATA.PROJECTS[payload]; toast(wp.ic + ' ' + wp.name + ' is finished! ' + wp.desc.split('.').slice(1).join('.').trim(), 'good'); chronicle(wp.name + ' was completed.'); U.sfx.quest(); }
       if (kind === 'plan-built') toast('📐 The builders have started the planned ' + DATA.B[payload.plan.id].name.toLowerCase() + '.', 'good');
       if (kind === 'harvest') { toast('🌾 Harvest time! ' + payload + ' food stands in the fields — the farmhands are bringing it in.', 'good'); chronicle('The harvest began: ' + payload + ' in the fields.'); U.sfx.quest(); }
       if (kind === 'fire') {

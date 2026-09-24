@@ -16,11 +16,11 @@ var SIM = (function () {
      --------------------------------------------------------- */
   /* how hard the world pushes back */
   var DIFFS = {
-    gentle: { name: 'Gentle', res: 1.4, rival: 0.6, gap: 1.4, fire: 0.6, fever: 0.5, grace: 10, score: 0.8,
+    gentle: { name: 'Gentle', res: 1.4, rival: 0.6, gap: 1.4, fire: 0.6, fever: 0.5, grace: 10, score: 0.8, cost: 0.9, work: 1.08, joy: 4,
               desc: 'More in the stores, a slower neighbour, and fewer fires and fevers.' },
-    fair:   { name: 'Fair',   res: 1,   rival: 1,   gap: 1,   fire: 1,   fever: 1,   grace: 6,  score: 1,
+    fair:   { name: 'Fair',   res: 1,   rival: 1,   gap: 1,   fire: 1,   fever: 1,   grace: 6,  score: 1, cost: 1, work: 1,
               desc: 'The realm as it was meant to be played.' },
-    harsh:  { name: 'Harsh',  res: 0.75, rival: 1.45, gap: 0.8, fire: 1.35, fever: 1.4, grace: 4, score: 1.45,
+    harsh:  { name: 'Harsh',  res: 0.75, rival: 1.45, gap: 0.8, fire: 1.2, fever: 1.4, grace: 4, score: 1.45, cost: 1.2, work: 0.88, joy: -4,
               desc: 'Thin stores, a hungry neighbour, and a hard world. Worth far more at the end.' }
   };
   var SCENARIOS = {
@@ -302,14 +302,14 @@ var SIM = (function () {
 
   /* Each further market takes a smaller cut of the same goods, so a second
      market is worth building and a tenth is not. */
-  function marketCut(index) { return 0.35 * Math.pow(0.68, index); }
+  function marketCut(index) { return 0.24 * Math.pow(0.7, index); }
 
   function costOf(id) {
     var def = DATA.B[id], out = {};
     Object.keys(def.cost || {}).forEach(function (k) {
       var v = def.cost[k];
       if (k === 'stone' && G.tech.masonry) v *= 0.9;
-      out[k] = Math.round(v);
+      out[k] = Math.round(v * (diff().cost || 1));
     });
     return out;
   }
@@ -382,7 +382,7 @@ var SIM = (function () {
     var b = mkBuilding(id, x, y);
     uid--;
     b.built = true; b.workers = jobsOf(b);
-    if (def.trade) b._mIdx = G.count[id] || 0;
+    if (id === 'market') b._mIdx = G.count[id] || 0;
     var parts = [];
     if (def.seasonal) {
       var yr = farmPotential(b) * DATA.SEASON_LEN * (GARDEN * 3.4 + CROP_RATE * 2.3);
@@ -536,7 +536,7 @@ var SIM = (function () {
     G.buildings.forEach(function (b) { if (b.built) c[b.id]++; });
     var mi = 0;
     G.buildings.forEach(function (b) {
-      if (b.built && b.def.trade && b.id !== 'castle') b._mIdx = mi++;
+      if (b.built && b.id === 'market') b._mIdx = mi++;
     });
     G.count = c;
     // Both caches are keyed on game time, which does not move while paused.
@@ -552,6 +552,7 @@ var SIM = (function () {
       if (b.built && b.def.store && b.def.store[res]) v += b.def.store[res] * lvlMul(b);
     });
     if (res === 'gold' && G.tech.banking) v += 200;
+    if (res === 'food' && done('stores')) v += 400;
     return v;
   }
 
@@ -877,7 +878,119 @@ var SIM = (function () {
   }
 
   function efficiency() {
-    return U.clamp(0.62 + (G.happy / 100) * 0.45, 0.45, 1.12);
+    return U.clamp(0.62 + (G.happy / 100) * 0.45, 0.45, 1.12) * zeal() * (done('streets') ? 1.08 : 1) * (diff().work || 1);
+  }
+  /* settlers' zeal: a new colony works hard. Half again as much at the
+     start, fading away over the first four seasons. */
+  function zeal() {
+    var k = U.clamp(1 - G.time / (DATA.SEASON_LEN * 4), 0, 1);
+    return 1 + 0.5 * k;
+  }
+
+  /* As autumn begins: will the stores last the winter? Said plainly, with
+     what can be done about it. */
+  function winterWarning() {
+    if (seasonIndex() < 2) return;
+    var need = G.pop * 0.055 * (1 - BREAD_SAVING * (G.breadCov || 0)) * DATA.SEASON_LEN * 1.1 + armySlots() * 0.012 * DATA.SEASON_LEN;
+    var have = G.res.food + standingCrop() * 0.85;
+    // what still comes in through winter: fish, venison, winter gardens
+    var winterIn = 0;
+    G.buildings.forEach(function (b) {
+      if (!b.built || b.def.seasonal) return;
+      var o = output(b); if (o.food) winterIn += o.food * 0.8;
+    });
+    have += winterIn * DATA.SEASON_LEN;
+    var short2 = Math.round(need - have);
+    if (short2 > 20) emit('toast', { msg: '❄️ Winter will run about ' + short2 + ' food short. Fish and venison still come in winter — or buy grain, or ration the stores (👑).', kind: 'war' });
+    else emit('toast', { msg: '❄️ The barns should see you through the winter.', kind: 'good' });
+  }
+
+  /* ---------------------------------------------------------
+     A battle settled on paper: used for "auto-resolve", and by the
+     balance harness. The same arithmetic the war tab shows as odds.
+     --------------------------------------------------------- */
+  function foeSpec(power, flavour) {
+    var spec = {}, budget = power;
+    if (flavour === 'bandits') {
+      spec.raider = Math.max(3, Math.round(budget / 9));
+      spec.warhound = Math.round(budget / 26);
+      spec.bowman = Math.round(budget / 30);
+    } else {
+      spec.raider = Math.max(2, Math.round(budget / 11));
+      spec.axeman = Math.round(budget / 18);
+      spec.bowman = Math.round(budget / 26);
+      if (budget > 70) spec.warhound = Math.round(budget / 42);
+      if (budget > 120) spec.champion = Math.max(1, Math.round(budget / 95));
+    }
+    Object.keys(spec).forEach(function (k) { if (!spec[k]) delete spec[k]; });
+    return spec;
+  }
+  function foeStrengthOf(spec) {
+    var s2 = 0;
+    Object.keys(spec).forEach(function (k) { var u = DATA.FOE_UNITS[k]; s2 += spec[k] * unitStrength(u.hp, u.atk, u.def); });
+    return s2;
+  }
+  function autoBattle(opts) {
+    var mine = fieldStrength(0), spec = foeSpec(opts.power, opts.flavour), theirs = foeStrengthOf(spec);
+    var p = mine <= 0 ? 0 : mine * mine / (mine * mine + theirs * theirs);
+    var won = Math.random() < p;
+    // losses: heavier the closer the fight, heavier still in defeat
+    var frac = U.clamp((won ? 0.5 : 0.9) * theirs / Math.max(1, mine + theirs) * (won ? 1 : 1.4), 0.04, 0.85);
+    var lost = {}, lostN = 0;
+    Object.keys(G.army).forEach(function (k) {
+      var n = G.army[k], die = 0;
+      for (var i = 0; i < n; i++) if (Math.random() < frac) die++;
+      if (die) { lost[k] = die; lostN += die; G.army[k] -= die; if (!G.army[k]) delete G.army[k]; }
+    });
+    var loot = {};
+    if (won) {
+      G.stats.wins++;
+      loot.gold = Math.round((opts.flavour === 'bandits' ? 90 : 70) + opts.power * 1.6);
+      G.res.gold = Math.min(cap('gold'), G.res.gold + loot.gold);
+      G.happy = U.clamp(G.happy + 6, 0, 100);
+    } else {
+      G.stats.losses++;
+      G.happy = U.clamp(G.happy - 8, 0, 100);
+    }
+    checkQuests();
+    emit('army');
+    return { won: won, odds: Math.round(p * 100), lost: lost, lostN: lostN, loot: loot };
+  }
+  /* the outlaws' camp in the hills: a fight you can pick whenever you like */
+  function banditPower() { return 26 + G.stats.wins * 9 + seasonIndex() * 0.8; }
+  function banditReady() { return G.time - (G.banditAt === undefined ? -1e9 : G.banditAt) >= DATA.SEASON_LEN; }
+
+  /* ---------------------------------------------------------
+     great works: paid for as they go up
+     --------------------------------------------------------- */
+  function done(id) { return !!(G.works && G.works[id] === true); }
+  function workProgress(id) { var w = G.works && G.works[id]; return w === true ? 1 : (w || 0); }
+  function workAvailable(id) { var p = DATA.PROJECTS[id]; return (G.chapter || 0) >= p.need - 1 || G.castle >= 1; }
+  function startWork(id) {
+    if (!G.works) G.works = {};
+    if (done(id)) return { ok: false, why: 'Already finished' };
+    if (!workAvailable(id)) return { ok: false, why: 'Not yet — later in your reign' };
+    G.workNow = id;
+    if (!G.works[id]) G.works[id] = 0.0001;
+    return { ok: true };
+  }
+  var WORK_LEN = DATA.SEASON_LEN * 1.1;
+  function tickWorks(dt) {
+    var id = G.workNow;
+    if (!id || done(id)) { G.workNow = null; return; }
+    var p = DATA.PROJECTS[id], step = dt / WORK_LEN, short2 = null;
+    for (var k in p.cost) if (G.res[k] < p.cost[k] * step) short2 = k;
+    G.workWaiting = short2;
+    if (short2) return;
+    for (var k2 in p.cost) G.res[k2] -= p.cost[k2] * step;
+    G.works[id] += step;
+    if (G.works[id] >= 1) {
+      G.works[id] = true; G.workNow = null;
+      if (id === 'gardens') G.blessing = (G.blessing || 0) + 8;
+      if (id === 'monument') G.blessing = (G.blessing || 0) + 6;
+      G.stats.works = (G.stats.works || 0) + 1;
+      emit('work-done', id);
+    }
   }
 
   /* production of one building, per second */
@@ -972,8 +1085,10 @@ var SIM = (function () {
     }
     if (b.def.trade) {
       // retail from the people, plus a cut of the realm's goods
-      var g = (b.def.trade * G.pop + 0.20) * eff * techMul('gold');
-      if (b.id !== 'castle') {
+      // the town's shoppers are shared between its markets
+      var g = (b.def.trade * G.pop * (b.id === 'market' ? Math.pow(0.6, b._mIdx || 0) : 1) + 0.20) * eff * techMul('gold');
+      // only markets take a cut of the realm's goods; a tavern's trade is its own
+      if (b.id === 'market') {
         g += goodsValue() * marketCut(b._mIdx || 0) * eff * techMul('gold') * lvlMul(b);
       }
       out.gold = (out.gold || 0) + g;
@@ -1013,12 +1128,12 @@ var SIM = (function () {
     if (fine) net.cloth -= fine * DATA.CLOTH_PER_FINE_HOUSE;
     net.tools -= toolDemand() * (G.toolCov || 0);
     net.bread -= breadDemand() * (G.breadCov || 0);
-    net.food -= G.pop * 0.055 * (1 - BREAD_SAVING * (G.breadCov || 0));
+    net.food -= G.pop * 0.055 * (1 - BREAD_SAVING * (G.breadCov || 0)) * (G.rationUntil > G.time ? 0.65 : 1);
     net.food -= armySlots() * 0.012;
     net.food -= campaignSlots() * PROVISION_PER_SLOT;
     net.gold -= armySlots() * 0.014;
     if (season().key === 'winter') {
-      var spoil = G.count.granary > 0 ? 0.03 : 0.06;
+      var spoil = (G.count.granary > 0 ? 0.03 : 0.06) * (done('stores') ? 0.5 : 1);
       net.food -= G.res.food * spoil * 0.01;
     }
     return net;
@@ -1036,6 +1151,14 @@ var SIM = (function () {
     var t = 34 + coverage * 46;
     if (G.tech.sanitation) t += 8;
     t += G.blessing || 0;
+    if (G.rationUntil > G.time) t -= 12;
+    t += diff().joy || 0;
+    // a bigger town expects more of its lord: crowds, noise, prices
+    t -= U.clamp((G.pop - 45) * 0.12, 0, 14);
+    // and the better off a household is, the harder it is to please
+    var hs = 0, hn = 0;
+    G.buildings.forEach(function (b) { if (b.built && b.def.evolves) { hs += (b.level || 1) - 1; hn++; } });
+    if (hn) t -= hs / hn * 4;
     t += BREAD_JOY * (G.breadCov || 0);
     if (G.tech.enclosure) t -= 10;
     if (G.tech.common_fields) t += 8;
@@ -1109,11 +1232,12 @@ var SIM = (function () {
         G._starveWarned = G.time;
         emit('toast', { msg: 'Your people are starving — build farms!', kind: 'bad' });
       }
-    } else if (G.pop < h && G.happy > 38 && G.res.food > G.pop * 1.5) {
+    } else if (G.pop < h && G.happy > 22 && G.res.food > G.pop * 1.5) {
       // People only have children while the barns can actually feed them.
       // Without this the village breeds itself straight into a famine every
       // time housing outruns the harvest.
-      var rate = 0.09 * season().growth * (G.happy / 70) * U.clamp((h - G.pop) / 6, 0.15, 1);
+      // an unhappy town still grows, just slowly: no cliff edge at any one number
+      var rate = 0.09 * season().growth * U.clamp((G.happy - 22) / 48, 0.05, 1.4) * U.clamp((h - G.pop) / 6, 0.15, 1);
       G.pop = Math.min(h, G.pop + rate * dt);
     } else if (G.happy < 18 && G.pop > 2) {
       G.pop -= 0.02 * dt; G._lossWhy = 'leave';   // people drift away
@@ -1121,7 +1245,7 @@ var SIM = (function () {
 
     // research
     if (G.research) {
-      var rate = 0.34;
+      var rate = 0.34 * (done('academy') ? 1.4 : 1);
       G.buildings.forEach(function (b) {
         if (b.built && b.def.research) rate += b.def.research * staffRatio(b) * lvlMul(b);
       });
@@ -1136,7 +1260,8 @@ var SIM = (function () {
     }
 
     // the rival
-    G.rival.str += dt * (0.010 + G.time / 140000) * diff().rival;
+    var ahead = U.clamp(totalStrength() / Math.max(1, G.rival.str) - 1.5, 0, 2);
+    G.rival.str += dt * (0.010 + G.time / 140000) * diff().rival * (1 + ahead * 0.5);
     if (!G.war) G.rival.nextRaid -= dt;
     if (!G.rival.warned && !atPeace() && G.rival.nextRaid <= DATA.SEASON_LEN * 0.85 && seasonIndex() >= graceSeasons() - 1) {
       G.rival.warned = true;
@@ -1169,6 +1294,7 @@ var SIM = (function () {
 
     if (typeof WAR !== 'undefined') WAR.tick(dt);
     tickPlans(dt);
+    tickWorks(dt);
     if (typeof FOLK !== 'undefined') FOLK.tick(dt);
     if (typeof EXPLORE !== 'undefined') EXPLORE.tick(dt);
     if (typeof HONOURS !== 'undefined') HONOURS.tick(dt);
@@ -1200,6 +1326,7 @@ var SIM = (function () {
       emit('season', season());
       dipSeason();
       if (season().key === 'autumn') {
+        winterWarning();
         var any = 0;
         G.buildings.forEach(function (b) { if (b.def.seasonal && b.built) { b.cropStart = b.crop || 0; any += b.crop || 0; } });
         if (any > 1) emit('harvest', Math.round(any));
@@ -1280,7 +1407,7 @@ var SIM = (function () {
           if (!b.built || b.fire) return;
           var risk = fireRisk(b);
           if (!risk) return;
-          var p = 0.00042 * risk * sm * (wellsNear(b, 4) ? 0.4 : 1) * diff().fire;
+          var p = 0.00042 * risk * sm * (wellsNear(b, 4) ? 0.4 : 1) * diff().fire * (G.fireCalm > G.time ? 0.3 : 1);
           if (Math.random() < p) ignite(b);
         });
       }
@@ -1308,7 +1435,10 @@ var SIM = (function () {
             var d = centre(o);
             return U.dist(c.x, c.y, d.x, d.y) <= 1.2 + ((b.def.w || 1) + (o.def.w || 1)) / 2;
           });
-          if (near.length && Math.random() < 0.3) ignite(near[Math.floor(Math.random() * near.length)]);
+          // a town that has just lost a building is wetting its thatch; and
+          // no more than three blazes at once — neighbours beat the rest out
+          var spreadP = 0.3 * (G.fireCalm > G.time ? 0.4 : 1);
+          if (near.length && burning().length < 3 && Math.random() < spreadP) ignite(near[Math.floor(Math.random() * near.length)]);
         }
       }
     });
@@ -1325,6 +1455,7 @@ var SIM = (function () {
     });
     AGENTS.dropJob(b);
     G.stats.burned = (G.stats.burned || 0) + 1;
+    G.fireCalm = G.time + DATA.SEASON_LEN * 1.5;   // everyone is careful with candles for a while
     G.happy = U.clamp(G.happy - 6, 0, 100);
     refreshCounts();
     emit('burned', b);
@@ -1367,6 +1498,7 @@ var SIM = (function () {
     pay(cost);
     if (id === 'feast') G.happy = U.clamp(G.happy + 15, 0, 100);
     if (id === 'shifts') G.shiftUntil = G.time + DATA.SEASON_LEN * 0.5;
+    if (id === 'ration') G.rationUntil = G.time + DATA.SEASON_LEN;
     if (id === 'levy') { var coin = Math.round(5 * G.pop); G.res.gold = Math.min(cap('gold'), G.res.gold + coin); G.happy = U.clamp(G.happy - 10, 0, 100); cost = { coin: coin }; }
     if (id === 'settlers') { G.pop = Math.min(housing(), G.pop + 6); G._gainWhy = 'settlers'; }
     if (!G.decrees) G.decrees = {};
@@ -1470,7 +1602,7 @@ var SIM = (function () {
       emit('ship');
     } else if (s2.phase === 'out') {
       G.ship = null;
-      G.shipTimer = DATA.SEASON_LEN * (2.2 + Math.random() * 1.5);
+      G.shipTimer = DATA.SEASON_LEN * (2.2 + Math.random() * 1.5) * (done('harbour') ? 0.5 : 1);
       return;
     }
     if (s2.phase === 'anchored') {
@@ -2091,6 +2223,11 @@ var SIM = (function () {
         text: 'Food is falling — about ' + seasons.toFixed(1) + ' seasons left',
         hint: 'Build farms, or a fishing hut by the water' });
     }
+    ['gold', 'wood', 'stone'].forEach(function (k) {
+      if (G.res[k] >= cap(k) * 0.98 && G.time > DATA.SEASON_LEN * 3)
+        out.push({ sev: 0, ic: '📦', text: 'Your ' + k + ' store is full — anything more is wasted',
+          hint: k === 'gold' ? 'Spend it: a great work (The Realm → Castle), soldiers, or a warehouse' : 'Build with it, sell it at market, or add a warehouse' });
+    });
     if (G.pop >= housing() - 0.01) {
       out.push({ sev: 1, ic: '🏠', text: 'No room to grow — every bed is full', hint: 'Raise more cottages' });
     }
@@ -2207,6 +2344,7 @@ var SIM = (function () {
       tut: typeof G.tut === 'number' ? G.tut : -1, mkt: G.mkt || {}, decrees: G.decrees || {}, shiftUntil: G.shiftUntil || -1, finds: G.finds || [],
       dip: G.dip || null, tribute: G.tribute || null,
       folk: typeof FOLK !== 'undefined' ? FOLK.pack() : null,
+      works: G.works || {}, workNow: G.workNow || null, rationUntil: G.rationUntil || 0, fireCalm: G.fireCalm || 0, banditAt: G.banditAt || -1e9,
       plans: G.plans || [], news: (G.news || []).slice(0, 40), letters: G.letters || [], tips: G.tips || {},
       hist: G.hist || [], fog: G.fog, sites: G.sites || null, sea: G.sea || null, scouts: G.scouts || [], blessing: G.blessing || 0,
       shipTimer: G.shipTimer, findTimer: G.findTimer,
@@ -2268,6 +2406,7 @@ var SIM = (function () {
       chapter: d.chapter || 0, won: !!d.won, weather: 'clear', weatherTimer: 30,
       tut: typeof d.tut === 'number' ? d.tut : -1, mkt: d.mkt || {}, decrees: d.decrees || {}, shiftUntil: d.shiftUntil || -1, finds: d.finds || [],
       dip: d.dip || null, tribute: d.tribute || null, folkSave: d.folk || null,
+      works: d.works || {}, workNow: d.workNow || null, rationUntil: d.rationUntil || 0, fireCalm: d.fireCalm || 0, banditAt: d.banditAt === undefined ? -1e9 : d.banditAt,
       plans: d.plans || [], news: d.news || [], letters: d.letters || [], tips: d.tips || {},
       hist: d.hist || [], fog: d.fog, sites: d.sites || null, sea: d.sea || null, scouts: d.scouts || [], blessing: d.blessing || 0,
       ship: null, shipTimer: d.shipTimer || DATA.SEASON_LEN * 2, findTimer: d.findTimer || 40, fireTimer: 5,
@@ -2341,6 +2480,8 @@ var SIM = (function () {
     rebuildPaths: function () { markPathsDirty(); ensurePaths(true); },
     preview: preview, soilMul: soilMul,
     canUndo: canUndo, undoLeft: undoLeft, undoPlace: undoPlace, lastAction: function () { return lastPlaced && lastPlaced.kind; },
+    autoBattle: autoBattle, foeSpec: foeSpec, foeStrengthOf: foeStrengthOf, banditPower: banditPower, banditReady: banditReady,
+    done: done, workProgress: workProgress, workAvailable: workAvailable, startWork: startWork, zeal: zeal,
     planBuild: planBuild, cancelPlan: cancelPlan, planAt: planAt, get plans() { return plans(); },
     moveCost: moveCost, canMove: canMove, moveBuilding: moveBuilding,
     canTrade: canTrade, priceOf: priceOf, sell: sell, buy: buy, tradeSpread: tradeSpread,

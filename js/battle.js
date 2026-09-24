@@ -117,25 +117,7 @@ var BATTLE = (function () {
   }
 
   /* compose an enemy army from Brannoch's strength */
-  function foeArmy(power, flavour) {
-    var spec = {};
-    var budget = power;
-    if (flavour === 'bandits') {
-      spec.raider = Math.max(3, Math.round(budget / 9));
-      spec.warhound = Math.round(budget / 26);
-      spec.bowman = Math.round(budget / 30);
-    } else {
-      // small war bands are mostly light raiders; the heavy troops only
-      // appear once Brannoch is actually throwing weight at you
-      spec.raider = Math.max(2, Math.round(budget / 11));
-      spec.axeman = Math.round(budget / 18);
-      spec.bowman = Math.round(budget / 26);
-      if (budget > 70) spec.warhound = Math.round(budget / 42);
-      if (budget > 120) spec.champion = Math.max(1, Math.round(budget / 95));
-    }
-    Object.keys(spec).forEach(function (k) { if (!spec[k]) delete spec[k]; });
-    return spec;
-  }
+  function foeArmy(power, flavour) { return SIM.foeSpec(power, flavour); }
 
   /* ---------------- start / end ---------------- */
   function start(k, opts, cb) {
