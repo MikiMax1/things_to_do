@@ -1,5 +1,53 @@
 # Kingdom of Ashveil — the redesign plan
 
+## v5: more fun, less annoying, better balanced, more detailed (in progress)
+
+Asked for: "make the game hyper realistic and really detailed", "more fun and
+less annoying", "a better balanced dynamic", and a switch that lets the
+villagers build what they need themselves. Order: 6 → 7 → 8 → 9 → 10 → 11 → 12.
+
+What the balance harness said before starting (12 kingdoms × 10 years):
+income ~0.2 g/s at the start but ~26 g/s late with gold parked at its cap; no
+kingdom ever starved and food sat near 750; contentment flat at ~73%;
+Chapter IV opened anywhere from season 6 to 27 depending on when raids came;
+nobody finished Chapter V in ten years; fire losses swung from 0 to 12.
+
+The rule for realism: it shows in what you see and in cause and effect, never
+as chores. Every system either runs itself or becomes a clear choice.
+
+- **Phase 6 — less annoying, more playable.** Events wait as a scroll instead
+  of pausing; one news line instead of stacked toasts; 8× and "skip to next
+  season"; build cards show when you can afford them and builds can be queued;
+  drag to lay a row; build another; panels remember their tab; a "while you
+  were away" summary; undo for demolish; tips that arrive when relevant;
+  smooth at 150 people.
+- **Phase 7 — balance with ups and downs.** A faster opening; late-game sinks
+  (luxuries for fine homes, great projects); needs that grow with the town;
+  tense but fair winters with a rationing choice; bad-luck protection and a
+  rival that grows if you run away with it; chapters of roughly even length
+  with no luck-gated goals; stores that scale; harness checks for all of it.
+- **Phase 8 — Village Growth.** A toggle (Off / Homes / Needs / Steward) that
+  lets the villagers build for themselves from the treasury: homes when
+  crowded, what the realm is short of, and in Steward mode scouting, upgrades,
+  research, the next castle and outposts. A gold reserve, keep-clear tiles, a
+  priority (farming, trade, defence, faith); your plans first; every build
+  explained in the news with undo; pauses in raids, fires and famine; never
+  starts wars. The harness plays whole reigns with it.
+- **Phase 9 — a detailed, living island.** Construction in stages; weathering;
+  gardens, fences, washing, woodpiles, chickens, carts; dress and work by
+  trade and season; crops through the year; worn paths; snow and puddles;
+  surf, birds, fish; a moving sun, dawn mist, storms, rainbows, one wind;
+  window light at night; reflections; interface polish.
+- **Phase 10 — choices that matter.** Petitions with deadlines; one of three
+  perks per chapter; neighbour bonuses; an advisor and a single overview;
+  festivals; naming the kingdom and ruler and a banner; an heir; a rival that
+  visibly acts and writes to you.
+- **Phase 11 — deeper realism that runs itself.** Soil and rotation, drought,
+  floods, fodder; firewood, clothing, diet; children and apprentices; decay,
+  repair, storm damage; carts, spoilage; tax and tithe; more illnesses, a
+  herbalist and a graveyard; wildlife, fish and forest stocks.
+- **Phase 12 — battles you command, close-up detail, sound.**
+
 ## v4: the five-phase plan (done)
 
 Asked for: "make a plan to make the game as good as possible", then "go do the
