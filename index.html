@@ -80,6 +80,18 @@
     <button id="build-cancel" type="button">Cancel</button>
   </div>
 
+  <div id="war-hud" class="hidden">
+    <div class="war-head"><b id="war-title">Raid</b><span id="war-count"></span></div>
+    <div id="war-squads"></div>
+    <div class="war-orders">
+      <button type="button" data-o="engage">⚔️ Charge</button>
+      <button type="button" data-o="hold">🛡️ Hold</button>
+      <button type="button" data-o="retreat">🏰 Fall back</button>
+    </div>
+    <p id="war-hint">Tap a squad, then tap where to send it.</p>
+  </div>
+  <button id="undo-chip" class="hidden" type="button">↶ Undo <span id="undo-left"></span></button>
+
   <!-- ============ BOTTOM NAV ============ -->
   <nav id="hud-bottom">
     <button class="nav-btn" data-panel="build" type="button"><span>🏗️</span><b>Build</b></button>
@@ -156,8 +168,16 @@
       <p class="tagline">Raise a living realm from the ash.</p>
       <button class="primary" id="btn-continue" type="button">Continue</button>
       <button class="primary" id="btn-new" type="button">New Kingdom</button>
+      <div id="setup" class="hidden">
+        <p class="setup-label">The island</p><div class="setup-row" data-k="map"></div>
+        <p class="setup-label">The world</p><div class="setup-row" data-k="diff"></div>
+        <p class="setup-label">The beginning</p><div class="setup-row" data-k="scen"></div>
+        <p id="setup-desc"></p>
+        <button class="primary" id="btn-found" type="button">Found the kingdom</button>
+        <button class="setup-back" id="btn-setup-back" type="button">Back</button>
+      </div>
       <div id="loading" class="hidden"><p>Raising the land…</p><div class="load-bar"><i id="load-fill"></i></div></div>
-      <p class="version">v3.0 · tap · drag · pinch</p>
+      <p class="version">v4.0 · tap · drag · pinch</p>
     </div>
   </div>
 </div>
@@ -168,10 +188,15 @@
 <script src="js/world.js"></script>
 <script src="js/terrain.js"></script>
 <script src="js/sim.js"></script>
+<script src="js/folk.js"></script>
+<script src="js/explore.js"></script>
+<script src="js/honours.js"></script>
 <script src="js/agents.js"></script>
 <script src="js/render.js"></script>
 <script src="js/battle.js"></script>
+<script src="js/war.js"></script>
 <script src="js/ui.js"></script>
+<script src="js/tutorial.js"></script>
 <script src="js/main.js"></script>
 </body>
 </html>

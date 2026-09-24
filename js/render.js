@@ -19,6 +19,42 @@ var RENDER = (function () {
   var lastSeason = null;
   var DBG = {};          // switches for profiling
 
+  /* ---------------- detail levels ----------------
+     'auto' starts at high and steps down if the phone cannot keep up;
+     a level picked by hand stays put. */
+  var QPREF = 'auto', QLEVEL = 'high';
+  var Q = {
+    high:     { dpr: 2,   lean: true,  weather: 1,   clouds: true,  glints: true },
+    balanced: { dpr: 1.5, lean: false, weather: 0.6, clouds: true,  glints: true },
+    saver:    { dpr: 1,   lean: false, weather: 0.3, clouds: false, glints: false }
+  };
+  try { QPREF = localStorage.getItem('ashveil.quality') || 'auto'; } catch (e) {}
+  if (QPREF !== 'auto' && Q[QPREF]) QLEVEL = QPREF;
+  var perf = { t: 0, frames: 0, slow: 0 }, onQuality = null;
+  function setQuality(pref) {
+    QPREF = pref;
+    try { localStorage.setItem('ashveil.quality', pref); } catch (e) {}
+    QLEVEL = pref === 'auto' ? 'high' : pref;
+    perf.slow = 0;
+    resize();
+  }
+  function watchFrames(dt) {
+    if (QPREF !== 'auto' || document.hidden) return;
+    perf.t += dt; perf.frames++;
+    if (perf.t < 2) return;
+    var avg = perf.t / perf.frames;
+    perf.t = 0; perf.frames = 0;
+    // slower than about 36 frames a second, twice running: ease off
+    if (avg > 0.028) perf.slow++; else perf.slow = 0;
+    if (perf.slow >= 2 && QLEVEL !== 'saver') {
+      QLEVEL = QLEVEL === 'high' ? 'balanced' : 'saver';
+      perf.slow = 0;
+      resize();
+      if (onQuality) onQuality(QLEVEL);
+    }
+  }
+
+  var calm = document.documentElement.classList.contains('calm');
   function init(canvas) {
     cv = canvas; g = cv.getContext('2d');
     resize();
@@ -29,7 +65,7 @@ var RENDER = (function () {
 
   function resize() {
     // 2× is indistinguishable from 3× on a phone and costs half the pixels
-    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    dpr = Math.min(window.devicePixelRatio || 1, Q[QLEVEL].dpr);
     cw = cv.clientWidth; ch = cv.clientHeight;
     cv.width = Math.floor(cw * dpr); cv.height = Math.floor(ch * dpr);
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -143,7 +179,8 @@ var RENDER = (function () {
     var rainy = SIM.G && SIM.G.weather === 'rain';
     var kind = season === 'winter' ? 'snow' : rainy ? 'rain' : season === 'autumn' ? 'leaf' : season === 'spring' ? 'petal' : null;
     var rate = kind === 'snow' ? 60 : kind === 'rain' ? 220 : kind === 'leaf' ? 7 : kind === 'petal' ? 6 : 0;
-    var n = rate * dt * (cw / 400);
+    if (calm) rate *= (kind === 'leaf' || kind === 'petal') ? 0 : 0.3;   // reduce motion
+    var n = rate * dt * (cw / 400) * Q[QLEVEL].weather;
     while (n > 0) {
       if (n < 1 && Math.random() > n) break;
       n--;
@@ -194,6 +231,7 @@ var RENDER = (function () {
     var G = SIM.G;
     if (!G) return;
     time += dt;
+    watchFrames(dt);
     var season = SIM.season().key;
     if (season !== lastSeason) {
       if (lastSeason !== null) {
@@ -204,7 +242,7 @@ var RENDER = (function () {
       lastSeason = season;
     }
     TERRAIN.sync();
-    TERRAIN.step(5);
+    TERRAIN.step(TERRAIN.detailed ? 5 : 14);
     updateParticles(dt);
     updateWeather(dt, season);
 
@@ -225,7 +263,7 @@ var RENDER = (function () {
       return s.x > -pad && s.x < cw + pad && s.y > -pad * 0.5 && s.y < ch + pad * 1.6;
     }
 
-    if (!DBG.noWater) drawWater(x0, x1, y0, y1, z);
+    if (!DBG.noWater && Q[QLEVEL].glints) drawWater(x0, x1, y0, y1, z);
 
     var night = nightAmount(), golden = goldenAmount();
     var sun = 1 - night;
@@ -233,10 +271,12 @@ var RENDER = (function () {
     /* ---- 2. collect everything that stands up ---- */
     var items = [];
     var pad = z * 2.2;
+    var misty = typeof EXPLORE !== 'undefined' ? EXPLORE.seen : null;
     for (var y = y0; y <= y1; y++) {
       for (var x = x0; x <= x1; x++) {
         var t = W.at(x, y);
         if (!t || t.bld) continue;
+        if (misty && !misty(x, y)) continue;
         if (t.terr === 'forest' && !DBG.noTrees) {
           if (!onScreen(x + .5, y + .5, pad)) continue;
           W.treesOf(t).forEach(function (tr) { items.push({ k: 'tree', o: tr, d: tr.x + tr.y }); });
@@ -258,12 +298,22 @@ var RENDER = (function () {
     });
     AGENTS.animals.forEach(function (a) {
       if (!onScreen(a.x, a.y, 40)) return;
+      if (misty && !misty(Math.floor(a.x), Math.floor(a.y))) return;
       items.push({ k: 'ani', a: a, d: a.x + a.y + 0.02 });
     });
     (G.finds || []).forEach(function (f, i) {
+      if (misty && !misty(Math.floor(f.x), Math.floor(f.y))) return;
       if (onScreen(f.x, f.y, 40)) items.push({ k: 'find', f: f, d: f.x + f.y });
     });
+    if (misty) {
+      EXPLORE.sites.forEach(function (st) { if (st.found && onScreen(st.x + .5, st.y + .5, 60)) items.push({ k: 'site', s: st, d: st.x + st.y + 1 }); });
+      EXPLORE.scouts.forEach(function (sc) { if (onScreen(sc.x, sc.y, 40)) items.push({ k: 'scout', a: sc, d: sc.x + sc.y + 0.02 }); });
+    }
     if (G.ship && onScreen(G.ship.x, G.ship.y, 120)) items.push({ k: 'ship', d: G.ship.x + G.ship.y });
+    if (WAR.active) {
+      WAR.state.ships.forEach(function (s) { if (onScreen(s.x, s.y, 120)) items.push({ k: 'wship', s: s, d: s.x + s.y }); });
+      WAR.state.units.forEach(function (u) { if ((!u.dead || u.fade > 0) && !u.fled && onScreen(u.x, u.y, 40)) items.push({ k: 'war', u: u, d: u.x + u.y + (u.dead ? -0.3 : 0.03) }); });
+    }
     items.sort(function (p, q) { return p.d - q.d; });
 
     /* ---- 3. ground cover: fields, then every shadow ---- */
@@ -305,7 +355,7 @@ var RENDER = (function () {
         var thin = screenT[Math.floor(tr.x) + ',' + Math.floor(tr.y)];
         if (thin) g.globalAlpha = 0.42;
         // trees lean a touch in the wind, from the root
-        if (z > 44) {
+        if (z > 44 && Q[QLEVEL].lean && !calm) {
           var lean = (wind + Math.sin(time * 1.3 + tr.ph) * 0.35) * 0.018;
           g.setTransform(dpr, 0, dpr * lean, dpr, dpr * s.x, dpr * s.y);
           g.drawImage(sp.c, -sp.ax * k, -sp.ay * k, sp.c.width * k, sp.c.height * k);
@@ -322,6 +372,15 @@ var RENDER = (function () {
         drawFind(it.f, z);
       } else if (it.k === 'ship') {
         drawShip(G.ship, z);
+      } else if (it.k === 'wship') {
+        var ss = toScreen(it.s.x, it.s.y); WAR.drawShip(g, it.s, ss.x, ss.y, z);
+      } else if (it.k === 'war') {
+        var su = toScreen(it.u.x, it.u.y); WAR.drawUnit(g, it.u, su.x, su.y, z);
+      } else if (it.k === 'site') {
+        drawSite(it.s, z);
+      } else if (it.k === 'scout') {
+        var sc = it.a, ss2 = toScreen(sc.x, sc.y);
+        AGENTS.draw(g, { x: sc.x, y: sc.y, bob: sc.bob, face: sc.face, path: true, shirt: '#8a3a2a', skin: '#d3a476', hair: '#3a2a22', speed: 1, state: 'scout' }, ss2.x, ss2.y, z);
       } else if (it.k === 'vil') {
         var sp2 = toScreen(it.a.x, it.a.y);
         AGENTS.draw(g, it.a, sp2.x, sp2.y, z);
@@ -330,6 +389,8 @@ var RENDER = (function () {
         AGENTS.drawAnimal(g, it.a, sp3.x, sp3.y, z, season);
       }
     });
+
+    if (WAR.active) WAR.drawShots(g, toScreen, z);
 
     /* ---- 4b. what each workplace makes, rising off it now and then ---- */
     if (G.speed > 0 && z >= 34) productionPops(dt * G.speed, onScreen);
@@ -356,6 +417,9 @@ var RENDER = (function () {
       }
       g.globalAlpha = 1;
     });
+
+    /* ---- 5b. the mist over land nobody has walked yet ---- */
+    if (misty) drawFog(z);
 
     /* ---- 6. clouds and their shadows ---- */
     if (!DBG.noClouds) drawClouds(dt, z, sun);
@@ -474,7 +538,7 @@ var RENDER = (function () {
     g.globalAlpha = 1;
     screenTransform();
     // seen from a distance, the clouds themselves drift over the island
-    var far = U.clamp((42 - z) / 18, 0, 1);
+    var far = Q[QLEVEL].clouds ? U.clamp((42 - z) / 18, 0, 1) : 0;
     if (far > 0) {
       clouds.forEach(function (c) {
         var s = toScreen(c.x - 2.2, c.y - 2.2);
@@ -717,6 +781,86 @@ var RENDER = (function () {
     }
     return -1;
   }
+  /* mist: once on the ground, once lifted so it swallows what stands in it */
+  function drawFog(z) {
+    var fc = EXPLORE.fogCanvas();
+    if (!fc) return;
+    groundTransform();
+    g.globalAlpha = 0.93;
+    g.drawImage(fc, 0, 0, W.COLS, W.ROWS);
+    screenTransform();
+    var z0 = cam.z, ox = cw / 2 - (cam.x - cam.y) * z0 / 2, oy = ch / 2 - (cam.x + cam.y) * z0 / 4 - z0 * 0.32;
+    g.setTransform(dpr * z0 / 2, dpr * z0 / 4, -dpr * z0 / 2, dpr * z0 / 4, dpr * ox, dpr * oy);
+    g.globalAlpha = 0.8;
+    g.drawImage(fc, 0, 0, W.COLS, W.ROWS);
+    g.globalAlpha = 1;
+    screenTransform();
+  }
+
+  /* things found on the island, marked where they lie */
+  function drawSite(st, z) {
+    var s = toScreen(st.x + .5, st.y + .5), u = z / 60;
+    g.fillStyle = 'rgba(0,0,0,.22)';
+    g.beginPath(); g.ellipse(s.x + 4 * u, s.y + 2 * u, 20 * u, 8 * u, 0, 0, 6.3); g.fill();
+    var stone = function (x, y, w, h, c) {
+      var gr = g.createLinearGradient(x - w / 2, 0, x + w / 2, 0);
+      gr.addColorStop(0, c || '#b8b2a4'); gr.addColorStop(1, '#6e695e');
+      g.fillStyle = gr; g.beginPath();
+      g.moveTo(x - w / 2, y); g.lineTo(x - w * 0.42, y - h); g.quadraticCurveTo(x, y - h - w * 0.3, x + w * 0.42, y - h); g.lineTo(x + w / 2, y); g.closePath(); g.fill();
+    };
+    if (st.k === 'stones') {
+      for (var i = 0; i < 7; i++) {
+        var a = i / 7 * 6.28, px = s.x + Math.cos(a) * 16 * u, py = s.y + Math.sin(a) * 7 * u;
+        stone(px, py, 5 * u, (12 + (i % 3) * 3) * u);
+      }
+    } else if (st.k === 'ruin') {
+      stone(s.x - 8 * u, s.y, 9 * u, 22 * u, '#a39c8c'); stone(s.x + 6 * u, s.y + 3 * u, 8 * u, 12 * u, '#a39c8c');
+      g.fillStyle = '#8f8878'; for (var j = 0; j < 5; j++) g.fillRect(s.x - 16 * u + j * 7 * u, s.y + 4 * u + (j % 2) * 2 * u, 5 * u, 3 * u);
+      if (!st.done) { g.fillStyle = '#f0cd6a'; g.beginPath(); g.arc(s.x + 12 * u, s.y - 2 * u, 2.2 * u, 0, 6.3); g.fill(); }
+    } else if (st.k === 'ore') {
+      stone(s.x, s.y, 20 * u, 12 * u, '#9a6a4a');
+      g.fillStyle = '#c0603a'; for (var k = 0; k < 6; k++) g.fillRect(s.x - 8 * u + k * 3 * u, s.y - 6 * u - (k % 3) * 2 * u, 2 * u, 2 * u);
+    } else if (st.k === 'spring') {
+      g.fillStyle = '#8a8272'; g.beginPath(); g.ellipse(s.x, s.y, 15 * u, 7 * u, 0, 0, 6.3); g.fill();
+      var wg = g.createRadialGradient(s.x, s.y - 1 * u, 1, s.x, s.y, 12 * u);
+      wg.addColorStop(0, '#bfe3f0'); wg.addColorStop(1, '#4f8fb0');
+      g.fillStyle = wg; g.beginPath(); g.ellipse(s.x, s.y, 12 * u, 5.2 * u, 0, 0, 6.3); g.fill();
+      g.strokeStyle = 'rgba(255,255,255,' + (0.4 + Math.sin(time * 3) * 0.2).toFixed(2) + ')'; g.lineWidth = 1;
+      g.beginPath(); g.ellipse(s.x, s.y, 5 * u + Math.sin(time * 2) * 2 * u, 2 * u, 0, 0, 6.3); g.stroke();
+    } else if (st.k === 'cave') {
+      stone(s.x, s.y + 2 * u, 30 * u, 18 * u, '#8f887a');
+      g.fillStyle = '#17120e'; g.beginPath(); g.ellipse(s.x, s.y - 3 * u, 7 * u, 8 * u, 0, Math.PI, 0); g.lineTo(s.x + 7 * u, s.y + 2 * u); g.lineTo(s.x - 7 * u, s.y + 2 * u); g.fill();
+    }
+    if (!st.done && st.k !== 'ore' && st.k !== 'spring') {
+      var bob = Math.sin(time * 3) * 2;
+      g.fillStyle = 'rgba(24,18,12,.8)'; ART.rr(g, s.x - 9, s.y - 44 * u - 20 + bob, 18, 18, 9); g.fill();
+      g.fillStyle = '#f0d98a'; g.font = '700 12px sans-serif'; g.textAlign = 'center'; g.fillText('?', s.x, s.y - 44 * u - 7 + bob); g.textAlign = 'left';
+    }
+  }
+  function pickSite(sx, sy) {
+    if (typeof EXPLORE === 'undefined') return null;
+    var ss = EXPLORE.sites;
+    for (var i = 0; i < ss.length; i++) {
+      if (!ss[i].found) continue;
+      var s = toScreen(ss[i].x + .5, ss[i].y + .5);
+      if (Math.abs(sx - s.x) < Math.max(22, cam.z * 0.4) && sy < s.y + 12 && sy > s.y - Math.max(40, cam.z * 0.9)) return ss[i];
+    }
+    return null;
+  }
+
+  /* the villager under a finger: feet to head, a little generous */
+  function pickAgent(sx, sy, tight) {
+    var best = null, bd = 1e9, z = cam.z, hh = Math.max(7, z * 0.19), k = tight ? 0.55 : 1;
+    AGENTS.list.forEach(function (a) {
+      if (a.state === 'asleep' || a.state === 'abed') return;
+      var s = toScreen(a.x, a.y), cy = s.y - hh * 0.5;
+      var dx = sx - s.x, dy = sy - cy;
+      if (Math.abs(dx) > Math.max(13, hh * 0.6) * k || Math.abs(dy) > Math.max(16, hh * 0.8) * k) return;
+      var d = dx * dx + dy * dy;
+      if (d < bd) { bd = d; best = a; }
+    });
+    return best;
+  }
   function pickShip(sx, sy) {
     var sh = SIM.G && SIM.G.ship;
     if (!sh || sh.phase !== 'anchored') return false;
@@ -732,6 +876,7 @@ var RENDER = (function () {
       g.fillStyle = '#8fd06a'; g.fillRect(s0.x - bw / 2, by, bw * b.prog, 3);
       return;
     }
+    if (typeof FOLK !== 'undefined' && b.def.housing && FOLK.sickAt(b)) drawSickFlag(b, z);
     var jobs = SIM.jobsOf(b);
     var mark = b.paused ? '⏸' : (jobs > 0 && b.workers === 0) ? '!' : null;
     if (!mark || z < 30) return;
@@ -747,6 +892,20 @@ var RENDER = (function () {
     g.textAlign = 'center'; g.textBaseline = 'middle';
     g.fillText(mark, s.x, top + 1);
     g.textAlign = 'left'; g.textBaseline = 'alphabetic';
+  }
+
+  /* the old custom: a yellow cloth hung by the door of a fever house */
+  function drawSickFlag(b, z) {
+    var s = toScreen(b.x + (b.def.w || 1), b.y + (b.def.h || 1) * 0.5);
+    var ph = z * 0.36, x = s.x - z * 0.12, y = s.y - z * 0.02;
+    g.strokeStyle = '#4a3524'; g.lineWidth = Math.max(1, z * 0.02);
+    g.beginPath(); g.moveTo(x, y); g.lineTo(x, y - ph); g.stroke();
+    var wave = Math.sin(time * 4 + b.x) * z * 0.015;
+    g.fillStyle = b.physic && b.physic > SIM.G.time ? '#e8e2cf' : '#d8c13a';
+    g.beginPath(); g.moveTo(x, y - ph); g.quadraticCurveTo(x + z * 0.09, y - ph + wave, x + z * 0.17, y - ph + z * 0.02);
+    g.lineTo(x + z * 0.17, y - ph + z * 0.11); g.quadraticCurveTo(x + z * 0.09, y - ph + z * 0.09 + wave, x, y - ph + z * 0.1); g.fill();
+    if (z > 40) { g.globalAlpha = 0.18 + Math.sin(time * 2) * 0.05; g.fillStyle = '#b9c77a';
+      g.beginPath(); g.ellipse(s.x - z * 0.3, s.y - z * 0.25, z * 0.35, z * 0.16, 0, 0, 6.3); g.fill(); g.globalAlpha = 1; }
   }
 
   /* a diamond on the ground over a block of tiles */
@@ -765,13 +924,13 @@ var RENDER = (function () {
   }
 
   function drawGhost(z) {
-    var def = DATA.B[ghost.id];
+    var def = ghost.def || DATA.B[ghost.id];
     var wT = def.w || 1, hT = def.h || 1;
     footprintPath(ghost.x, ghost.y, wT, hT, 0.02);
     g.fillStyle = ghost.ok ? 'rgba(125,212,90,.32)' : 'rgba(212,85,58,.38)';
     g.fill();
     g.strokeStyle = ghost.ok ? '#b4f58a' : '#f59a7a'; g.lineWidth = 2.5; g.stroke();
-    var sp = ART.building({ id: ghost.id, def: def, level: 1 }, SIM.season().key);
+    var sp = ART.building(ghost.b ? { id: ghost.b.id, def: def, level: ghost.b.level, compact: ghost.b.compact } : { id: ghost.id, def: def, level: 1 }, SIM.season().key);
     if (sp) drawSprite(sp, ghost.x, ghost.y, 0.62);
     if (def.radius && def.aura) auraRing(ghost.x + wT / 2, ghost.y + hT / 2, def.radius + .5);
     // what it would make here
@@ -829,14 +988,16 @@ var RENDER = (function () {
   }
 
   return {
-    init: init, resize: resize, draw: draw, pickBuilding: pickBuilding, pickFind: pickFind, pickShip: pickShip,
+    init: init, resize: resize, draw: draw, pickBuilding: pickBuilding, pickFind: pickFind, pickShip: pickShip, pickAgent: pickAgent, pickSite: pickSite,
     toScreen: toScreen, toWorld: toWorld, tileAtScreen: tileAtScreen,
     centreOn: centreOn, pan: pan, zoomAt: zoomAt,
     get cam() { return cam; },
     setGhost: function (gh) { ghost = gh; },
     getGhost: function () { return ghost; },
-    setSelected: function (s) { selected = s; },
+    setSelected: function (s) { selected = s; }, setCalm: function (on) { calm = on; },
     puff: puff, floater: floater, nightAmount: nightAmount, DBG: DBG,
+    quality: function () { return QLEVEL; }, qualityPref: function () { return QPREF; }, setQuality: setQuality,
+    set onQuality(f) { onQuality = f; },
     get size() { return { w: cw, h: ch }; }
   };
 })();

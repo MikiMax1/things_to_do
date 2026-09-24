@@ -12,8 +12,18 @@ var W = (function () {
   function inb(x, y) { return x >= 0 && y >= 0 && x < COLS && y < ROWS; }
   function at(x, y) { return inb(x, y) ? tiles[idx(x, y)] : null; }
 
-  function generate(sd) {
+  /* island types: the same shaping, with different weather and bones */
+  var KINDS = {
+    green:    { wetF: 0.55, wetM: 0.46, rockH: 0.50, rockR: 0.72, hillH: 0.40, hillR: 0.60 },
+    forest:   { wetF: 0.44, wetM: 0.38, rockH: 0.52, rockR: 0.76, hillH: 0.44, hillR: 0.64 },
+    highland: { wetF: 0.60, wetM: 0.52, rockH: 0.36, rockR: 0.62, hillH: 0.24, hillR: 0.46 },
+    twin:     { wetF: 0.55, wetM: 0.46, rockH: 0.50, rockR: 0.72, hillH: 0.40, hillR: 0.60, twin: true }
+  };
+  var kind = 'green';
+  function generate(sd, type) {
     seed = sd >>> 0 || 1;
+    kind = KINDS[type] ? type : 'green';
+    var K = KINDS[kind];
     var n1 = U.makeNoise(seed), n2 = U.makeNoise(seed ^ 0x9e37), n3 = U.makeNoise(seed ^ 0x51ed);
     var r = U.mulberry(seed);
     tiles = [];
@@ -24,6 +34,11 @@ var W = (function () {
         // island falloff — land in the middle, sea at the edges
         var dx = (x - cx) / cx, dy = (y - cy) / cy;
         var d = Math.sqrt(dx * dx + dy * dy);
+        if (K.twin) {
+          // two islands on a diagonal, joined by a spit of sand
+          var d1 = Math.hypot(dx + 0.30, dy + 0.30) * 1.75, d2 = Math.hypot(dx - 0.40, dy - 0.40) * 2.1;
+          d = Math.min(d1, d2);
+        }
         var h = n1(x * 0.13, y * 0.13, 4) * 1.15 - Math.pow(d, 2.4) * 0.92 + 0.16;
         var t;
         if (h < -0.02) t = 'water';
@@ -32,10 +47,10 @@ var W = (function () {
         else {
           var rocky = n2(x * 0.17 + 40, y * 0.17 + 40, 3);
           var wet = n3(x * 0.15 - 20, y * 0.15 - 20, 3);
-          if (h > 0.50 && rocky > 0.72) t = 'rock';
-          else if (h > 0.40 && rocky > 0.60) t = 'hill';
-          else if (wet > 0.55) t = 'forest';
-          else if (wet > 0.46) t = 'meadow';
+          if (h > K.rockH && rocky > K.rockR) t = 'rock';
+          else if (h > K.hillH && rocky > K.hillR) t = 'hill';
+          else if (wet > K.wetF) t = 'forest';
+          else if (wet > K.wetM) t = 'meadow';
           else t = 'grass';
         }
         tiles.push({
@@ -50,6 +65,15 @@ var W = (function () {
       }
     }
 
+    if (K.twin) {
+      for (var k2 = 0; k2 <= 40; k2++) {
+        var f2 = k2 / 40, bx = Math.round(cx - cx * 0.30 + f2 * cx * 0.70), by = Math.round(cy - cy * 0.30 + f2 * cy * 0.70);
+        for (var o2 = -1; o2 <= 0; o2++) {
+          var tb = tiles[(by + o2) * COLS + bx];
+          if (tb && (tb.terr === 'water' || tb.terr === 'shore')) tb.terr = 'sand';
+        }
+      }
+    }
     // tidy the coastline: a beach ring around the sea, no stray inland sand
     for (var i = 0; i < tiles.length; i++) {
       var t0 = tiles[i];
@@ -144,8 +168,8 @@ var W = (function () {
   }
 
   /* can this building go here? returns {ok:bool, why:string} */
-  function canPlace(id, x, y) {
-    var def = DATA.B[id];
+  function canPlace(id, x, y, defOverride, ignore) {
+    var def = defOverride || DATA.B[id];
     if (!def) return { ok: false, why: 'Unknown building' };
     var cells = footprint(def, x, y);
     for (var i = 0; i < cells.length; i++) {
@@ -155,7 +179,11 @@ var W = (function () {
       var ok = def.terrain.indexOf(t.terr) >= 0 ||
                (t.terr === 'forest' && def.terrain.indexOf('grass') >= 0);
       if (!ok) return { ok: false, why: 'Cannot build on ' + DATA.TERRAIN[t.terr].name.toLowerCase() };
-      if (t.bld) return { ok: false, why: 'Already occupied' };
+      if (t.bld && t.bld !== ignore) return { ok: false, why: 'Already occupied' };
+      if (typeof EXPLORE !== 'undefined') {
+        if (!EXPLORE.seen(t.x, t.y)) return { ok: false, why: 'Unexplored — send a scout first' };
+        if (EXPLORE.blocked(t.x, t.y)) return { ok: false, why: 'Something is already here' };
+      }
     }
     if (def.near) {
       var n = nearCount(x, y, def.near.terrain, 1);
@@ -257,10 +285,10 @@ var W = (function () {
     tiles.forEach(function (t, i) {
       if (t.cleared) mods.push([i, 'c', t.terr]);
     });
-    return { seed: seed, mods: mods };
+    return { seed: seed, mods: mods, kind: kind };
   }
   function deserialize(d) {
-    generate(d.seed);
+    generate(d.seed, d.kind);
     (d.mods || []).forEach(function (m) {
       var t = tiles[m[0]];
       if (!t) return;
@@ -269,7 +297,7 @@ var W = (function () {
   }
 
   return {
-    COLS: COLS, ROWS: ROWS,
+    COLS: COLS, ROWS: ROWS, KINDS: KINDS, get kind() { return kind; },
     get tiles() { return tiles; },
     idx: idx, inb: inb, at: at,
     generate: generate, findCastleSpot: findCastleSpot,

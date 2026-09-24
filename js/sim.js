@@ -14,9 +14,34 @@ var SIM = (function () {
   /* ---------------------------------------------------------
      new game
      --------------------------------------------------------- */
-  function newGame(seed) {
+  /* how hard the world pushes back */
+  var DIFFS = {
+    gentle: { name: 'Gentle', res: 1.4, rival: 0.6, gap: 1.4, fire: 0.6, fever: 0.5, grace: 10, score: 0.8,
+              desc: 'More in the stores, a slower neighbour, and fewer fires and fevers.' },
+    fair:   { name: 'Fair',   res: 1,   rival: 1,   gap: 1,   fire: 1,   fever: 1,   grace: 6,  score: 1,
+              desc: 'The realm as it was meant to be played.' },
+    harsh:  { name: 'Harsh',  res: 0.75, rival: 1.45, gap: 0.8, fire: 1.35, fever: 1.4, grace: 4, score: 1.45,
+              desc: 'Thin stores, a hungry neighbour, and a hard world. Worth far more at the end.' }
+  };
+  var SCENARIOS = {
+    standard: { name: 'A New Beginning', ic: '🏝️', desc: 'Land, a hall, a few families and a spring to start in.' },
+    winter:   { name: 'The Late Landing', ic: '❄️', desc: 'You landed in autumn with little put by. Get food in before the snow.' },
+    border:   { name: 'The Border War', ic: '⚔️', desc: 'Brannoch is already strong and already angry. Soldiers from day one.' },
+    merchant: { name: 'The Merchant Prince', ic: '💰', desc: 'A fortune in gold and almost nothing else. Buy what you cannot build.' }
+  };
+  function diff() { return DIFFS[(G && G.setup && G.setup.diff) || 'fair'] || DIFFS.fair; }
+  function graceSeasons() {
+    var sc = G && G.setup && G.setup.scen;
+    return sc === 'border' ? 3 : diff().grace + (sc === 'winter' ? 2 : 0);
+  }
+
+  function newGame(seed, setup) {
+    if (typeof FOLK !== 'undefined') FOLK.reset();
+    if (typeof EXPLORE !== 'undefined') EXPLORE.reset();
+    if (typeof HONOURS !== 'undefined') HONOURS.reset();
     seed = seed || Math.floor(Math.random() * 1e9);
-    var spot = W.generate(seed);
+    setup = setup || { map: 'green', diff: 'fair', scen: 'standard' };
+    var spot = W.generate(seed, setup.map);
     G = {
       seed: seed,
       time: 0,                       // seconds of game time
@@ -30,15 +55,30 @@ var SIM = (function () {
       army: { militia: 4 },
       rival: { str: 30, anger: 0, nextRaid: DATA.SEASON_LEN * 6.5, warned: false },
       quests: {}, questShown: [], chapter: 0, won: false, weather: 'clear', weatherTimer: 40,
-      mkt: {}, decrees: {}, shiftUntil: -1, finds: [], findTimer: DATA.SEASON_LEN * 0.8,
+      tut: -1, mkt: {}, decrees: {}, shiftUntil: -1, finds: [], findTimer: DATA.SEASON_LEN * 0.8,
+      fog: '',                       // the mist over the island; '' = a fresh reign, not yet painted
       ship: null, shipTimer: DATA.SEASON_LEN * 2.2, fireTimer: 5,
       stats: { wins: 0, losses: 0, built: 0, raidsSurvived: 0, techDone: 0, upgrades: 0, traded: 0 },
       vets: {}, formation: 'line', campaign: null,
       eventTimer: DATA.SEASON_LEN * 1.6,
       growTimer: 6, reliefTimer: 30, reliefCooldown: 0, festivals: {}, fairUntil: -1,
-      speed: 1,
+      speed: 1, setup: setup, fresh: true,
       log: []
     };
+    // how hard, and how it begins
+    var D = diff();
+    // gentler stores lean on food, so a quick start never outgrows its barns
+    Object.keys(G.res).forEach(function (k) { G.res[k] = Math.round(G.res[k] * (k === 'food' ? Math.max(D.res, D.res * D.res) : Math.min(D.res, 1.15))); });
+    if (setup.scen === 'winter') {
+      G.time = DATA.SEASON_LEN * 2 + 1;   // autumn of the first year
+      G.res.food = Math.round(90 * D.res); G.happy = 52;
+      G.rival.nextRaid += DATA.SEASON_LEN * 2; G.fireTimer = 5;
+    } else if (setup.scen === 'border') {
+      G.rival.str = 55; G.rival.nextRaid = DATA.SEASON_LEN * 3.2;
+      G.army = { militia: 6, spearman: 2 }; G.res.gold += 120; G.res.iron = 20;
+    } else if (setup.scen === 'merchant') {
+      G.res.gold = Math.round(900 * D.res); G.res.wood = 50; G.res.stone = 20; G.res.food = Math.round(300 * D.res);
+    }
     // the castle is free and pre-placed
     var castle = mkBuilding('castle', spot.x, spot.y);
     castle.built = true; castle.prog = 1;
@@ -324,7 +364,9 @@ var SIM = (function () {
       rootTreasure(x, y);
     }
     if (def.build <= 0) { b.built = true; b.prog = 1; }
+    b.paid = cost;
     commit(b);
+    lastPlaced = { b: b, at: Date.now() };
     G.stats.built++;
     refreshCounts();
     emit('build', b);
@@ -369,6 +411,76 @@ var SIM = (function () {
     if (def.armyCap) parts.push('+' + def.armyCap + ' troops');
     if (def.research) parts.push('faster research');
     return parts.slice(0, 2).join(' · ');
+  }
+
+  /* ---------------------------------------------------------
+     Second thoughts. A building placed a moment ago can be taken back for
+     everything it cost, and any building can be moved for a quarter of
+     its price — no demolishing and rebuilding to fix a misplaced farm.
+     --------------------------------------------------------- */
+  var UNDO_MS = 8000, lastPlaced = null;
+  function canUndo() {
+    return !!(lastPlaced && Date.now() - lastPlaced.at < UNDO_MS && G.buildings.indexOf(lastPlaced.b) >= 0);
+  }
+  function undoLeft() { return canUndo() ? (UNDO_MS - (Date.now() - lastPlaced.at)) / 1000 : 0; }
+  function undoPlace() {
+    if (!canUndo()) return { ok: false, why: 'Too late to take that back' };
+    var b = lastPlaced.b;
+    lastPlaced = null;
+    removeFromMap(b);
+    Object.keys(b.paid || {}).forEach(function (k) { G.res[k] = Math.min(cap(k) + b.paid[k], G.res[k] + b.paid[k]); });
+    G.stats.built = Math.max(0, G.stats.built - 1);
+    refreshCounts();
+    emit('undone', b);
+    return { ok: true, b: b };
+  }
+  function removeFromMap(b) {
+    var i = G.buildings.indexOf(b);
+    if (i >= 0) G.buildings.splice(i, 1);
+    markPathsDirty();
+    W.footprint(b.def, b.x, b.y).forEach(function (c) {
+      var t = W.at(c.x, c.y);
+      if (t && t.bld === b) t.bld = null;
+    });
+    AGENTS.dropJob(b);
+  }
+  function moveCost(b) {
+    var base = costOf(b.id), out = {};
+    Object.keys(base).forEach(function (k) { out[k] = Math.max(1, Math.round(base[k] * 0.25)); });
+    out.gold = Math.max(5, out.gold || 0);
+    return out;
+  }
+  function canMove(b, x, y) {
+    if (!b || b.def.unique) return { ok: false, why: 'The castle stays where it is' };
+    if (b.fire) return { ok: false, why: 'Not while it is burning' };
+    if (x === b.x && y === b.y) return { ok: false, why: 'That is where it already is' };
+    return W.canPlace(b.id, x, y, b.def, b);
+  }
+  function moveBuilding(b, x, y) {
+    var chk = canMove(b, x, y);
+    if (!chk.ok) return chk;
+    var cost = moveCost(b);
+    if (!canAfford(cost)) return { ok: false, why: 'Moving it needs ' + short(cost) };
+    pay(cost);
+    W.footprint(b.def, b.x, b.y).forEach(function (c) {
+      var t = W.at(c.x, c.y);
+      if (t && t.bld === b) t.bld = null;
+    });
+    var felled = 0;
+    W.footprint(b.def, x, y).forEach(function (c) {
+      var t = W.at(c.x, c.y);
+      if (!t) return;
+      if (t.terr === 'forest') { t.terr = 'grass'; t.cleared = true; felled++; }
+      t.bld = b;
+    });
+    if (felled) G.res.wood = Math.min(cap('wood'), G.res.wood + 12 * felled);
+    b.x = x; b.y = y;
+    b.crop = 0;
+    AGENTS.dropJob(b);
+    markPathsDirty();
+    refreshCounts();
+    emit('moved', b);
+    return { ok: true };
   }
 
   function short(cost) {
@@ -452,7 +564,6 @@ var SIM = (function () {
      how strong a force actually is — one formula, used by the
      odds readout AND by how hard Brannoch hits you
      --------------------------------------------------------- */
-  var GRACE_SEASONS = 6;
 
   function unitStrength(hp, atk, def) { return (hp * 0.25 + atk * 1.6 + def * 0.8) / 3.1; }
 
@@ -476,7 +587,7 @@ var SIM = (function () {
      strength, so beating them down still counts for something. */
   function raidPower() {
     var seasons = seasonIndex();
-    var ramp = U.clamp((seasons - GRACE_SEASONS) / 14, 0, 1);
+    var ramp = U.clamp((seasons - graceSeasons()) / 14, 0, 1);
     // scaled against your ARMY only — walls and towers must stay a pure
     // advantage, never a reason for Brannoch to send more men
     var mine = totalStrength();
@@ -485,7 +596,7 @@ var SIM = (function () {
     return U.clamp(Math.min(G.rival.str, target), 6, G.rival.str);
   }
 
-  function graceLeft() { return Math.max(0, GRACE_SEASONS - seasonIndex()); }
+  function graceLeft() { return Math.max(0, graceSeasons() - seasonIndex()); }
 
   /* Standing strength should stop a war before it starts. A realm that
      plainly outmatches them is often simply left alone — which is what
@@ -503,7 +614,7 @@ var SIM = (function () {
     // mask the fact that they are actually here to conquer you
     if (G.campaign) return 'opportunity';
     if (G.res.gold > 550 && totalStrength() < G.rival.str * 0.7) return 'plunder';
-    if (G.rival.str > totalStrength() * 1.7 && seasonIndex() > GRACE_SEASONS + 6) return 'conquest';
+    if (G.rival.str > totalStrength() * 1.7 && seasonIndex() > graceSeasons() + 6) return 'conquest';
     if (G.stats.wins > G.stats.losses && Math.random() < 0.5) return 'revenge';
     if ((s === 'winter' || s === 'autumn') && Math.random() < 0.55) return 'hunger';
     return 'raid';
@@ -534,7 +645,7 @@ var SIM = (function () {
   */
 
   function raidSoon() {
-    return G.rival && G.rival.nextRaid < DATA.SEASON_LEN * 1.5 && seasonIndex() >= GRACE_SEASONS;
+    return G.rival && G.rival.nextRaid < DATA.SEASON_LEN * 1.5 && seasonIndex() >= graceSeasons();
   }
 
   /* how badly the realm wants each resource right now */
@@ -608,12 +719,12 @@ var SIM = (function () {
   }
 
   function assignWorkers(force) {
-    var key = G.buildings.length + '|' + Math.floor(G.pop) + '|' + (G.research ? 1 : 0);
+    var key = G.buildings.length + '|' + Math.floor(G.pop) + '|' + (G.research ? 1 : 0) + '|' + (G.sickN || 0);
     if (!force && G._workTimer > 0 && G._workKey === key) return;
     G._workTimer = 0.45;
     G._workKey = key;
 
-    var avail = Math.floor(G.pop);
+    var avail = Math.max(0, Math.floor(G.pop) - (G.sickN || 0));   // the sick stay abed
     var list = G.buildings.filter(function (b) { return b.built && jobsOf(b) > 0 && !b.paused; });
     G.buildings.forEach(function (b) { b.workers = 0; });
     if (!list.length) { G.idle = avail; G.builders = Math.min(6, Math.max(1, Math.floor(avail * 0.5) + 1)); return; }
@@ -669,6 +780,7 @@ var SIM = (function () {
       if (!bonus) return;
       if (U.dist(a.x, a.y, b.x, b.y) <= (a.def.radius || 3) + 0.4) mul += bonus * Math.max(0.34, staffRatio(a));
     });
+    if (typeof EXPLORE !== 'undefined') mul *= EXPLORE.bonusAt(b);   // an iron seam, a spring
     return mul;
   }
 
@@ -905,6 +1017,7 @@ var SIM = (function () {
     var coverage = G.pop > 0 ? U.clamp(capacity / G.pop, 0, 1.35) : 1;
     var t = 34 + coverage * 46;
     if (G.tech.sanitation) t += 8;
+    t += G.blessing || 0;
     t += BREAD_JOY * (G.breadCov || 0);
     if (G.tech.enclosure) t -= 10;
     if (G.tech.common_fields) t += 8;
@@ -973,7 +1086,7 @@ var SIM = (function () {
     // population
     var h = housing();
     if (G.res.food <= 0.5 && G.pop > 1) {
-      G.pop -= 0.045 * dt;
+      G.pop -= 0.045 * dt; G._lossWhy = 'starve';
       if (!G._starveWarned || G.time - G._starveWarned > 20) {
         G._starveWarned = G.time;
         emit('toast', { msg: 'Your people are starving — build farms!', kind: 'bad' });
@@ -985,7 +1098,7 @@ var SIM = (function () {
       var rate = 0.09 * season().growth * (G.happy / 70) * U.clamp((h - G.pop) / 6, 0.15, 1);
       G.pop = Math.min(h, G.pop + rate * dt);
     } else if (G.happy < 18 && G.pop > 2) {
-      G.pop -= 0.02 * dt;   // people drift away
+      G.pop -= 0.02 * dt; G._lossWhy = 'leave';   // people drift away
     }
 
     // research
@@ -1005,28 +1118,41 @@ var SIM = (function () {
     }
 
     // the rival
-    G.rival.str += dt * (0.010 + G.time / 140000);
-    G.rival.nextRaid -= dt;
-    if (!G.rival.warned && G.rival.nextRaid <= DATA.SEASON_LEN * 0.85 && seasonIndex() >= GRACE_SEASONS - 1) {
+    G.rival.str += dt * (0.010 + G.time / 140000) * diff().rival;
+    if (!G.war) G.rival.nextRaid -= dt;
+    if (!G.rival.warned && !atPeace() && G.rival.nextRaid <= DATA.SEASON_LEN * 0.85 && seasonIndex() >= graceSeasons() - 1) {
       G.rival.warned = true;
       emit('toast', { msg: 'Scouts: Brannoch is mustering. Roughly a season before they ride.', kind: 'war' });
     }
     if (G.rival.nextRaid <= 0) {
       G.rival.warned = false;
       // raids come further apart while you are still finding your feet
-      var gap = seasonIndex() < GRACE_SEASONS + 8 ? (4.5 + Math.random() * 2.2) : (2.8 + Math.random() * 1.8);
-      G.rival.nextRaid = DATA.SEASON_LEN * gap;
-      if (seasonIndex() < GRACE_SEASONS) {
+      var gap = seasonIndex() < graceSeasons() + 8 ? (4.5 + Math.random() * 2.2) : (2.8 + Math.random() * 1.8);
+      G.rival.nextRaid = DATA.SEASON_LEN * gap * diff().gap;
+      if (seasonIndex() < graceSeasons()) {
         G.rival.nextRaid = DATA.SEASON_LEN * 2;   // still at peace — try again later
+      } else if (atPeace()) {
+        // the treaty holds; only the Sea Wolves still come
+        G.rival.nextRaid = DATA.SEASON_LEN * (2.5 + Math.random() * 2);
+        if (seasonIndex() >= 12 && Math.random() < 0.45 && !(typeof EXPLORE !== 'undefined' && EXPLORE.wolvesQuiet())) emit('raid-incoming', { cause: 'wolves', faction: 'wolves' });
       } else if (deterrence() > 1.45 && Math.random() < U.clamp((deterrence() - 1.45) * 0.55, 0, 0.88)) {
         // they looked, and thought better of it
         G.rival.nextRaid = DATA.SEASON_LEN * (2 + Math.random() * 2.5);
         emit('toast', { msg: 'Brannoch\'s scouts turned back at the border — Ashveil looks too strong to bother.', kind: 'good' });
+      } else if (seasonIndex() >= 12 && Math.random() < 0.35 && !(typeof EXPLORE !== 'undefined' && EXPLORE.wolvesQuiet())) {
+        emit('raid-incoming', { cause: 'wolves', faction: 'wolves' });
+      } else if (dip().att > 0 && Math.random() < dip().att / 110) {
+        G.rival.nextRaid = DATA.SEASON_LEN * (2 + Math.random() * 2);
+        emit('toast', { msg: 'Brannoch\'s council argued down a raid. Your goodwill is paying off.', kind: 'good' });
       } else {
         emit('raid-incoming', { cause: raidCause() });
       }
     }
 
+    if (typeof WAR !== 'undefined') WAR.tick(dt);
+    if (typeof FOLK !== 'undefined') FOLK.tick(dt);
+    if (typeof EXPLORE !== 'undefined') EXPLORE.tick(dt);
+    if (typeof HONOURS !== 'undefined') HONOURS.tick(dt);
     tickWeather(dt);
     tickHarvest(dt);
     tickFire(dt);
@@ -1053,6 +1179,7 @@ var SIM = (function () {
     if (seasonIndex() !== prevSeason) {
       U.sfx.season();
       emit('season', season());
+      dipSeason();
       if (season().key === 'autumn') {
         var any = 0;
         G.buildings.forEach(function (b) { if (b.def.seasonal && b.built) { b.cropStart = b.crop || 0; any += b.crop || 0; } });
@@ -1134,7 +1261,7 @@ var SIM = (function () {
           if (!b.built || b.fire) return;
           var risk = fireRisk(b);
           if (!risk) return;
-          var p = 0.00042 * risk * sm * (wellsNear(b, 4) ? 0.4 : 1);
+          var p = 0.00042 * risk * sm * (wellsNear(b, 4) ? 0.4 : 1) * diff().fire;
           if (Math.random() < p) ignite(b);
         });
       }
@@ -1222,7 +1349,7 @@ var SIM = (function () {
     if (id === 'feast') G.happy = U.clamp(G.happy + 15, 0, 100);
     if (id === 'shifts') G.shiftUntil = G.time + DATA.SEASON_LEN * 0.5;
     if (id === 'levy') { var coin = Math.round(5 * G.pop); G.res.gold = Math.min(cap('gold'), G.res.gold + coin); G.happy = U.clamp(G.happy - 10, 0, 100); cost = { coin: coin }; }
-    if (id === 'settlers') G.pop = Math.min(housing(), G.pop + 6);
+    if (id === 'settlers') { G.pop = Math.min(housing(), G.pop + 6); G._gainWhy = 'settlers'; }
     if (!G.decrees) G.decrees = {};
     G.decrees[id] = G.time + d.cooldown * DATA.SEASON_LEN;
     emit('decree', { id: id, cost: cost });
@@ -1417,6 +1544,7 @@ var SIM = (function () {
     if (G.tech.banking)       { s2 += 0.08; b2 -= 0.12; }
     if (G.tech.free_trade)    { s2 += 0.20; b2 -= 0.15; }
     if (G.fairUntil > G.time) { s2 += 0.25; b2 -= 0.20; }
+    if (typeof EXPLORE !== 'undefined') { s2 += EXPLORE.tradeBonus(); b2 -= EXPLORE.tradeBonus(); }
     var lvl = 0;
     G.buildings.forEach(function (b) { if (b.built && b.id === 'market') lvl += lvlMul(b); });
     s2 += Math.min(0.10, lvl * 0.02);
@@ -1570,6 +1698,7 @@ var SIM = (function () {
   function launchCampaign(opts) {
     if (G.campaign) return { ok: false, why: 'Your army is already in the field' };
     if (armyCount() < 3) return { ok: false, why: 'You need at least 3 soldiers to march' };
+    if (!opts.flavour) breakPeace();
     G.campaign = {
       phase: 'out', timeLeft: DATA.SEASON_LEN * MARCH_SEASONS,
       army: G.army, vets: G.vets || {},
@@ -1579,6 +1708,113 @@ var SIM = (function () {
     emit('army');
     emit('toast', { msg: 'Your army marches for ' + G.campaign.name + '. Home is held by your walls alone.', kind: 'war' });
     return { ok: true };
+  }
+
+  /* diplomacy -------------------------------------------
+     Brannoch's lord has a temper you learn over time. Their attitude runs
+     from −100 (sworn enemy) to 100 (kin). Gifts and envoys warm it; beating
+     them cools it — unless they are the kind who respect strength. Warm
+     enough and they will sign a trade pact (no more raids from Brannoch,
+     a trickle of trade gold); keep the peace and a marriage makes them
+     allies for good. The Sea Wolves answer to nobody. */
+  var PERSONAS = {
+    greedy: { name: 'Greedy', gift: 1.6, beaten: -12, desc: 'Lord Harric counts coin before honour. Gifts go a long way with him.' },
+    proud:  { name: 'Proud',  gift: 0.6, beaten: -26, desc: 'Lord Harric never forgets a defeat, and takes gifts as no more than his due.' },
+    wary:   { name: 'Wary',   gift: 1.0, beaten: 6,   desc: 'Lord Harric respects strength. Every beating makes him readier to talk.' }
+  };
+  var DIP = { gift: 80, envoy: 20, pact: 150, ally: 400, pactAtt: 25, allyAtt: 60, allySeasons: 4 };
+  function dip() {
+    if (!G.dip) {
+      var keys = Object.keys(PERSONAS);
+      G.dip = { att: -20, pers: keys[Math.floor(U.mulberry((G.seed || 1) + 77)() * keys.length)], known: false,
+                pact: -1, ally: false, giftAt: -1e9, envoyAt: -1e9 };
+    }
+    return G.dip;
+  }
+  function persona() { return PERSONAS[dip().pers] || PERSONAS.wary; }
+  function atPeace() { var d = dip(); return d.ally || d.pact >= 0; }
+  function dipShift(n) { var d = dip(); d.att = U.clamp(d.att + n, -100, 100); }
+  function dipMood() {
+    var a = dip().att;
+    return a <= -50 ? { name: 'Hostile', col: '#e0795f' } : a < 0 ? { name: 'Cold', col: '#e0795f' }
+         : a < DIP.pactAtt ? { name: 'Wary', col: '#e0b23c' } : a < DIP.allyAtt ? { name: 'Friendly', col: '#8fd06a' }
+         : { name: 'Warm', col: '#8fd06a' };
+  }
+  function dipReady(kind) {
+    var d = dip(), at = kind === 'gift' ? d.giftAt : d.envoyAt;
+    return G.time - at >= DATA.SEASON_LEN;
+  }
+  function dipAct(kind) {
+    var d = dip(), p = persona();
+    if (G.campaign && kind !== 'break') return { ok: false, why: 'Not while your army is marching on them' };
+    if (kind === 'gift' || kind === 'envoy') {
+      if (!dipReady(kind)) return { ok: false, why: 'Wait a season before sending another' };
+      var c = kind === 'gift' ? DIP.gift : DIP.envoy;
+      if (G.res.gold < c) return { ok: false, why: 'Not enough gold' };
+      G.res.gold -= c;
+      if (kind === 'gift') {
+        d.giftAt = G.time; var gain = Math.round(12 * p.gift);
+        dipShift(gain);
+        G.rival.nextRaid += DATA.SEASON_LEN * 0.5;
+        return { ok: true, msg: 'Brannoch accepts the gift. (+' + gain + ' goodwill)' };
+      }
+      d.envoyAt = G.time; d.known = true; dipShift(3);
+      return { ok: true, msg: 'Your envoy returns: ' + p.desc };
+    }
+    if (kind === 'pact') {
+      if (d.pact >= 0 || d.ally) return { ok: false, why: 'You already have a pact' };
+      if (d.att < DIP.pactAtt) return { ok: false, why: 'They are not friendly enough yet' };
+      if (G.res.gold < DIP.pact) return { ok: false, why: 'Not enough gold' };
+      G.res.gold -= DIP.pact; d.pact = G.time; dipShift(8);
+      G.stats.pacts = (G.stats.pacts || 0) + 1;
+      return { ok: true, msg: 'The pact is sealed. Brannoch\'s raiders stay home, and their merchants come instead.' };
+    }
+    if (kind === 'ally') {
+      if (d.ally) return { ok: false, why: 'You are already allies' };
+      if (d.pact < 0 || G.time - d.pact < DATA.SEASON_LEN * DIP.allySeasons) return { ok: false, why: 'Keep the pact for ' + DIP.allySeasons + ' seasons first' };
+      if (d.att < DIP.allyAtt) return { ok: false, why: 'They are not warm enough yet' };
+      if (G.res.gold < DIP.ally) return { ok: false, why: 'Not enough gold' };
+      G.res.gold -= DIP.ally; d.ally = true; dipShift(15);
+      G.happy = U.clamp(G.happy + 10, 0, 100);
+      return { ok: true, msg: 'Bells ring on both shores: a royal wedding binds Ashveil and Brannoch.' };
+    }
+    return { ok: false, why: '?' };
+  }
+  /* marching on a partner tears up whatever was agreed */
+  function breakPeace() {
+    var d = dip();
+    if (!atPeace()) return false;
+    d.pact = -1; d.ally = false; dipShift(-60);
+    G.happy = U.clamp(G.happy - 6, 0, 100);
+    emit('toast', { msg: 'You broke faith with Brannoch. They will not trust you again soon.', kind: 'bad' });
+    return true;
+  }
+  /* how a battle against Brannoch changes their mind */
+  function dipBattle(won, full) {
+    var p = persona();
+    if (won) dipShift(full ? p.beaten : Math.round(p.beaten / 2));
+    else dipShift(5);
+  }
+  /* each new season: trade under the pact, tribute, and the slow drift */
+  function dipSeason() {
+    var d = dip(), notes = [];
+    if (d.ally || d.pact >= 0) {
+      var trade = d.ally ? 40 : 18;
+      G.res.gold = Math.min(cap('gold'), G.res.gold + trade);
+      dipShift(d.ally ? 1 : 2);
+      notes.push('+' + trade + ' gold in trade with Brannoch');
+    } else {
+      var base = G.tribute && G.tribute.left > 0 ? -35 : -20;
+      if (d.att > base) dipShift(-Math.min(3, d.att - base));
+      else if (d.att < base) dipShift(Math.min(2, base - d.att));
+    }
+    if (G.tribute && G.tribute.left > 0) {
+      G.res.gold = Math.min(cap('gold'), G.res.gold + G.tribute.amt);
+      G.tribute.left--;
+      notes.push('Brannoch\'s tribute: +' + G.tribute.amt + ' gold' + (G.tribute.left ? ' (' + G.tribute.left + ' more)' : ' — the last of it'));
+      if (!G.tribute.left) G.tribute = null;
+    }
+    if (notes.length) emit('toast', { msg: notes.join(' · '), kind: 'good' });
   }
 
   /* the battle is over — the survivors turn for home */
@@ -1671,7 +1907,8 @@ var SIM = (function () {
       if (G.pop < 2) break;
       pay(u.cost);
       G.army[key] = (G.army[key] || 0) + 1;
-      G.pop = Math.max(1, G.pop - 1);
+      G.pop = Math.max(1, G.pop - 1); G._lossWhy = 'soldier';
+      if (typeof FOLK !== 'undefined') FOLK.tick(0);
       made++;
     }
     if (made) { U.sfx.place(); emit('army'); return { ok: true, made: made }; }
@@ -1683,7 +1920,8 @@ var SIM = (function () {
     if (!G.army[key]) return;
     G.army[key]--;
     if (!G.army[key]) delete G.army[key];
-    G.pop += 1;
+    G.pop += 1; G._gainWhy = 'veteran';
+    if (typeof FOLK !== 'undefined') FOLK.tick(0);
     emit('army');
   }
 
@@ -1772,6 +2010,11 @@ var SIM = (function () {
       out.push({ sev: 2, ic: '🔥', text: b.def.name + ' is on fire!', b: b,
         hint: 'Tap it and call the bucket brigade' + (wellsNear(b, 5) ? '' : ' — there is no well nearby') });
     });
+    if (typeof FOLK !== 'undefined' && G.sickN) {
+      var sh = FOLK.sickHomes();
+      out.push({ sev: sh.length > 2 ? 2 : 1, ic: '🤒', text: 'Fever: ' + G.sickN + ' ill in ' + sh.length + ' home' + (sh.length > 1 ? 's' : ''),
+        b: sh.length ? sh[0].b : null, hint: 'Tap the house with the yellow cloth and send for the physician. Wells stop it spreading' });
+    }
     if (G.ship && G.ship.phase === 'anchored' && G.ship.offers.length) {
       out.push({ sev: 0, ic: '⛵', text: 'A merchant ship is at anchor', hint: 'Tap the ship to see what they offer', ship: true });
     }
@@ -1896,11 +2139,14 @@ var SIM = (function () {
       time: G.time, res: G.res, pop: G.pop, happy: G.happy,
       castle: G.castle, tech: G.tech, research: G.research,
       army: G.army, rival: G.rival, quests: G.quests, stats: G.stats, chapter: G.chapter || 0, won: !!G.won,
-      mkt: G.mkt || {}, decrees: G.decrees || {}, shiftUntil: G.shiftUntil || -1, finds: G.finds || [],
+      tut: typeof G.tut === 'number' ? G.tut : -1, mkt: G.mkt || {}, decrees: G.decrees || {}, shiftUntil: G.shiftUntil || -1, finds: G.finds || [],
+      dip: G.dip || null, tribute: G.tribute || null,
+      folk: typeof FOLK !== 'undefined' ? FOLK.pack() : null,
+      hist: G.hist || [], fog: G.fog, sites: G.sites || null, sea: G.sea || null, scouts: G.scouts || [], blessing: G.blessing || 0,
       shipTimer: G.shipTimer, findTimer: G.findTimer,
       vets: G.vets || {}, formation: G.formation || 'line', seen: G.seen || {}, campaign: G.campaign || null,
       festivals: G.festivals || {}, fairUntil: G.fairUntil || -1,
-      eventTimer: G.eventTimer, speed: G.speed,
+      eventTimer: G.eventTimer, speed: G.speed, setup: G.setup,
       buildings: G.buildings.map(function (b) {
         return [b.id, b.x, b.y, b.built ? 1 : 0, Number(b.prog.toFixed(3)),
                 b.paused ? 1 : 0, b.level || 1, b.compact ? 1 : 0, Math.round(b.crop || 0), Math.round(b.cropStart || 0)];
@@ -1909,8 +2155,37 @@ var SIM = (function () {
     return U.save(d);
   }
   function hasSave() { return !!U.load(); }
+
+  /* A save as a line of text, for keeping somewhere safe. */
+  var CODE_TAG = 'ASHVEIL1:';
+  function exportCode() {
+    var d = U.load();
+    if (!d) return '';
+    return CODE_TAG + btoa(unescape(encodeURIComponent(JSON.stringify(d))));
+  }
+  function decodeCode(text) {
+    var t = String(text || '').replace(/\s+/g, '');
+    if (t.indexOf(CODE_TAG) !== 0) return null;
+    try { return JSON.parse(decodeURIComponent(escape(atob(t.slice(CODE_TAG.length))))); }
+    catch (e) { return null; }
+  }
+  function checkCode(text) {
+    var d = decodeCode(text);
+    if (!d) return { ok: false, why: 'That is not an Ashveil save code' };
+    if (!(d.v >= 2 && d.v <= 4) || !d.world || !Array.isArray(d.buildings)) return { ok: false, why: 'That save code is damaged or from an unknown version' };
+    return { ok: true, d: d };
+  }
+  function importCode(text) {
+    var r = checkCode(text);
+    if (!r.ok) return r;
+    U.save(r.d);
+    return { ok: true };
+  }
   function loadGame() {
     var d = U.load();
+    if (typeof FOLK !== 'undefined') FOLK.reset();
+    if (typeof EXPLORE !== 'undefined') EXPLORE.reset();
+    if (typeof HONOURS !== 'undefined') HONOURS.reset();
     if (!d || !(d.v >= 2 && d.v <= 4)) return false;    // older saves still load
     W.deserialize(d.world);
     var st = d.stats || {};
@@ -1925,11 +2200,13 @@ var SIM = (function () {
       castle: d.castle || 0, army: d.army || {}, rival: d.rival,
       quests: d.quests || {}, stats: st, eventTimer: d.eventTimer,
       chapter: d.chapter || 0, won: !!d.won, weather: 'clear', weatherTimer: 30,
-      mkt: d.mkt || {}, decrees: d.decrees || {}, shiftUntil: d.shiftUntil || -1, finds: d.finds || [],
+      tut: typeof d.tut === 'number' ? d.tut : -1, mkt: d.mkt || {}, decrees: d.decrees || {}, shiftUntil: d.shiftUntil || -1, finds: d.finds || [],
+      dip: d.dip || null, tribute: d.tribute || null, folkSave: d.folk || null,
+      hist: d.hist || [], fog: d.fog, sites: d.sites || null, sea: d.sea || null, scouts: d.scouts || [], blessing: d.blessing || 0,
       ship: null, shipTimer: d.shipTimer || DATA.SEASON_LEN * 2, findTimer: d.findTimer || 40, fireTimer: 5,
       vets: d.vets || {}, formation: d.formation || 'line',
       growTimer: 6, reliefTimer: 30, reliefCooldown: 0,
-      speed: d.speed || 1, log: []
+      speed: d.speed || 1, log: [], setup: d.setup || { map: 'green', diff: 'fair', scen: 'standard' },
     };
     d.buildings.forEach(function (a) {
       if (!DATA.B[a[0]]) return;
@@ -1970,6 +2247,7 @@ var SIM = (function () {
     get G() { return G; },
     on: on, emit: emit,
     newGame: newGame, loadGame: loadGame, hasSave: hasSave, save: save,
+    exportCode: exportCode, checkCode: checkCode, importCode: importCode,
     tick: tick, place: place, demolish: demolish, costOf: costOf, canAfford: canAfford,
     unlocked: unlocked, refreshCounts: refreshCounts,
     ledger: ledger, output: output, cap: cap, housing: housing,
@@ -1978,7 +2256,7 @@ var SIM = (function () {
     fieldStrength: fieldStrength, unitStrength: unitStrength, totalStrength: totalStrength,
     launchCampaign: launchCampaign, campaignResolved: campaignResolved,
     campaignSlots: campaignSlots, awayCount: awayCount, MARCH_SEASONS: MARCH_SEASONS,
-    raidPower: raidPower, graceLeft: graceLeft, GRACE_SEASONS: GRACE_SEASONS,
+    raidPower: raidPower, graceLeft: graceLeft, get GRACE_SEASONS() { return graceSeasons(); }, DIFFS: DIFFS, SCENARIOS: SCENARIOS, diff: diff,
     deterrence: deterrence, raidCause: raidCause,
     jobsOf: jobsOf, staffRatio: staffRatio, efficiency: efficiency,
     scoreOf: scoreOf, priorityLabel: priorityLabel, assignWorkers: assignWorkers,
@@ -1992,6 +2270,8 @@ var SIM = (function () {
     goodsValue: goodsValue, marketCut: marketCut,
     rebuildPaths: function () { markPathsDirty(); ensurePaths(true); },
     preview: preview, soilMul: soilMul,
+    canUndo: canUndo, undoLeft: undoLeft, undoPlace: undoPlace,
+    moveCost: moveCost, canMove: canMove, moveBuilding: moveBuilding,
     canTrade: canTrade, priceOf: priceOf, sell: sell, buy: buy, tradeSpread: tradeSpread,
     techAvailable: techAvailable, techClosed: techClosed, startResearch: startResearch,
     unitAvailable: unitAvailable, recruit: recruit, disband: disband,
@@ -2002,6 +2282,8 @@ var SIM = (function () {
     decree: decree, decreeReady: decreeReady, decreeCost: decreeCost, shiftMul: shiftMul,
     collectFind: collectFind, takeOffer: takeOffer, shipLeaves: shipLeaves, mktOf: mktOf,
     issues: issues, issueCount: issueCount, advice: advice,
-    happyTarget: happyTarget
+    happyTarget: happyTarget,
+    dip: dip, persona: persona, atPeace: atPeace, dipMood: dipMood, dipReady: dipReady, dipAct: dipAct,
+    dipBattle: dipBattle, breakPeace: breakPeace, DIP: DIP, PERSONAS: PERSONAS
   };
 })();

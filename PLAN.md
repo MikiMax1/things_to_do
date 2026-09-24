@@ -1,5 +1,66 @@
 # Kingdom of Ashveil — the redesign plan
 
+## v4: the five-phase plan (done)
+
+Asked for: "make a plan to make the game as good as possible", then "go do the
+plan in your order" — phases 1, 2, 4, 3, 5.
+
+**Phase 1 — feel great on a phone.** New games open in under a second: the
+ground bakes in two passes (a coarse one to play on at once, full detail
+fading in behind), and the finished bake is cached in IndexedDB so Continue is
+near-instant. Detail levels (automatic steps down if frames run long; battery
+saver caps at 30fps). Undo for eight seconds after placing; Move any building
+for a quarter of its price. A seven-step tutorial that waits for you to do each
+thing. Save codes to copy a kingdom out and back in.
+
+**Phase 2 — a war worth fighting.** Raids now land on the island (`war.js`):
+longships beach at the nearest shore, soldiers muster from the castle,
+barracks and range, and you order squads to engage, hold, move, attack a
+target or fall back. Raiders loot granaries, warehouses and markets, set fire
+to what they hit and break walls; towers and the castle shoot back. Morale
+breaks at 30% or once they have plundered enough. The Sea Wolves raid too from
+season 12. Attacking Brannoch means a walled town: melee and catapults must
+batter the gate (catapults ×3 against it) while archers inside shoot from
+cover; storming it earns four seasons of tribute. Diplomacy: Brannoch's lord
+has a hidden temper (greedy, proud, wary) that changes how gifts and defeats
+land; attitude −100..100; a trade pact (≥25) stops Brannoch's raids and pays
+18 gold a season; after four seasons of pact, a marriage (≥60) makes them
+allies for 40 gold a season. Marching on a partner breaks faith (−60).
+
+**Phase 4 — people with lives** (`folk.js`). A register kept in step with
+`G.pop`: births to couples (one a year per mother, fewer while children are
+over a quarter of the village), newcomers, weddings every season or so, old age
+(from 60, rising), the hungry dying first in famine, the unhappy leaving,
+soldiers drawn from the unmarried and the fallen named. Homes are assigned by
+capacity and families stay together; trades follow SIM's worker allocation.
+Walkers on screen are the first 46 people, so tapping one shows who it is.
+Fever: crowding × no well × winter, spreading within and between homes,
+recovery faster near water, immunity afterwards, deaths mostly among the old
+and babies; the sick are taken off work. The physician (25 gold) speeds
+recovery and cuts deaths and spread for a season.
+
+**Phase 3 — a bigger world** (`explore.js`). Rather than enlarge the 28×28
+island (terrain bake cost and save compatibility), the world grew in two
+directions. On the island, mist over unexplored land (a feathered canvas laid
+on the ground twice — once flat, once lifted — so what stands in it vanishes);
+building reveals r≈3, towers r≈8.5, scouts walk out and map r≈4. Five hidden
+sites per seed. At sea, a hand-drawn chart with eight places per seed: five
+resource islets (outposts: 60g 80w 40f and 3 settlers, then goods every
+season, raided now and then unless the haven is burned), Carrow Port (trade
+route: gold every season and better market prices), the Wolves' Haven (a
+walled battle; winning stops wolf raids for eight seasons), and the Drowned
+Abbey (treasure). Old saves load with everything already explored.
+
+**Phase 5 — replay and polish.** New-kingdom setup: island type (`W.KINDS`),
+difficulty (`SIM.DIFFS`: stores, rival growth, raid gaps, fire, fever, grace,
+score multiplier) and scenario (`SIM.SCENARIOS`). Gentle's extra stores lean
+on food — extra timber and gold let a quick start outgrow its barns, which the
+harness caught. Reign score and 18 honours kept across reigns (`honours.js`),
+a season-by-season ledger with charts, ambient sea, birds, crickets and rain
+plus generative lute music (`U.ambient`), larger text and reduced motion.
+
+Each difficulty, island type and scenario passes `tools/balance.js` on its own, as does the hardest mix (Harsh, Twin Isles, Border War).
+
 ## v3.1: more fun, more real (done)
 
 Asked for: better gameplay and mechanics, a bit more fun, a bit more realism.

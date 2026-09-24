@@ -34,10 +34,49 @@ var AGENTS = (function () {
     });
   }
 
+  /* with a register of names, each walker IS someone: their home, their
+     trade, whether they are ill. The first MAX people are the ones shown. */
+  var uidMap = {}, linkTimer = 0;
+  function linkFolk(dt) {
+    var G = SIM.G, folk = FOLK.list;
+    linkTimer -= dt;
+    if (linkTimer > 0 && list.length === Math.min(MAX, folk.length)) return;
+    linkTimer = 0.5;
+    uidMap = {};
+    G.buildings.forEach(function (b) { uidMap[b.uid] = b; });
+    // grown folk first, so the lanes are not all children
+    var shown = folk.slice().sort(function (p, q) { return (p.a < 6) - (q.a < 6) || p.i - q.i; }).slice(0, MAX);
+    var byPid = {};
+    list.forEach(function (a) { if (a.pid) byPid[a.pid] = a; });
+    var sites = G.buildings.filter(function (b) { return !b.built; }), siteN = {};
+    list = shown.map(function (p) {
+      var a = byPid[p.i];
+      if (!a) {
+        var h = uidMap[p.h];
+        a = mk(h || null);
+        a.pid = p.i;
+        a.shirt = SHIRTS[p.i % SHIRTS.length]; a.skin = SKINS[(p.i * 7) % SKINS.length];
+      }
+      a.small = p.a < 13; a.old = p.a >= 62; a.fem = p.s === 'f';
+      a.home = uidMap[p.h] || a.home;
+      var job = p.j ? uidMap[p.j] : null;
+      if (!job && !p.sick && p.a >= 14) {
+        // labourers go and help on the building sites
+        for (var i = 0; i < sites.length; i++) {
+          if ((siteN[sites[i].uid] || 0) < 3) { job = sites[i]; siteN[job.uid] = (siteN[job.uid] || 0) + 1; break; }
+        }
+      }
+      if (a.job !== job) { a.job = job; if (a.state === 'working' || a.state === 'toWork') { a.state = 'idle'; a.path = null; } }
+      a.sick = p.sick > 0;
+      return a;
+    });
+  }
+
   /* keep the crowd matching the population and the job board */
-  function restaff() {
+  function restaff(dt) {
     var G = SIM.G;
     if (!G) return;
+    if (typeof FOLK !== 'undefined' && FOLK.list.length) return linkFolk(dt || 0.016);
     var want = Math.min(MAX, Math.max(1, Math.round(G.pop)));
     var homes = G.buildings.filter(function (b) { return b.built && b.def.housing && b.id !== 'castle'; });
 
@@ -142,7 +181,26 @@ var AGENTS = (function () {
     return false;
   }
 
-  var CARRY_COL = { food: '#d9bf55', wood: '#8a6b45', stone: '#a09b90', iron: '#8f95a3', gold: '#e0b23c' };
+  /* somewhere worth going: the well by day, the tavern towards evening,
+     the chapel on a quiet morning, the market if there is one */
+  function errand(a, night) {
+    var G = SIM.G, from = a.home || { x: a.x, y: a.y };
+    var want = night > 0.3 ? ['tavern', 'tavern', 'well'] : ['well', 'well', 'market', 'chapel', 'tavern'];
+    var id = want[Math.floor(Math.random() * want.length)], best = null, bd = 1e9;
+    G.buildings.forEach(function (b) {
+      if (b.id !== id || !b.built) return;
+      var d = U.dist2(b.x, b.y, from.x, from.y);
+      if (d < bd) { bd = d; best = b; }
+    });
+    if (!best || bd > 196) return false;
+    var w = best.def.w || 1, h = best.def.h || 1;
+    var side = Math.random() < 0.5;
+    goTo(a, side ? best.x + w : best.x + Math.floor(Math.random() * w), side ? best.y + Math.floor(Math.random() * h) : best.y + h);
+    a.state = 'toVisit'; a.carry = null; a.visitId = id;
+    return true;
+  }
+
+  var CARRY_COL = { water: '#6f9fc0', food: '#d9bf55', wood: '#8a6b45', stone: '#a09b90', iron: '#8f95a3', gold: '#e0b23c' };
 
   function carryOf(b) {
     if (!b || !b.def.produces) return null;
@@ -153,12 +211,14 @@ var AGENTS = (function () {
   function update(dt) {
     var G = SIM.G;
     if (!G) return;
-    restaff();
+    restaff(dt);
     syncAnimals();
     updateAnimals(dt);
     var castle = G.buildings[0];
 
     var night = (typeof RENDER !== 'undefined' && RENDER.nightAmount) ? RENDER.nightAmount() : 0;
+    // when raiders are ashore, people bar their doors
+    if (G.war && typeof WAR !== 'undefined' && WAR.state && WAR.state.phase !== 'sail') night = 1;
     assignBrigades();
 
     for (var i = 0; i < list.length; i++) {
@@ -189,6 +249,13 @@ var AGENTS = (function () {
         else follow(a, dt);
         continue;
       }
+      if (a.sick && a.home) {
+        if (a.state !== 'abed' && a.state !== 'goingHome') { a.state = 'goingHome'; a.carry = null; goTo(a, a.home.x, a.home.y); }
+        else if (a.path) follow(a, dt);
+        else a.state = 'abed';
+        continue;
+      }
+      if (a.state === 'abed') { a.state = 'idle'; a.timer = 1; }
       if (a.state === 'asleep' || a.state === 'goingHome') {
         if (night < 0.45) { a.state = 'idle'; a.timer = Math.random() * 3; a.path = null; }
         else { if (a.path) follow(a, dt); continue; }
@@ -203,10 +270,25 @@ var AGENTS = (function () {
             var spot0 = workSpot(a.job);
             goTo(a, spot0.x, spot0.y);
           } else if (a.timer <= 0) {
-            var spot = W.randomWalkable(Math.random);
-            if (spot) goTo(a, spot.x, spot.y);
+            if (!errand(a, night)) {
+              var spot = W.randomWalkable(Math.random);
+              // nobody wanders off into the mist
+              if (spot && typeof EXPLORE !== 'undefined' && !EXPLORE.seen(spot.x, spot.y)) spot = null;
+              if (spot) goTo(a, spot.x, spot.y);
+              a.state = 'wander';
+            }
             a.timer = 3 + Math.random() * 6;
-            a.state = 'wander';
+          }
+          break;
+
+        case 'visit':
+          // standing about at the well, the tavern door or the market
+          if (!a.visitT) a.visitT = 3 + Math.random() * 5;
+          a.visitT -= dt; a.bob += dt * 1.5;
+          if (a.visitT <= 0) {
+            a.visitT = 0;
+            if (a.visitId === 'well' && a.home) { a.carry = 'water'; a.state = 'toHome'; goTo(a, a.home.x, a.home.y); }
+            else { a.state = 'idle'; a.timer = 0.5; }
           }
           break;
 
@@ -230,6 +312,8 @@ var AGENTS = (function () {
             } else if (a.home && Math.random() < 0.35) {
               a.state = 'toHome';
               goTo(a, a.home.x, a.home.y);
+            } else if (Math.random() < 0.25 && errand(a, night)) {
+              // a break: water from the well, a pie at the market, a quick ale
             } else {
               a.timer = 3 + Math.random() * 5;
             }
@@ -244,12 +328,16 @@ var AGENTS = (function () {
           break;
 
         case 'toHome':
-          a.state = 'resting';
+          a.state = 'resting'; a.carry = null;
           a.timer = 2 + Math.random() * 4;
           break;
 
         case 'resting':
           if (a.timer <= 0) a.state = 'idle';
+          break;
+
+        case 'toVisit':
+          a.state = 'visit'; a.visitT = 0;
           break;
 
         default:
@@ -261,12 +349,17 @@ var AGENTS = (function () {
   /* draw one villager standing at screen pos (feet at px,py) */
   var HAIR = ['#2b1d12', '#5a3a1e', '#8a5a2a', '#c9a15a', '#3a2a22', '#6b6258'];
   function draw(g, a, px, py, z) {
-    if (a.state === 'asleep') return;
-    var h = Math.max(7, z * 0.19), w = h * 0.42;
+    if (a.state === 'asleep' || a.state === 'abed') return;
+    var h = Math.max(7, z * 0.19) * (a.small ? 0.68 : a.old ? 0.94 : 1), w = h * 0.42;
+    if (a.sel) {
+      var pulse = 0.6 + Math.sin(performance.now() / 180) * 0.4;
+      g.strokeStyle = 'rgba(240,210,110,' + pulse.toFixed(2) + ')'; g.lineWidth = 2;
+      g.beginPath(); g.ellipse(px, py, w * 1.5, w * 0.62, 0, 0, 6.3); g.stroke();
+    }
     var moving = !!a.path;
     var step = Math.sin(a.bob);
     var bob = moving ? Math.abs(step) * h * 0.05 : 0;
-    if (!a.hair) a.hair = HAIR[(a.speed * 1000 | 0) % HAIR.length];
+    if (!a.hair) a.hair = a.old ? '#c9c4bb' : HAIR[(a.speed * 1000 | 0) % HAIR.length];
     // shadow
     g.fillStyle = 'rgba(0,0,0,.28)';
     g.beginPath(); g.ellipse(px + w * 0.3, py, w * 0.62, w * 0.24, 0, 0, 6.3); g.fill();
@@ -284,7 +377,8 @@ var AGENTS = (function () {
     g.fillStyle = gr;
     g.beginPath();
     g.moveTo(px - w * 0.36, y0 - h * 0.74); g.lineTo(px + w * 0.36, y0 - h * 0.74);
-    g.lineTo(px + w * 0.46, y0 - h * 0.3); g.lineTo(px - w * 0.46, y0 - h * 0.3); g.closePath(); g.fill();
+    var hem = a.fem ? 0.08 : 0.3;
+    g.lineTo(px + w * (a.fem ? 0.52 : 0.46), y0 - h * hem); g.lineTo(px - w * (a.fem ? 0.52 : 0.46), y0 - h * hem); g.closePath(); g.fill();
     // belt
     g.fillStyle = 'rgba(40,26,14,.7)'; g.fillRect(px - w * 0.42, y0 - h * 0.47, w * 0.84, Math.max(1, h * 0.05));
     // arms
@@ -295,7 +389,7 @@ var AGENTS = (function () {
     g.moveTo(px + w * 0.4, y0 - h * 0.7); g.lineTo(px + w * 0.5 - as, y0 - h * 0.42);
     g.stroke();
     // head and hair
-    g.fillStyle = a.skin;
+    g.fillStyle = a.sick ? '#c9cf9a' : a.skin;
     g.beginPath(); g.arc(px, y0 - h * 0.85, w * 0.3, 0, 6.3); g.fill();
     g.fillStyle = a.hair;
     g.beginPath(); g.arc(px, y0 - h * 0.9, w * 0.31, Math.PI * 1.05, Math.PI * 1.95); g.fill();

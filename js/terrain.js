@@ -518,53 +518,94 @@ var TERRAIN = (function () {
   /* ---------- public: build, patch, draw ---------- */
   function pickRes() {
     var dpr = (typeof window !== 'undefined' && window.devicePixelRatio) || 1;
-    return dpr >= 1.75 ? 96 : 72;
+    var q = (typeof RENDER !== 'undefined' && RENDER.quality) ? RENDER.quality() : 'high';
+    if (q === 'saver') return 56;
+    return dpr >= 1.75 && q !== 'balanced' ? 96 : 72;
+  }
+  var LOW_RES = 36;          // the quick first painting, a quarter of the pixels
+  var cvRes = 96;            // resolution of the canvas on screen now
+
+  /* Canvas geometry depends on resolution; baking always happens at the
+     resolution of the canvas being painted. */
+  function useRes(tpx) {
+    TPX = tpx;
+    CW = Math.ceil((W.COLS + W.ROWS + 4 * M) * TPX / 2);
+    CH = Math.ceil((W.COLS + W.ROWS + 4 * M) * TPX / 4);
+  }
+  function newJob(tpx, seasonKey, swap) {
+    useRes(tpx);
+    var c = document.createElement('canvas');
+    c.width = CW; c.height = CH;
+    var job = { canvas: c, g: c.getContext('2d'), y: 0, season: seasonKey, swap: swap, tpx: tpx, cw: CW, ch: CH, sigs: snapshotSigs() };
+    useRes(cvRes);
+    return job;
   }
 
-  /* Start baking the whole island. Returns a job object whose `done` flag
-     flips when the last stripe is in; step() advances it. */
+  /* Start painting the island. A cached painting from last time is used if
+     it still matches; otherwise a quick rough one comes first so the game
+     can begin, and the full-detail one fades in over it a moment later. */
   function begin(seasonKey, sd) {
     seed = sd || 1;
     season = seasonKey || 'summer';
-    TPX = pickRes();
     NT = null;
-    setup();
-    cv = document.createElement('canvas');
-    cv.width = CW; cv.height = CH;
-    g = cv.getContext('2d');
-    sigs = snapshotSigs();
-    jobs = [];
-    fade = null;
-    full = { canvas: cv, g: g, y: 0, season: season, swap: false };
-    ready = false;
+    readTiles();
+    NT = makeNoiseTex(seed);
+    buildHeights();
+    jobs = []; fade = null; ready = false; full = null; cv = null; g = null;
+    var want = pickRes();
+    CACHE.load(seed, season, want, function (hit) {
+      if (hit) {
+        cvRes = want; useRes(cvRes);
+        cv = hit.canvas; g = cv.getContext('2d');
+        sigs = hit.sigs;
+        ready = true;
+        sync(true);                 // whatever changed since it was saved
+        return;
+      }
+      cvRes = LOW_RES; useRes(cvRes);
+      full = newJob(LOW_RES, season, false);
+      full.then = function () { full = newJob(want, season, true); full.cache = true; };
+    });
   }
 
   /* Advance any baking for up to `budget` ms. Call every frame. */
   function step(budget) {
-    if (!g && !full) return;
+    if (!full && !jobs.length) { CACHE.maybeSave(); return; }
     var t0 = now();
     budget = budget || 6;
+    // small patches first, so a new building's yard shows at once even
+    // while a whole new painting is under way
+    while (jobs.length && now() - t0 < budget * 0.5) {
+      var j0 = jobs.shift();
+      bakeRect(g, j0.x, j0.y, j0.w, j0.h, season);
+      CACHE.dirty(false);
+    }
     while (full && now() - t0 < budget) {
-      var rows = Math.max(8, Math.floor(40 * 96 / TPX));
-      bakeRect(full.g, 0, full.y, CW, rows, full.season);
-      full.y += rows;
-      if (full.y >= CH) {
-        if (full.swap) {
-          fade = { old: cv, t: 0 };
-          cv = full.canvas; g = full.g;
-        }
+      var f = full;
+      useRes(f.tpx);
+      var rows = Math.max(8, Math.floor(40 * 96 / f.tpx));
+      bakeRect(f.g, 0, f.y, f.cw, rows, f.season);
+      f.y += rows;
+      useRes(cvRes);
+      if (f.y >= f.ch) {
         full = null;
+        if (f.swap && cv) fade = { old: cv, res: cvRes, t: 0 };
+        cv = f.canvas; g = f.g; cvRes = f.tpx; useRes(cvRes);
+        sigs = f.sigs;
+        jobs = [];
         ready = true;
-        // anything that changed during the bake gets patched now
-        sync(true);
+        sync(true);                 // anything that changed during the bake
+        if (f.cache) CACHE.dirty(true);
+        if (f.then) f.then();
       }
     }
     while (!full && jobs.length && now() - t0 < budget) {
       var j = jobs.shift();
       bakeRect(g, j.x, j.y, j.w, j.h, season);
+      CACHE.dirty(false);
     }
   }
-  function progress() { return full ? full.y / CH : 1; }
+  function progress() { return ready ? 1 : full ? full.y / full.ch * (full.tpx === LOW_RES ? 1 : 1) : 0; }
   function now() { return (typeof performance !== 'undefined') ? performance.now() : Date.now(); }
 
   /* A new season re-paints the island into a fresh canvas and cross-fades. */
@@ -572,12 +613,80 @@ var TERRAIN = (function () {
     if (seasonKey === season && !full) return;
     season = seasonKey;
     readTiles();
-    var c2 = document.createElement('canvas');
-    c2.width = CW; c2.height = CH;
-    full = { canvas: c2, g: c2.getContext('2d'), y: 0, season: season, swap: true };
-    sigs = snapshotSigs();
-    jobs = [];
+    full = newJob(Math.max(cvRes, pickRes()), season, true);
+    full.cache = true;
   }
+
+  /* ---------- keeping the painting between visits ----------
+     The finished island is stored on the device (IndexedDB), with the tile
+     signatures it was painted from, so Continue can show it at once and
+     only patch what changed. Anything that goes wrong just means painting
+     it again. */
+  var CACHE = (function () {
+    var DB = 'ashveil-terrain', STORE = 'paint', KEY = 'island';
+    var dirtyAt = 0, savedAt = 0, saving = false, pending = false;
+    function open(cb) {
+      try {
+        if (typeof indexedDB === 'undefined') return cb(null);
+        var rq = indexedDB.open(DB, 1);
+        rq.onupgradeneeded = function () { rq.result.createObjectStore(STORE); };
+        rq.onsuccess = function () { cb(rq.result); };
+        rq.onerror = function () { cb(null); };
+      } catch (e) { cb(null); }
+    }
+    function load(sd, seasonKey, res, cb) {
+      var done = false;
+      function finish(v) { if (!done) { done = true; cb(v); } }
+      setTimeout(function () { finish(null); }, 1500);   // never wait long for it
+      open(function (db) {
+        if (!db) return finish(null);
+        try {
+          var rq = db.transaction(STORE, 'readonly').objectStore(STORE).get(KEY);
+          rq.onsuccess = function () {
+            var v = rq.result;
+            if (!v || v.seed !== sd || v.season !== seasonKey || v.res !== res || !v.blob || v.cols !== W.COLS) return finish(null);
+            var img = new Image(), url = URL.createObjectURL(v.blob);
+            img.onload = function () {
+              var c = document.createElement('canvas');
+              c.width = img.width; c.height = img.height;
+              c.getContext('2d').drawImage(img, 0, 0);
+              URL.revokeObjectURL(url);
+              finish({ canvas: c, sigs: Int32Array.from(v.sigs) });
+            };
+            img.onerror = function () { finish(null); };
+            img.src = url;
+          };
+          rq.onerror = function () { finish(null); };
+        } catch (e) { finish(null); }
+      });
+    }
+    function save() {
+      if (saving || !cv || !sigs || full) return;
+      saving = true; pending = false; savedAt = now();
+      var snapshot = { seed: seed, season: season, res: cvRes, cols: W.COLS, sigs: Array.from(sigs) };
+      try {
+        cv.toBlob(function (blob) {
+          if (!blob) { saving = false; return; }
+          snapshot.blob = blob;
+          open(function (db) {
+            if (!db) { saving = false; return; }
+            try {
+              var tx = db.transaction(STORE, 'readwrite');
+              tx.objectStore(STORE).put(snapshot, KEY);
+              tx.oncomplete = tx.onerror = function () { saving = false; };
+            } catch (e) { saving = false; }
+          });
+        }, 'image/png');
+      } catch (e) { saving = false; }
+    }
+    return {
+      load: load,
+      dirty: function (now2) { pending = true; dirtyAt = now(); if (now2) setTimeout(save, 400); },
+      // patched ground is saved again at most once a minute, once things settle
+      maybeSave: function () { if (pending && now() - savedAt > 60000 && now() - dirtyAt > 3000) save(); },
+      saveNow: save
+    };
+  })();
 
   /* Compare the land with what was baked and patch whatever changed:
      felled trees, regrowth, new buildings, footpaths wearing in. */
@@ -628,12 +737,12 @@ var TERRAIN = (function () {
   function draw(ctx, cam, cw, ch, z) {
     var cvs = cv;
     if (!cvs || !ready) return false;
-    var k = z / TPX;                          // screen px per canvas px
+    var k = z / cvRes;                        // screen px per canvas px
     // screen position of the canvas origin
     var ox = cw / 2 - (cam.x - cam.y + W.ROWS + 2 * M) * z / 2;
     var oy = ch / 2 - (cam.x + cam.y + 2 * M) * z / 4;
     var sx = Math.max(0, -ox / k), sy = Math.max(0, -oy / k);
-    var ex = Math.min(CW, (cw - ox) / k), ey = Math.min(CH, (ch - oy) / k);
+    var ex = Math.min(cvs.width, (cw - ox) / k), ey = Math.min(cvs.height, (ch - oy) / k);
     if (ex <= sx || ey <= sy) return true;
     ctx.imageSmoothingEnabled = true;
     // plain bilinear when the ground is magnified; mipmapped only when it is
@@ -646,7 +755,8 @@ var TERRAIN = (function () {
       if (a <= 0) fade = null;
       else {
         ctx.globalAlpha = a;
-        ctx.drawImage(fade.old, sx, sy, ex - sx, ey - sy, ox + sx * k, oy + sy * k, (ex - sx) * k, (ey - sy) * k);
+        var r2 = fade.res / cvRes;          // the old painting may be at another resolution
+        ctx.drawImage(fade.old, sx * r2, sy * r2, (ex - sx) * r2, (ey - sy) * r2, ox + sx * k, oy + sy * k, (ex - sx) * k, (ey - sy) * k);
         ctx.globalAlpha = 1;
       }
     }
@@ -654,7 +764,8 @@ var TERRAIN = (function () {
   }
 
   return {
-    begin: begin, step: step, progress: progress, setSeason: setSeason, sync: sync,
+    begin: begin, step: step, progress: progress, setSeason: setSeason, sync: sync, saveCache: function () { CACHE.saveNow(); },
+    get detailed() { return ready && !full && cvRes !== LOW_RES; },
     draw: draw, heightAt: heightAt,
     get ready() { return ready; },
     get canvas() { return cv; },

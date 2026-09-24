@@ -17,6 +17,7 @@ var UI = (function () {
   function h(html) { var d = document.createElement('div'); d.innerHTML = html.trim(); return d.firstChild; }
 
   var buildMode = null;      // building id currently being placed
+  var moveTarget = null;     // a building being moved, when buildMode is for a move
   var openPanel = null;
   var openTab = {};
   var selected = null;       // {b:building} or {t:tile}
@@ -167,12 +168,12 @@ var UI = (function () {
 
   var PANELS = {
     build: { title: 'Build', tabs: function () { return [{ key: 'suggested', name: '★ Suggested' }].concat(DATA.CATS); }, body: buildBody },
-    people: { title: 'People', tabs: function () { return [{ key: 'quests', name: 'Story' }, { key: 'overview', name: 'Realm' }, { key: 'jobs', name: 'Work' }]; }, body: peopleBody },
-    army: { title: 'Army', tabs: function () { return [{ key: 'roster', name: 'Roster' }, { key: 'muster', name: 'Muster' }, { key: 'war', name: 'War' }]; }, body: armyBody },
+    people: { title: 'People', tabs: function () { return [{ key: 'quests', name: 'Story' }, { key: 'overview', name: 'Realm' }, { key: 'folk', name: 'Families' }, { key: 'jobs', name: 'Work' }]; }, body: peopleBody },
+    army: { title: 'Army', tabs: function () { return [{ key: 'roster', name: 'Roster' }, { key: 'muster', name: 'Muster' }, { key: 'war', name: 'War' }, { key: 'dip', name: 'Diplomacy' }]; }, body: armyBody },
     tech: { title: 'Research', tabs: function () { return [{ key: 1, name: 'Tier I' }, { key: 2, name: 'Tier II' }, { key: 3, name: 'Tier III' }]; }, body: techBody },
     decrees: { title: 'Royal Decrees', tabs: function () { return [{ key: 'all', name: 'Decrees' }]; }, body: decreesBody },
     alerts: { title: 'Needs attention', tabs: function () { return [{ key: 'all', name: 'All' }]; }, body: alertsBody },
-    world: { title: 'The Realm', tabs: function () { return [{ key: 'castle', name: 'Castle' }, { key: 'trade', name: 'Trade' }, { key: 'chronicle', name: 'Chronicle' }, { key: 'settings', name: 'Settings' }]; }, body: worldBody }
+    world: { title: 'The Realm', tabs: function () { return [{ key: 'castle', name: 'Castle' }, { key: 'trade', name: 'Trade' }, { key: 'sea', name: 'Sea chart' }, { key: 'honours', name: 'Honours' }, { key: 'chronicle', name: 'Chronicle' }, { key: 'settings', name: 'Settings' }]; }, body: worldBody }
   };
 
   function renderSheet(rebuildTabs) {
@@ -312,10 +313,42 @@ var UI = (function () {
   }
 
   /* ---------------- PEOPLE ---------------- */
+  function folkBody(box) {
+    var f = FOLK.summary(), st = f.stats;
+    box.appendChild(h('<div class="card">' +
+      '<div class="stat-line"><span>Households</span><b>' + f.households + '</b></div>' +
+      '<div class="stat-line"><span>Married couples</span><b>' + f.couples + '</b></div>' +
+      '<div class="stat-line"><span>Children · elders</span><b>' + f.children + ' · ' + f.elders + '</b></div>' +
+      (f.oldest ? '<div class="stat-line"><span>Oldest soul</span><b>' + FOLK.full(f.oldest) + ', ' + Math.floor(f.oldest.a) + '</b></div>' : '') +
+      '<div class="stat-line"><span>This year</span><b>' + st.born + ' born · ' + st.wed + ' wed · ' + st.came + ' came · ' + (st.died + st.left) + ' lost</b></div>' +
+      (f.sick ? '<div class="stat-line"><span style="color:#d8c13a">🤒 Fever</span><b>' + f.sick + ' ill in ' + f.sickHomes + ' home' + (f.sickHomes > 1 ? 's' : '') + '</b></div>' : '') +
+      (f.noWell ? '<div class="stat-line"><span>Homes with no well near</span><b style="color:#e0b23c">' + f.noWell + '</b></div>' : '') +
+      '</div>'));
+    box.appendChild(h('<p class="hint">Tap anyone in the lanes to meet them. Crowded homes far from a <b>well</b> breed fever; a yellow cloth on the door marks a sick house — tap it to send for the physician.</p>'));
+    box.appendChild(h('<p class="sect-label">Families of Ashveil</p>'));
+    box.appendChild(h('<div class="card"><p class="folk-names fams">' + FOLK.families().slice(0, 18).map(function (x) {
+      return '<span>' + x.f + ' <i>' + x.n + '</i></span>'; }).join('') + '</p></div>'));
+    if (f.log.length) {
+      box.appendChild(h('<p class="sect-label">Births, weddings and burials</p>'));
+      box.appendChild(h('<div class="card">' + f.log.slice(0, 14).map(function (l) {
+        return '<div class="stat-line"><span style="flex:0 0 58px;color:#8a7a5e">' + l.s + '</span><b style="font-weight:400;text-align:left;flex:1">' + l.m + '</b></div>';
+      }).join('') + '</div>'));
+    }
+  }
+
   function peopleBody(box, tab) {
     var G = SIM.G;
+    if (tab === 'folk') { folkBody(box); return; }
     if (tab === 'overview') {
       var target = SIM.happyTarget();
+      var led = h('<div class="card ledger"><p class="sect-label" style="margin:0 0 6px">The ledger, season by season</p><div class="ledger-grid"></div></div>');
+      var lg = led.querySelector('.ledger-grid');
+      [['pop', 'People', '#8fd06a'], ['food', 'Food', '#d9bf55'], ['gold', 'Gold', '#e0b23c'], ['happy', 'Contentment', '#6fb0d9']].forEach(function (c) {
+        var cell = h('<div><span>' + c[1] + '</span><canvas></canvas></div>');
+        lg.appendChild(cell);
+        requestAnimationFrame(function () { HONOURS.drawChart(cell.querySelector('canvas'), c[0], c[2]); });
+      });
+      box.appendChild(led);
       box.appendChild(h('<div class="card">' +
         '<div class="stat-line"><span>Villagers</span><b>' + Math.floor(G.pop) + ' / ' + SIM.housing() + ' housing</b></div>' +
         '<div class="stat-line"><span>At work</span><b>' + (Math.floor(G.pop) - (G.idle || 0)) + '</b></div>' +
@@ -489,6 +522,7 @@ var UI = (function () {
       });
     }
 
+    if (tab === 'dip') { dipBody(box); return; }
     if (tab === 'war') {
       var r = G.rival;
       var attackOdds = estimateOdds(r.str, 'raid');
@@ -507,7 +541,7 @@ var UI = (function () {
         '<div class="stat-line"><span>Do they fear you?</span><b style="color:' +
           (SIM.deterrence() > 1.45 ? '#8fd06a' : SIM.deterrence() > 0.9 ? '#e0b23c' : '#e0795f') + '">' +
           (SIM.deterrence() > 1.45 ? 'yes — many raids turn back' : SIM.deterrence() > 0.9 ? 'they are wary' : 'no — you look easy') + '</b></div>' +
-        '<div class="stat-line"><span>Next raid on you</span><b>' + (grace > 0 ? 'at peace for ' + grace + ' more season' + (grace > 1 ? 's' : '') : '~' + Math.max(0, Math.round(r.nextRaid / DATA.SEASON_LEN * 10) / 10) + ' seasons') + '</b></div>' +
+        '<div class="stat-line"><span>Next raid on you</span><b>' + (SIM.atPeace() ? 'none — you have a treaty' : grace > 0 ? 'at peace for ' + grace + ' more season' + (grace > 1 ? 's' : '') : '~' + Math.max(0, Math.round(r.nextRaid / DATA.SEASON_LEN * 10) / 10) + ' seasons') + '</b></div>' +
         '<div class="stat-line"><span>Battles won / lost</span><b>' + G.stats.wins + ' / ' + G.stats.losses + '</b></div>' +
         '</div>'));
       box.appendChild(h('<p class="sect-label">Formation</p>'));
@@ -540,7 +574,11 @@ var UI = (function () {
         var raid = h('<button class="btn wide">⚔️ March on Brannoch</button>');
         raid.disabled = SIM.armyCount() < 3;
         if (SIM.armyCount() < 3) raid.textContent = 'You need at least 3 soldiers';
+        if (SIM.atPeace()) raid.textContent = '⚔️ March on Brannoch (breaks your ' + (SIM.dip().ally ? 'alliance' : 'pact') + ')';
         raid.addEventListener('click', function () {
+          if (SIM.atPeace() && !raid.dataset.sure) {
+            raid.dataset.sure = 1; raid.textContent = 'Tap again to break faith and march'; raid.classList.add('danger'); U.sfx.err(); return;
+          }
           var r = SIM.launchCampaign({ power: G.rival.str, name: 'Brannoch' });
           if (!r.ok) { toast(r.why, 'bad'); U.sfx.err(); return; }
           U.sfx.horn();
@@ -563,18 +601,52 @@ var UI = (function () {
         renderSheet();
       });
       box.appendChild(scout);
-      var tribute = h('<button class="btn sec wide">🕊️ Send tribute (−150 gold, delays their raid)</button>');
-      tribute.addEventListener('click', function () {
-        if (G.res.gold < 150) { toast('Not enough gold', 'bad'); return; }
-        G.res.gold -= 150;
-        r.nextRaid += DATA.SEASON_LEN * 2.4;
-        r.str = Math.max(10, r.str - 6);
-        toast('Brannoch accepts the tribute. Quiet, for now.', 'good');
-        renderSheet();
-      });
-      box.appendChild(tribute);
       box.appendChild(h('<p class="hint">Brannoch sizes each raid against <b>your</b> strength, so you will not be jumped by an army ten times your own — but leave yourself defenceless and they will still take your stores. Walls and watchtowers only help when <b>defending</b>. Attacking is won by numbers, archers and smithies.</p>'));
     }
+  }
+
+  function dipBody(box) {
+    var G = SIM.G, d = SIM.dip(), p = SIM.persona(), mood = SIM.dipMood(), D = SIM.DIP;
+    var pct = (d.att + 100) / 2;
+    var status = d.ally ? '💍 Allies by marriage' : d.pact >= 0 ? '🤝 Trade pact' : G.tribute ? '⚖️ Paying you tribute' : '⚔️ No treaty';
+    box.appendChild(h('<div class="card">' +
+      '<h4 style="font-family:var(--font);font-size:15px">Lord Harric of Brannoch</h4>' +
+      '<p style="font-size:12px;color:#c3b18e;margin:4px 0 8px">' + (d.known ? p.desc : 'You know little of him yet. Send an envoy to learn his temper.') + '</p>' +
+      '<div class="stat-line"><span>Their mood</span><b style="color:' + mood.col + '">' + mood.name + ' (' + (d.att > 0 ? '+' : '') + Math.round(d.att) + ')</b></div>' +
+      '<div class="meter dip"><i style="width:' + pct.toFixed(1) + '%"></i><em style="left:' + ((D.pactAtt + 100) / 2) + '%"></em><em style="left:' + ((D.allyAtt + 100) / 2) + '%"></em></div>' +
+      '<div class="stat-line" style="margin-top:8px"><span>Standing</span><b>' + status + '</b></div>' +
+      (d.known ? '<div class="stat-line"><span>Temper</span><b>' + p.name + '</b></div>' : '') +
+      (G.tribute ? '<div class="stat-line"><span>Tribute</span><b>' + G.tribute.amt + ' gold × ' + G.tribute.left + ' seasons</b></div>' : '') +
+      '</div>'));
+    function act(kind, label, sub, disabledWhy) {
+      var b = h('<button class="btn ' + (kind === 'pact' || kind === 'ally' ? '' : 'sec ') + 'wide dip-act">' +
+        '<span>' + label + '</span><small>' + (disabledWhy || sub) + '</small></button>');
+      b.disabled = !!disabledWhy;
+      b.addEventListener('click', function () {
+        var r = SIM.dipAct(kind);
+        if (!r.ok) { toast(r.why, 'bad'); U.sfx.err(); return; }
+        toast(r.msg, 'good'); U.sfx.tap();
+        chronicle(kind === 'gift' ? 'Sent gifts to Brannoch.' : kind === 'envoy' ? 'An envoy went to Brannoch.' :
+                  kind === 'pact' ? 'Signed a trade pact with Brannoch.' : 'A royal wedding: Brannoch is now an ally.');
+        SIM.save(); renderSheet(); refreshHUD();
+      });
+      box.appendChild(b);
+    }
+    var marching = G.campaign ? 'Not while your army is marching on them' : '';
+    act('envoy', '📜 Send an envoy · ' + D.envoy + ' gold', d.known ? 'Keep the talks going (+3).' : 'Learn their lord\'s temper, and warm him a little.',
+      marching || (SIM.dipReady('envoy') ? '' : 'Your last envoy has only just returned'));
+    act('gift', '🎁 Send gifts · ' + D.gift + ' gold', 'Warms them' + (d.known ? ' by about ' + Math.round(12 * p.gift) : '') + ' and delays any raid.',
+      marching || (SIM.dipReady('gift') ? '' : 'You sent gifts this season'));
+    if (!d.ally && d.pact < 0) {
+      act('pact', '🤝 Offer a trade pact · ' + D.pact + ' gold', 'No more raids from Brannoch, and +18 gold in trade every season.',
+        marching || (d.att < D.pactAtt ? 'Needs their mood at +' + D.pactAtt + ' or better' : ''));
+    } else if (!d.ally) {
+      var held = (G.time - d.pact) / DATA.SEASON_LEN;
+      act('ally', '💍 Propose a royal marriage · ' + D.ally + ' gold', 'Allies for good: +40 gold every season and a happier realm.',
+        held < D.allySeasons ? 'Keep the pact ' + Math.ceil(D.allySeasons - held) + ' more season' + (D.allySeasons - held > 1 ? 's' : '') :
+        d.att < D.allyAtt ? 'Needs their mood at +' + D.allyAtt + ' or better' : '');
+    }
+    box.appendChild(h('<p class="hint">Beating Brannoch in battle sours most lords — though a <b>wary</b> one respects it. Storming their town earns a year of tribute. Marching on them breaks any pact. <b>The Sea Wolves</b> talk to nobody: keep soldiers and walls for them whatever you sign.</p>'));
   }
 
   function fieldStrength(extraDef) { return SIM.fieldStrength(extraDef); }
@@ -657,8 +729,101 @@ var UI = (function () {
   }
 
   /* ---------------- WORLD ---------------- */
+  function honoursBody(box) {
+    var sc = HONOURS.score(), best = HONOURS.best(), have = HONOURS.earned(), D = SIM.diff();
+    box.appendChild(h('<div class="card score-card"><p class="sect-label" style="margin:0">Reign score</p>' +
+      '<div class="score-big">' + sc.toLocaleString() + '</div>' +
+      '<p class="hint" style="margin:2px 0 8px">' + D.name + ' — scores ×' + D.score + '. Best on this setting: <b>' + (best[(SIM.G.setup || {}).diff || 'fair'] || sc).toLocaleString() + '</b></p>' +
+      HONOURS.parts().filter(function (p) { return p[1]; }).map(function (p) {
+        return '<div class="stat-line"><span>' + p[0] + '</span><b>' + p[1].toLocaleString() + '</b></div>'; }).join('') + '</div>'));
+    var n = HONOURS.LIST.filter(function (x) { return have[x.id]; }).length;
+    box.appendChild(h('<p class="sect-label">Honours · ' + n + ' of ' + HONOURS.LIST.length + '</p>'));
+    box.appendChild(h('<p class="hint" style="margin-top:0">Honours stay earned from one reign to the next.</p>'));
+    var grid = h('<div class="honours"></div>');
+    HONOURS.LIST.forEach(function (x) {
+      grid.appendChild(h('<div class="honour' + (have[x.id] ? ' got' : '') + '"><i>' + x.ic + '</i><b>' + x.name + '</b><span>' + x.desc + '</span></div>'));
+    });
+    box.appendChild(grid);
+  }
+
+  var chartSel = -1, chartCv = null;
+  function seaBody(box) {
+    var G = SIM.G, sea = G.sea;
+    if (!sea) { box.appendChild(h('<p class="hint">The chart is still being drawn.</p>')); return; }
+    chartCv = h('<canvas class="sea-chart"></canvas>');
+    box.appendChild(chartCv);
+    chartCv.addEventListener('click', function (e) {
+      var r = chartCv.getBoundingClientRect();
+      chartSel = EXPLORE.spotAt(chartCv, e.clientX - r.left, e.clientY - r.top);
+      U.sfx.tap(); renderSheet();
+    });
+    (function paint(n) {
+      requestAnimationFrame(function () {
+        if (!chartCv) return;
+        if (!chartCv.clientWidth && n < 20) return paint(n + 1);
+        EXPLORE.drawChart(chartCv, chartSel, performance.now() / 1000);
+      });
+    })(0);
+    var harbour = EXPLORE.harbour();
+    if (!harbour) box.appendChild(h('<p class="hint">⚓ You need a harbour to put ships to sea — any <b>fishing hut</b> will do.</p>'));
+    if (sea.voyage) {
+      var left = Math.max(0, (sea.voyage.len - sea.voyage.t) / DATA.SEASON_LEN);
+      box.appendChild(h('<p class="hint">⛵ Your ship is out charting ' + EXPLORE.SPOTS[sea.spots[sea.voyage.to].k].name.replace(/.*/, function (n) { return sea.spots[sea.voyage.to].known ? n : 'unknown waters'; }) +
+        ' — back in ' + left.toFixed(1) + ' seasons.</p>'));
+    }
+    if (chartSel < 0) {
+      box.appendChild(h('<p class="hint">Tap a place on the chart. Charted islets can be settled as <b>outposts</b> that ship goods home every season; the mainland port can take a standing <b>trade route</b>.</p>'));
+      return;
+    }
+    var sp = sea.spots[chartSel], d = EXPLORE.SPOTS[sp.k];
+    var card = h('<div class="card"><div class="card-row"><div class="card-ic" style="font-size:22px">' + (sp.known ? d.ic : '❔') + '</div>' +
+      '<div class="card-main"><h4>' + (sp.known ? d.name : 'Uncharted waters') + '</h4><p>' +
+      (sp.known ? d.desc : 'Something lies out there. Only a ship will tell you what.') + '</p>' +
+      (sp.outpost ? '<p style="color:#8fd06a;margin-top:5px">⚑ Your outpost: +' + d.amt + ' ' + d.res + ' every season</p>' : '') +
+      (sp.route ? '<p style="color:#8fd06a;margin-top:5px">⛵ Trade route running: gold every season, better prices at market</p>' : '') +
+      (sp.burned ? '<p style="color:#8fd06a;margin-top:5px">🔥 Burned. The Wolves are licking their wounds.</p>' : '') +
+      '</div></div></div>');
+    function act(label, fn, dis) {
+      var b = h('<button class="btn wide">' + label + '</button>');
+      b.disabled = !!dis;
+      b.addEventListener('click', function () {
+        var r = fn();
+        if (!r || !r.ok) { if (r) toast(r.why, 'bad'); U.sfx.err(); return; }
+        if (r.msg) { toast(r.msg, 'good'); chronicle(r.msg); }
+        U.sfx.tap(); SIM.save(); renderSheet(); refreshHUD();
+      });
+      card.appendChild(b);
+    }
+    if (!sp.known) act('🧭 Send a ship to chart it (30 gold, 20 food)', function () { return EXPLORE.chart(chartSel); }, !harbour || !!sea.voyage);
+    else if (d.res && !sp.outpost) act('⚑ Found an outpost (60 gold, 80 wood, 40 food, 3 settlers)', function () { return EXPLORE.foundOutpost(chartSel); }, !harbour);
+    else if (sp.k === 'port' && !sp.route) act('⚓ Open a trade route (' + EXPLORE.ROUTE_COST + ' gold)', function () { return EXPLORE.openRoute(chartSel); }, !harbour);
+    else if (sp.k === 'haven' && !sp.burned) {
+      act('🔥 Sail on the haven with your army', function () {
+        if (SIM.armyCount() < 6) return { ok: false, why: 'You need at least 6 soldiers at home' };
+        closeSheet();
+        startBattle('raid', { power: 40 + SIM.seasonIndex() * 2.2, name: 'The Sea Wolves', flavour: 'wolves', faction: 'wolves' });
+        return { ok: true };
+      }, SIM.armyCount() < 6);
+      card.appendChild(h('<p class="hint" style="margin-top:6px">A walled cove. Bring at least 6 soldiers — catapults help with the gate.</p>'));
+    }
+    box.appendChild(card);
+  }
+
+  /* larger text and calmer screens, remembered per device */
+  function setComfort(k, on) {
+    document.documentElement.classList.toggle(k === 'big' ? 'big-text' : 'calm', on);
+    try { localStorage.setItem('ashveil.' + k, on ? '1' : '0'); } catch (e) {}
+    if (k === 'calm' && RENDER.setCalm) RENDER.setCalm(on);
+  }
+  try {
+    if (localStorage.getItem('ashveil.big') === '1') document.documentElement.classList.add('big-text');
+    if (localStorage.getItem('ashveil.calm') === '1') document.documentElement.classList.add('calm');
+  } catch (e) {}
+
   function worldBody(box, tab) {
     var G = SIM.G;
+    if (tab === 'sea') { seaBody(box); return; }
+    if (tab === 'honours') { honoursBody(box); return; }
     if (tab === 'castle') {
       var cur = DATA.CASTLE[G.castle], nxt = SIM.nextCastle();
       box.appendChild(h('<div class="card">' +
@@ -743,9 +908,36 @@ var UI = (function () {
         toast(SIM.save() ? 'Kingdom saved.' : 'Could not save (storage blocked).', SIM.save() ? 'good' : 'bad');
       });
       box.appendChild(sv);
-      var snd = h('<button class="btn sec wide">' + (U.isMuted() ? '🔇 Sound off' : '🔊 Sound on') + '</button>');
-      snd.addEventListener('click', function () { toggleSound(); renderSheet(); });
-      box.appendChild(snd);
+      box.appendChild(h('<p class="sect-label">Detail</p>'));
+      var qrow = h('<div class="pill-row"></div>');
+      [['auto', 'Automatic'], ['high', 'High'], ['balanced', 'Balanced'], ['saver', 'Battery saver']].forEach(function (q) {
+        var pb = h('<button class="pill' + (RENDER.qualityPref() === q[0] ? ' on' : '') + '">' + q[1] + '</button>');
+        pb.addEventListener('click', function () { RENDER.setQuality(q[0]); U.sfx.tap(); renderSheet(); });
+        qrow.appendChild(pb);
+      });
+      box.appendChild(qrow);
+      box.appendChild(h('<p class="hint">Automatic starts at High and eases off if your phone struggles. Now drawing at: <b>' +
+        { high: 'High', balanced: 'Balanced', saver: 'Battery saver' }[RENDER.quality()] + '</b>.</p>'));
+      box.appendChild(h('<p class="sect-label">Sound</p>'));
+      var srow = h('<div class="pill-row"></div>');
+      [['all', U.isMuted() ? '🔇 All sound off' : '🔊 Sound on', !U.isMuted()], ['amb', '🌊 Sea & birds', U.soundPref('amb')], ['music', '🎵 Music', U.soundPref('music')]].forEach(function (o) {
+        var pb = h('<button class="pill' + (o[2] ? ' on' : '') + '">' + o[1] + '</button>');
+        pb.addEventListener('click', function () {
+          if (o[0] === 'all') toggleSound(); else U.setSoundPref(o[0], !U.soundPref(o[0]));
+          U.resumeAudio(); U.sfx.tap(); renderSheet();
+        });
+        srow.appendChild(pb);
+      });
+      box.appendChild(srow);
+      box.appendChild(h('<p class="sect-label">Comfort</p>'));
+      var arow = h('<div class="pill-row"></div>');
+      [['big', 'Larger text'], ['calm', 'Reduce motion']].forEach(function (o) {
+        var on = document.documentElement.classList.contains(o[0] === 'big' ? 'big-text' : 'calm');
+        var pb = h('<button class="pill' + (on ? ' on' : '') + '">' + o[1] + '</button>');
+        pb.addEventListener('click', function () { setComfort(o[0], !on); U.sfx.tap(); renderSheet(); });
+        arow.appendChild(pb);
+      });
+      box.appendChild(arow);
       var fs = h('<button class="btn sec wide">⛶ Fullscreen</button>');
       fs.addEventListener('click', function () {
         var d = document.documentElement;
@@ -753,6 +945,30 @@ var UI = (function () {
         else if (document.exitFullscreen) document.exitFullscreen();
       });
       box.appendChild(fs);
+      box.appendChild(h('<p class="sect-label">Keep a copy</p>'));
+      box.appendChild(h('<p class="hint">Your kingdom lives in this browser. Copy its save code somewhere safe — a note, a message to yourself — and you can bring it back here or on another phone.</p>'));
+      var cp = h('<button class="btn sec wide">📋 Copy save code</button>');
+      cp.addEventListener('click', function () {
+        SIM.save();
+        var code = SIM.exportCode();
+        var done = function () { toast('Save code copied — ' + Math.round(code.length / 1024) + ' KB of text.', 'good'); };
+        var fallback = function () { ta.value = code; ta.select(); try { document.execCommand('copy'); done(); } catch (e) { toast('Select the text below and copy it.', ''); } };
+        if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(code).then(done, fallback);
+        else fallback();
+      });
+      box.appendChild(cp);
+      var ta = h('<textarea id="save-code" rows="3" placeholder="Paste a save code here to load it"></textarea>');
+      box.appendChild(ta);
+      var ld = h('<button class="btn sec wide">📥 Load this save code</button>');
+      var armedL = false;
+      ld.addEventListener('click', function () {
+        var r = SIM.checkCode(ta.value);
+        if (!r.ok) { toast(r.why, 'bad'); U.sfx.err(); return; }
+        if (!armedL) { armedL = true; ld.textContent = 'Tap again — this replaces the kingdom you are playing'; return; }
+        SIM.importCode(ta.value);
+        location.reload();
+      });
+      box.appendChild(ld);
       box.appendChild(h('<p class="sect-label">Danger</p>'));
       var rs = h('<button class="btn danger wide">Abandon this kingdom and start over</button>');
       var armed = false;
@@ -778,19 +994,37 @@ var UI = (function () {
     updateGhost(RENDER.size.w / 2, RENDER.size.h / 2);
     U.sfx.tap();
   }
+  function startMove(b) {
+    clearSelection(); closeSheet();
+    buildMode = b.id; moveTarget = b;
+    el('build-banner').classList.remove('hidden');
+    var mc = SIM.moveCost(b);
+    el('build-banner-text').textContent = 'Moving ' + (b.def.name) + ' — tap the new spot (' +
+      Object.keys(mc).map(function (k) { return mc[k] + ' ' + k; }).join(', ') + ')';
+    updateGhost(RENDER.size.w / 2, RENDER.size.h / 2);
+    U.sfx.tap();
+  }
   function cancelBuild() {
+    moveTarget = null;
     buildMode = null;
     RENDER.setGhost(null);
     el('build-banner').classList.add('hidden');
   }
   /* the plot a finger at (sx,sy) means: big buildings centre on it */
   function plotAt(sx, sy, id) {
-    var def = DATA.B[id], w = RENDER.toWorld(sx, sy);
+    var def = moveTarget ? moveTarget.def : DATA.B[id], w = RENDER.toWorld(sx, sy);
     return { x: Math.round(w.x - (def.w || 1) / 2), y: Math.round(w.y - (def.h || 1) / 2) };
   }
   function updateGhost(sx, sy) {
     if (!buildMode) return;
     var t = plotAt(sx, sy, buildMode);
+    if (moveTarget) {
+      var mchk = SIM.canMove(moveTarget, t.x, t.y), maff = SIM.canAfford(SIM.moveCost(moveTarget));
+      RENDER.setGhost({ id: buildMode, x: t.x, y: t.y, ok: mchk.ok && maff, def: moveTarget.def, b: moveTarget,
+        why: mchk.ok ? (maff ? '' : 'Not enough to move it') : mchk.why,
+        preview: mchk.ok ? (maff ? 'Move here' : 'Not enough to move it') : mchk.why });
+      return;
+    }
     var chk = W.canPlace(buildMode, t.x, t.y);
     var cost = SIM.costOf(buildMode);
     var afford = SIM.canAfford(cost);
@@ -801,8 +1035,19 @@ var UI = (function () {
   }
   function tryPlaceAt(sx, sy) {
     var t = plotAt(sx, sy, buildMode);
+    if (moveTarget) {
+      var mb = moveTarget, mr = SIM.moveBuilding(mb, t.x, t.y);
+      if (mr.ok) {
+        U.sfx.place(); U.vibrate(12);
+        RENDER.puff(t.x + (mb.def.w || 1) / 2, t.y + (mb.def.h || 1) / 2, '#c9b58a', 9);
+        toast(mb.def.name + ' moved.', 'good');
+        cancelBuild(); refreshHUD();
+      } else { U.sfx.err(); toast(mr.why, 'bad'); }
+      return mr.ok;
+    }
     var r = SIM.place(buildMode, t.x, t.y);
     if (r.ok) {
+      showUndo();
       U.sfx.place(); U.vibrate(12);
       RENDER.puff(t.x + (DATA.B[buildMode].w || 1) / 2, t.y + (DATA.B[buildMode].h || 1) / 2, '#c9b58a', 9);
       refreshHUD();
@@ -855,14 +1100,67 @@ var UI = (function () {
     storyCard('⛵', 'A Merchant Cog', 'A trader from the southern ports has dropped anchor off Ashveil. Their prices beat the market square — for today.', btns);
   }
 
+  var undoTimer = null;
+  function showUndo() {
+    var chip = el('undo-chip');
+    chip.classList.remove('hidden');
+    clearInterval(undoTimer);
+    var tickU = function () {
+      var left = SIM.undoLeft();
+      if (left <= 0) { chip.classList.add('hidden'); clearInterval(undoTimer); return; }
+      el('undo-left').textContent = Math.ceil(left) + 's';
+    };
+    tickU();
+    undoTimer = setInterval(tickU, 250);
+  }
+
   function select(sel) {
+    if (selected && selected.a) selected.a.sel = false;
+    if (sel && sel.a) sel.a.sel = true;
     selected = sel;
     RENDER.setSelected(sel);
     renderInspector();
   }
   function clearSelection() {
+    if (selected && selected.a) selected.a.sel = false;
     selected = null; RENDER.setSelected(null);
     el('inspector').classList.add('hidden');
+  }
+
+  /* one of your people */
+  function personCard(p, ic, body, acts) {
+    if (!p) { clearSelection(); return; }
+    var home = FOLK.homeOf(p), m = FOLK.mood(p), job = FOLK.jobOf(p);
+    ic.textContent = p.sick ? '🤒' : p.a < 6 ? '👶' : p.a < 14 ? (p.s === 'f' ? '👧' : '👦') : p.a >= 62 ? (p.s === 'f' ? '👵' : '👴') : (p.s === 'f' ? '👩' : '👨');
+    ic.style.fontSize = '26px';
+    el('insp-name').textContent = FOLK.full(p);
+    el('insp-sub').textContent = Math.floor(p.a) + ' years old · ' + FOLK.tradeOf(p);
+    var sp = p.sp && FOLK.get(p.sp), pa = p.pa && FOLK.get(p.pa);
+    var kids = FOLK.list.filter(function (q) { return q.pa === p.i || (p.sp && q.pa === p.sp); });
+    var sv = FOLK.servicesOf(home);
+    var col = m.v < 30 ? '#e0795f' : m.v < 55 ? '#e0b23c' : '#8fd06a';
+    var lines = [
+      '<div class="stat-line"><span>Mood</span><b style="color:' + col + '">' + m.word + '</b></div>' +
+        (m.why.length ? '<p class="why">Troubled by ' + m.why.join(', ') + '.</p>' : ''),
+      '<div class="stat-line"><span>Home</span><b>' + (home ? (home.id === 'castle' ? 'a bed in the castle hall' : (home.def.tierNames ? home.def.tierNames[(home.level || 1) - 1] : home.def.name)) : 'none') + '</b></div>',
+      job ? '<div class="stat-line"><span>Works at</span><b>' + job.def.name + '</b></div>' : '',
+      sp ? '<div class="stat-line"><span>Married to</span><b>' + sp.n + '</b></div>' : p.grief > 0 ? '<div class="stat-line"><span>Widowed</span><b>and grieving</b></div>' : '',
+      pa ? '<div class="stat-line"><span>Child of</span><b>' + pa.n + (FOLK.get(pa.sp) ? ' and ' + FOLK.get(pa.sp).n : '') + '</b></div>' : '',
+      kids.length ? '<div class="stat-line"><span>Children</span><b>' + kids.map(function (k) { return k.n; }).join(', ') + '</b></div>' : '',
+      home && home.id !== 'castle' ? '<div class="stat-line"><span>Near home</span><b>' +
+        [sv.well ? '⛲' : '', sv.chapel ? '⛪' : '', sv.tavern ? '🍺' : '', sv.market ? '⚖️' : ''].join(' ') + (sv.well ? '' : ' no well') + '</b></div>' : ''
+    ];
+    body.innerHTML = lines.join('');
+    if (home) {
+      var hb = h('<button class="btn sec">🏠 Show their home</button>');
+      hb.addEventListener('click', function () { RENDER.centreOn(home.x, home.y); select({ b: home }); });
+      acts.appendChild(hb);
+    }
+    if (job) {
+      var jb = h('<button class="btn sec">⚒️ Their workplace</button>');
+      jb.addEventListener('click', function () { RENDER.centreOn(job.x, job.y); select({ b: job }); });
+      acts.appendChild(jb);
+    }
   }
 
   function renderInspector() {
@@ -903,6 +1201,32 @@ var UI = (function () {
       }
       if (def.upkeep) lines.push('<div class="stat-line"><span>upkeep</span><b>−' + def.upkeep.toFixed(2) + ' g/s</b></div>');
       if (def.housing) lines.push('<div class="stat-line"><span>housing</span><b>+' + def.housing + '</b></div>');
+      if (b.built && typeof FOLK !== 'undefined' && (def.housing || b.id === 'castle')) {
+        var res = FOLK.residents(b), sick = FOLK.sickAt(b), sv = FOLK.servicesOf(b);
+        if (res.length) {
+          var fams = {};
+          res.forEach(function (p) { fams[p.f] = (fams[p.f] || 0) + 1; });
+          lines.push('<div class="stat-line"><span>Home to</span><b>' + Object.keys(fams).map(function (f) { return 'the ' + f + 's'; }).join(', ') + ' (' + res.length + ')</b></div>');
+          lines.push('<p class="folk-names">' + res.map(function (p) {
+            return '<span' + (p.sick ? ' class="ill"' : '') + '>' + p.n + ' <i>' + Math.floor(p.a) + '</i></span>'; }).join('') + '</p>');
+        }
+        if (b.id !== 'castle') lines.push('<div class="stat-line"><span>Nearby</span><b>' +
+          [sv.well ? '⛲ well' : '<s>no well</s>', sv.chapel ? '⛪ chapel' : '', sv.tavern ? '🍺 tavern' : '', sv.market ? '⚖️ market' : '']
+            .filter(Boolean).join(' · ') + '</b></div>');
+        if (sick) {
+          var doc = b.physic && b.physic > SIM.G.time;
+          lines.push('<div class="stat-line"><span style="color:#d8c13a">🤒 Fever</span><b>' + sick + ' ill' + (doc ? ' · the physician is here' : sv.well ? '' : ' · no clean water near') + '</b></div>');
+          var pb2 = h('<button class="btn">⚕️ Send for the physician (−25 gold)</button>');
+          pb2.disabled = doc;
+          if (doc) pb2.textContent = '⚕️ The physician is tending them';
+          pb2.addEventListener('click', function () {
+            var r = FOLK.physician(b);
+            if (!r.ok) { toast(r.why, 'bad'); U.sfx.err(); return; }
+            toast('The physician comes with herbs and clean linen.', 'good'); U.sfx.tap(); renderInspector(); refreshHUD();
+          });
+          acts.appendChild(pb2);
+        }
+      }
       // NB: contentment is still pooled realm-wide, so don't claim a radius
       // the simulation does not honour — see "the balance audit" in PLAN.md
       if (def.happy) lines.push('<div class="stat-line"><span>contentment</span><b>+' + def.happy + ' realm-wide</b></div>');
@@ -961,6 +1285,11 @@ var UI = (function () {
         pb.addEventListener('click', function () { b.paused = !b.paused; SIM.assignWorkers(true); renderInspector(); });
         acts.appendChild(pb);
       }
+      if (b.id !== 'castle' && !b.fire) {
+        var mv = h('<button class="btn sec">✥ Move</button>');
+        mv.addEventListener('click', function () { startMove(b); });
+        acts.appendChild(mv);
+      }
       if (b.id !== 'castle') {
         var db = h('<button class="btn danger">Demolish</button>');
         var armed = false;
@@ -974,6 +1303,40 @@ var UI = (function () {
         ub.addEventListener('click', function () { clearSelection(); openTab.world = 'castle'; openSheet('world'); });
         acts.appendChild(ub);
       }
+    } else if (selected.p) {
+      personCard(FOLK.get(selected.p), ic, body, acts);
+    } else if (selected.site) {
+      var st = selected.site, sd = EXPLORE.SITES[st.k];
+      ic.textContent = sd.ic; ic.style.fontSize = '24px';
+      el('insp-name').textContent = sd.name;
+      el('insp-sub').textContent = st.done ? 'searched' : (st.k === 'ore' || st.k === 'spring') ? 'found by your scouts' : 'waiting to be searched';
+      body.innerHTML = '<p style="font-size:12.5px;color:#d9ccae;margin:0">' + sd.desc + '</p>';
+      if (!st.done && st.k !== 'ore' && st.k !== 'spring') {
+        var sb = h('<button class="btn">🔦 Search it</button>');
+        sb.addEventListener('click', function () {
+          var r = EXPLORE.search(st);
+          if (!r.ok) { toast(r.why, 'bad'); return; }
+          U.sfx.quest(); chronicle('Searched the ' + sd.name.toLowerCase() + '.');
+          RENDER.puff(st.x + .5, st.y + .5, '#f0d98a', 10);
+          clearSelection(); refreshHUD();
+          storyCard(sd.ic, sd.name, r.msg, [{ label: 'Good' }]);
+        });
+        acts.appendChild(sb);
+      }
+    } else if (selected.t && typeof EXPLORE !== 'undefined' && !EXPLORE.seen(selected.t.x, selected.t.y)) {
+      var ft = selected.t;
+      ic.textContent = '🌫️'; ic.style.fontSize = '22px';
+      el('insp-name').textContent = 'Unexplored';
+      el('insp-sub').textContent = Math.round(EXPLORE.known() * 100) + '% of the island is known';
+      body.innerHTML = '<p style="font-size:12.5px;color:#d9ccae;margin:0">Nobody from Ashveil has been this way. Send a scout to map it — or build nearby, and the mist will lift around it. Watchtowers see furthest.</p>';
+      var scb = h('<button class="btn">🧭 Send a scout (' + EXPLORE.SCOUT_COST + ' gold)</button>');
+      scb.addEventListener('click', function () {
+        var r = EXPLORE.sendScout(ft.x, ft.y);
+        if (!r.ok) { toast(r.why, 'bad'); U.sfx.err(); return; }
+        toast('A scout sets out to the ' + 'unknown.', 'good'); U.sfx.tap();
+        clearSelection(); refreshHUD();
+      });
+      acts.appendChild(scb);
     } else if (selected.t) {
       var t = selected.t;
       var terr = DATA.TERRAIN[t.terr];
@@ -1094,10 +1457,21 @@ var UI = (function () {
         updateGhost(e.clientX, sy);
         tryPlaceAt(e.clientX, sy);
       } else {
+        if (WAR.active && WAR.selected) {
+          var wp = RENDER.toWorld(e.clientX, sy);
+          WAR.orderAt(wp.x, wp.y); U.sfx.tap(); U.vibrate(10);
+          RENDER.puff(wp.x, wp.y, '#f0d98a', 5);
+          return;
+        }
         if (RENDER.pickShip(e.clientX, sy)) { U.sfx.tap(); openShip(); return; }
         var fi = RENDER.pickFind(e.clientX, sy);
         if (fi >= 0) { collectFind(fi); return; }
+        var site = RENDER.pickSite(e.clientX, sy);
+        if (site) { select({ site: site }); U.sfx.tap(); return; }
         var hitB = RENDER.pickBuilding(e.clientX, sy);
+        // a villager right under the finger beats the building behind them
+        var ag = typeof FOLK !== 'undefined' ? RENDER.pickAgent(e.clientX, sy, !!hitB) : null;
+        if (ag && ag.pid && FOLK.get(ag.pid)) { select({ p: ag.pid, a: ag }); U.sfx.tap(); return; }
         var t = RENDER.tileAtScreen(e.clientX, sy);
         var tile = W.at(t.x, t.y);
         if (hitB) select({ b: hitB });
@@ -1294,16 +1668,20 @@ var UI = (function () {
     storyCard('👑', 'Your Reign Is Complete',
       DATA.CHAPTERS[DATA.CHAPTERS.length - 1].done +
       '\n\nYear ' + SIM.year() + ' · ' + Math.floor(G.pop) + ' villagers · ' + built + ' buildings · ' +
-      G.stats.wins + ' battles won · ' + G.stats.techDone + ' discoveries',
+      G.stats.wins + ' battles won · ' + G.stats.techDone + ' discoveries' +
+      '\n\nReign score: ' + HONOURS.score().toLocaleString() + ' (' + SIM.diff().name + ')',
       [{ label: 'Keep ruling', sub: 'Ashveil is yours to build on for as long as you like' }]);
   }
 
   /* the first thing a new ruler sees */
   function introCard() {
-    var ch = DATA.CHAPTERS[0];
-    storyCard('🏝️', 'Chapter I · ' + ch.title,
-      ch.text + '\n\nDrag to look around, pinch to zoom, and tap anything to see what it does. Your next goal is always in the card at the top of the screen — and the Build menu opens on what your realm needs most.',
-      [{ label: 'Begin', sub: 'Raise cottages, plant farms, fell timber' }]);
+    var ch = DATA.CHAPTERS[0], sc = SIM.G.setup && SIM.G.setup.scen, SC = SIM.SCENARIOS[sc];
+    var extra = sc === 'winter' ? '\n\n❄️ You landed late: it is already autumn, the barns are near empty and winter is coming. Farms and a fishing hut, first of all.'
+      : sc === 'border' ? '\n\n⚔️ Brannoch is already strong and their scouts are watching. You have a few soldiers — keep them, and raise more.'
+      : sc === 'merchant' ? '\n\n💰 Your purse is heavy and your timber-yard empty. A market lets you buy what you lack.' : '';
+    storyCard(SC && sc !== 'standard' ? SC.ic : '🏝️', 'Chapter I · ' + ch.title,
+      ch.text + extra + '\n\nDrag to look around, pinch to zoom, and tap anything to see what it does. Your next goal is always in the card at the top of the screen — and the Build menu opens on what your realm needs most.',
+      [{ label: 'Begin', sub: 'A few quick pointers first — you can skip them', then: function () { TUT.start(); } }]);
   }
 
   function fireEvent() {
@@ -1407,12 +1785,12 @@ var UI = (function () {
     var ev = {
       art: cause.art, title: cause.title,
       text: cause.text + '\n\nRoughly ' + Math.round(power / 9) +
-            ' fighters. Your defences add +' + SIM.defenseScore() +
+            ' fighters in ' + (cause.faction === 'wolves' ? 'black-sailed longships' : 'longships') + '. Your defences add +' + SIM.defenseScore() +
             ' to the line, and your captains rate the fight at about ' + estimateOdds(power, 'defend') + '%.' +
             (SIM.G.campaign ? '\n\nYour army is in the field and cannot get back in time.' : '') +
             (cause.counter ? '\n\n' + cause.counter : ''),
       choices: [
-        { label: '⚔️ Meet them in the field', sub: 'Fight — your walls and towers help', battle: true },
+        { label: '⚔️ Man the defences', sub: 'Fight them on the island — towers shoot, walls block, you command', battle: true },
         { label: '💰 Buy them off', sub: '−' + Math.round(35 + power * 1.5) + ' gold', buy: Math.round(35 + power * 1.5) }
       ]
     };
@@ -1431,12 +1809,22 @@ var UI = (function () {
         el('event-modal').classList.add('hidden');
         modalBusy = false;
         if (c.battle) {
-          startBattle('defend', { power: power, name: 'Brannoch', cause: cause.key }, prevSpeed);
+          setSpeed(prevSpeed || 1);
+          var fac = cause.faction || 'brannoch';
+          if (WAR.begin({ power: power, cause: cause.key, faction: fac, name: fac === 'wolves' ? 'The Sea Wolves' : 'Brannoch' })) {
+            var st = WAR.state;
+            RENDER.centreOn(st.land.x - 0.5, st.land.y - 0.5);
+            chronicle((fac === 'wolves' ? 'Sea Wolf' : 'Brannoch') + ' longships sighted.');
+            toast('⛵ Longships! They will land in moments — your soldiers are mustering.', 'war');
+            refreshHUD();
+          } else {
+            startBattle('defend', { power: power, name: fac === 'wolves' ? 'The Sea Wolves' : 'Brannoch', cause: cause.key, faction: fac }, prevSpeed);
+          }
         } else {
           SIM.G.res.gold -= c.buy;
           SIM.G.happy = U.clamp(SIM.G.happy - 6, 0, 100);
-          SIM.G.rival.str += 4;
-          chronicle('Paid off a Brannoch war band for ' + c.buy + ' gold.');
+          if (cause.faction !== 'wolves') { SIM.G.rival.str += 4; if (SIM.dip().pers === 'greedy') SIM.dip().att = Math.min(100, SIM.dip().att + 4); }
+          chronicle('Paid off a ' + (cause.faction === 'wolves' ? 'Sea Wolf' : 'Brannoch') + ' war band for ' + c.buy + ' gold.');
           toast('The war band takes your gold and turns for home.', 'war');
           setSpeed(prevSpeed || 1);
           refreshHUD();
@@ -1454,6 +1842,9 @@ var UI = (function () {
   function init() {
     bindInput(el('scene'));
     guard('event-modal', 'modal');
+    RENDER.onQuality = function (lvl) {
+      toast('Lowered the detail to ' + (lvl === 'saver' ? 'battery saver' : 'balanced') + ' for smoother play. Change it in ☰ → Settings.', '');
+    };
     guard('inspector', 'insp');
 
     document.querySelectorAll('.nav-btn').forEach(function (b) {
@@ -1463,6 +1854,15 @@ var UI = (function () {
     el('sheet-scrim').addEventListener('click', closeSheet);
     el('insp-close').addEventListener('click', clearSelection);
     el('build-cancel').addEventListener('click', cancelBuild);
+    el('undo-chip').addEventListener('click', function () {
+      var r = SIM.undoPlace();
+      el('undo-chip').classList.add('hidden');
+      if (!r.ok) { toast(r.why, 'bad'); return; }
+      U.sfx.tap();
+      RENDER.puff(r.b.x + (r.b.def.w || 1) / 2, r.b.y + (r.b.def.h || 1) / 2, '#c9b58a', 8);
+      toast('Taken back — everything it cost is returned.', 'good');
+      refreshHUD();
+    });
     el('btn-center').addEventListener('click', function () {
       var c = SIM.G.buildings[0];
       if (c) RENDER.centreOn(c.x, c.y);
@@ -1476,6 +1876,9 @@ var UI = (function () {
     el('btn-sound').addEventListener('click', toggleSound);
     el('btn-decrees').addEventListener('click', function () { U.sfx.tap(); openSheet('decrees'); });
     el('btn-menu').addEventListener('click', function () { openTab.world = 'settings'; openSheet('world'); });
+    document.querySelectorAll('.war-orders button').forEach(function (b) {
+      b.addEventListener('click', function () { WAR.orderAll(b.dataset.o); U.sfx.horn(); U.vibrate(15); });
+    });
     [0, 1, 2, 3].forEach(function (i) {
       el('spd-' + i).addEventListener('click', function () { setSpeed([0, 1, 2, 4][i]); U.sfx.tap(); });
     });
@@ -1500,7 +1903,18 @@ var UI = (function () {
         eventQueue.unshift({ k: 'chapter', idx: payload.idx });
       }
       if (kind === 'victory') eventQueue.unshift({ k: 'victory' });
+      if (kind === 'war-landed') { toast('They are ashore! Send your squads to meet them.', 'war'); U.sfx.horn(); U.vibrate([40, 60, 40]); }
+      if (kind === 'war-flee') toast(payload.why === 'broken' ? 'The raiders break and run for their boats!' : 'The raiders are loading their plunder onto the ships…', payload.why === 'broken' ? 'good' : 'war');
+      if (kind === 'war-over') eventQueue.unshift({ k: 'warover', r: payload });
       if (kind === 'weather' && payload === 'rain') toast('🌧️ Rain sweeps in off the sea — the fields drink it up.', '');
+      if (kind === 'folk' && payload.toast) { chronicle(payload.msg); toast(payload.msg, /died|Fever|fever/.test(payload.msg) ? 'bad' : 'good'); }
+      if (kind === 'site-found') {
+        var sd2 = EXPLORE.SITES[payload.k];
+        toast(sd2.ic + ' Your people found ' + sd2.name.toLowerCase().replace(/^/, /^[aeiou]/i.test(sd2.name) ? 'an ' : 'a ') + '! Tap it on the map.', 'good');
+        chronicle('Found ' + sd2.name + '.'); U.sfx.quest();
+      }
+      if (kind === 'voyage') { toast('⛵ ' + payload.msg, 'good'); chronicle(payload.msg); U.sfx.quest(); if (openPanel === 'world') renderSheet(); }
+      if (kind === 'honour') { toast('🏅 Honour earned: ' + payload.name + ' — ' + payload.desc, 'good'); chronicle('Honour earned: ' + payload.name + '.'); U.sfx.victory(); }
       if (kind === 'harvest') { toast('🌾 Harvest time! ' + payload + ' food stands in the fields — the farmhands are bringing it in.', 'good'); chronicle('The harvest began: ' + payload + ' in the fields.'); U.sfx.quest(); }
       if (kind === 'fire') {
         toast('🔥 Fire at the ' + payload.def.name.toLowerCase() + '! Tap it to call the bucket brigade.', 'bad');
@@ -1545,11 +1959,56 @@ var UI = (function () {
     } catch (e) {}
   }
 
+  /* the panel shown while raiders are on the island */
+  var warKey = '';
+  function refreshWar() {
+    var hud = el('war-hud');
+    if (!WAR.active) {
+      if (!hud.classList.contains('hidden')) { hud.classList.add('hidden'); el('side-tools').style.display = ''; }
+      warKey = ''; return;
+    }
+    hud.classList.remove('hidden');
+    el('side-tools').style.display = 'none';
+    var st = WAR.state;
+    el('war-title').textContent = (st.faction === 'wolves' ? '🐺 The Sea Wolves' : '⚔️ Brannoch') +
+      (st.phase === 'sail' ? ' — landing soon' : st.phase === 'fleeing' ? ' — running for their boats' : ' — ashore');
+    el('war-count').textContent = 'raiders ' + (st.phase === 'sail' ? st.startFoes : WAR.alive('foe')) + ' · yours ' + WAR.alive('mine');
+    var sq = WAR.squads(), key = JSON.stringify(sq) + WAR.selected;
+    if (key !== warKey) {
+      warKey = key;
+      var box = el('war-squads'); box.innerHTML = '';
+      Object.keys(WAR.SQUADS).forEach(function (k) {
+        if (!sq[k]) return;
+        var b = h('<button type="button" class="' + (WAR.selected === k ? 'on' : '') + '">' + WAR.SQUADS[k].ic + ' ' + WAR.SQUADS[k].name + ' ' + sq[k] + '</button>');
+        b.addEventListener('click', function () { WAR.select(k); U.sfx.tap(); warKey = ''; });
+        box.appendChild(b);
+      });
+      if (!Object.keys(sq).length) box.appendChild(h('<p style="margin:0;font-size:12px;color:#f0c8b8">No soldiers to send — only towers and walls stand between them and the town.</p>'));
+      el('war-hint').textContent = WAR.selected ? 'Now tap where to send the ' + WAR.SQUADS[WAR.selected].name.toLowerCase() + ' — or tap a raider.' : 'Tap a squad, then tap where to send it.';
+    }
+  }
+
+  function warOver(r) {
+    var name = r.faction === 'wolves' ? 'the Sea Wolves' : 'Brannoch';
+    var lines = [];
+    if (r.won) lines.push('The raiders broke and ran for their boats. ' + r.killed + ' of them will not be going home.');
+    else lines.push(name.charAt(0).toUpperCase() + name.slice(1) + ' sailed off with their plunder.');
+    var st = Object.keys(r.stolen).filter(function (k) { return r.stolen[k] >= 1; }).map(function (k) { return Math.round(r.stolen[k]) + ' ' + k; });
+    if (st.length) lines.push('They carried off ' + st.join(', ') + (r.won ? ' — half of it recovered from the fallen.' : '.'));
+    var lt = Object.keys(r.loot).filter(function (k) { return r.loot[k] > 0; }).map(function (k) { return '+' + r.loot[k] + ' ' + k; });
+    if (lt.length) lines.push('Spoils: ' + lt.join(', '));
+    lines.push(r.lostN ? 'Fallen: ' + Object.keys(r.lost).map(function (k) { return r.lost[k] + '× ' + DATA.UNITS[k].name; }).join(', ') : 'Not a soldier lost.');
+    chronicle(r.won ? 'Drove off a raid by ' + name + '.' : 'Raided by ' + name + '.');
+    storyCard(r.won ? '🛡️' : '🔥', r.won ? 'Ashveil Holds' : 'The Raiders Got Away', lines.join('\n\n'), [{ label: 'Back to work' }]);
+  }
+
   /* drain queued events between frames so two never stack */
   function pump() {
+    refreshWar();
     if (modalBusy || BATTLE.isOpen() || !eventQueue.length) return;
     var next = eventQueue.shift();
-    if (next && next.k === 'chapter') chapterEvent(next.idx);
+    if (next && next.k === 'warover') warOver(next.r);
+    else if (next && next.k === 'chapter') chapterEvent(next.idx);
     else if (next && next.k === 'victory') victoryEvent();
     else if (next && next.k === 'festival') festivalEvent(next.key);
     else if (next && next.k === 'raid') incomingRaid(next.cause);
@@ -1563,6 +2022,8 @@ var UI = (function () {
     init: init, refreshHUD: refreshHUD, toast: toast, pump: pump,
     setSpeed: setSpeed, renderSheet: function () { if (openPanel) renderSheet(); },
     isModalOpen: function () { return modalBusy; },
-    chronicle: chronicle, closeSheet: closeSheet, clearSelection: clearSelection, introCard: introCard
+    chronicle: chronicle, closeSheet: closeSheet, clearSelection: clearSelection, introCard: introCard,
+    ghostTo: function (p) { if (buildMode) updateGhost(p.x, p.y); },
+    get panel() { return openPanel; }, get building() { return buildMode; }, get selection() { return selected; }
   };
 })();

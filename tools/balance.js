@@ -32,7 +32,7 @@ global.document = {
 
 // runInThisContext, not eval: a strict-mode eval keeps its declarations to
 // itself, so the game's globals would never appear.
-for (const f of ['util', 'data', 'world', 'sim', 'agents']) {
+for (const f of ['util', 'data', 'world', 'sim', 'folk', 'agents']) {
   vm.runInThisContext(fs.readFileSync(path.join(ROOT, 'js', f + '.js'), 'utf8'), { filename: f + '.js' });
 }
 const { U, DATA, W, SIM, AGENTS } = global;
@@ -106,7 +106,7 @@ function place(id, n) {
 }
 
 function runKingdom(seed, seasons) {
-  SIM.newGame(seed);
+  SIM.newGame(seed, { map: process.argv[4] || 'green', diff: process.argv[3] || 'fair', scen: process.argv[5] || 'standard' });
   const G = SIM.G;
   const rec = { starved: 0, broke: 0, raids: 0, minFood: 1e9, minGold: 1e9, churn: 0, reached: [0, 99, 99, 99, 99] };
   let lastTiers = null;
@@ -169,6 +169,7 @@ function runKingdom(seed, seasons) {
     churn: rec.churn / seasons,
     bread: G.breadCov || 0, cloth: G.res.cloth, foodStock: G.res.food,
     burned: G.stats.burned || 0, firesOut: G.stats.firesOut || 0,
+    fever: G.stats.fever || 0, oldAge: G.stats.oldAge || 0, folkOk: (G.folk || []).length === Math.max(1, Math.floor(G.pop + 1e-6)) ? 1 : 0,
     chapter: (G.chapter || 0) + 1,
     ch2: rec.reached[1], ch3: rec.reached[2], ch4: rec.reached[3]
   };
@@ -200,6 +201,9 @@ function simulate(runs, seasons) {
   row('housing changes/season', 'churn', 2);
   row('buildings lost to fire', 'burned', 1);
   row('fires put out', 'firesOut', 1);
+  row('died of fever', 'fever', 1);
+  row('died of old age', 'oldAge', 1);
+  row('register matches head count', 'folkOk', 2);
   row('bread coverage', 'bread', 2);
   row('cloth in store', 'cloth', 0);
   row('food in store', 'foodStock', 0);
@@ -219,6 +223,8 @@ function simulate(runs, seasons) {
   chk(all.every(r => isFinite(r.pop) && isFinite(r.gold)), 'no NaN anywhere in the economy');
   chk(avg('ch3') < 20, 'the story moves: chapter III opens within 20 seasons (5 years)');
   chk(avg('burned') < 3, 'fire is a danger, not a plague (<3 buildings lost in 10 years, nobody fighting it)');
+  chk(avg('fever') < 12, 'fever is a worry, not a cull (<12 deaths in 10 years with no physician)');
+  chk(all.every(r => r.folkOk), 'every head the economy counts has a name');
   return all;
 }
 

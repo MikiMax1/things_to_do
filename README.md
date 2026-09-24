@@ -9,6 +9,12 @@ Open `index.html` and play. It saves to your device automatically.
 
 ## How to play
 
+**Start how you like.** A new kingdom asks three things: the island (Green
+Isle, Forest Isle, Highlands, or Twin Isles joined by a sand spit), the world
+(Gentle, Fair or Harsh — harsher reigns score more), and the beginning (a new
+start, a late autumn landing, a border war already under way, or a merchant's
+fortune with little else). A short tutorial points at what to tap first.
+
 **Follow the card at the top.** Your reign is told in five chapters. The
 card under the resource bar always shows your next goal and how close you are;
 tap it for the whole chapter. Finish the fifth — the Great Cathedral — and your
@@ -31,6 +37,41 @@ and call the bucket brigade.
 **Look along the shore.** Driftwood and wrecks wash up — tap them. Once you
 have a market, merchant ships call with bargains. Tap the 👑 button for royal
 decrees: feasts, double shifts, taxes, and calls for settlers.
+
+**Explore.** Most of the island starts under mist. Building pushes it back
+(watchtowers furthest); tap a misty spot to send a scout. Hidden about the
+island are ruins and a smugglers' cave to search, standing stones, an iron
+seam that boosts mines and quarries, and a spring that serves homes like a well.
+With a fishing hut for a harbour, the **sea chart** (World → Sea chart) lets
+you send ships to chart the islets, settle **outposts** that send goods home
+every season, open a **trade route** to the mainland, and find the Sea Wolves'
+haven.
+
+**Your people have lives.** Every villager has a name, a family, an age, a
+home and a trade. Tap anyone walking the lanes to meet them. Couples marry and
+have children; the old die in their beds. Crowded homes far from a well breed
+**fever** — a yellow cloth marks a sick house; tap it to send for the
+physician. People → Families tallies the year's births, weddings and losses.
+
+**War comes by sea.** Raiders land on the island in longships and fight where
+they land: soldiers muster from the castle and barracks, you tell them to
+engage, hold, move or fall back, towers shoot, and anything undefended gets
+looted or set alight. From year three the Sea Wolves raid too. Marching on
+Brannoch means storming a walled town — batter the gate down (catapults help)
+— and a taken town pays a year of tribute.
+
+**Or make peace.** Army → Diplomacy: learn Lord Harric's temper with an envoy,
+warm him with gifts, sign a trade pact that stops Brannoch's raids, and seal it
+with a royal marriage. Marching on a partner breaks faith.
+
+**Made a mistake?** Press **↶ Undo** straight after placing, or tap a building
+and **Move** it. World → Settings has detail levels (automatic, high, balanced,
+battery saver), sound (sea and birds, music), larger text, reduced motion, and
+a save code you can copy to keep your kingdom or carry it to another phone.
+
+**Be remembered.** World → Honours shows your reign score and eighteen
+honours that stay earned from one reign to the next. People → Realm draws the
+ledger of your people, food, gold and contentment season by season.
 
 **Footpaths wear themselves in.** You never place a path. They are worked out
 from where your buildings stand, cost nothing, and take up no ground.
@@ -161,12 +202,18 @@ js/util.js                 maths, RNG, noise, storage, synthesised sound
 js/data.js                 all content: terrain, buildings, tech, units, events
 js/art.js                  every sprite, drawn procedurally and baked to canvases
 js/world.js                map generation, placement rules, A* pathfinding
-js/sim.js                  game state, economy, workers, research, population
+js/terrain.js              the ground, baked per pixel (and cached between visits)
+js/sim.js                  game state, economy, workers, research, population, diplomacy
+js/folk.js                 the named people: families, births, deaths, fever
+js/explore.js              mist, scouts, hidden sites, the sea chart and outposts
+js/honours.js              reign score, the ledger, honours
 js/agents.js               villagers who live, walk and work
-js/render.js               camera, drawing, weather, day/night
-js/battle.js               the skirmish scene
+js/render.js               camera, drawing, weather, day/night, mist
+js/battle.js               the field battle and Brannoch's walled town
+js/war.js                  raids that land on the island itself
 js/ui.js                   HUD, panels, touch input, inspector, events
-js/main.js                 boot, title screen, game loop
+js/tutorial.js             the first few minutes, shown rather than told
+js/main.js                 boot, title and setup screens, game loop
 kingdom/index.html         a redirect, so old links still work
 PLAN.md                    what changed, the balance audit, and the roadmap
 ```
@@ -183,6 +230,9 @@ time a realm spends starving or broke, whether homes climb past cottages, and
 whether house standings settle rather than flicker. It ends with pass/fail
 health checks.
 
-Run it before and after any balance change.
+Run it before and after any balance change. It takes optional setup
+arguments — `node tools/balance.js 12 harsh twin border` runs twelve Harsh
+Twin-Isles Border-War kingdoms — and it now also checks that fever stays a
+worry rather than a cull and that every head the economy counts has a name.
 
 See `PLAN.md` for what changed from the original and where this could go next.
