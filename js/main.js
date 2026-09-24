@@ -212,7 +212,7 @@
     UI.refreshHUD();
     UI.chronicle('Ashveil is founded.');
     if (SIM.G.fresh) { SIM.G.fresh = false; UI.introCard(); }
-    else UI.toast('Welcome back to Ashveil.', 'good');
+    else UI.welcomeBack();
     running = true;
     last = performance.now();
     requestAnimationFrame(loop);

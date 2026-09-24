@@ -16,7 +16,7 @@ var EXPLORE = (function () {
   function R() { return Math.random(); }
 
   /* ---------------- fog on the island ---------------- */
-  var fog = null, fogDirty = true, fogCv = null, noiseCv = null;
+  var fog = null, fogDirty = true, fogCv = null, noiseCv = null, fogEmpty = false;
 
   function ensure() {
     var g = G();
@@ -79,8 +79,12 @@ var EXPLORE = (function () {
      renderer lays over the ground in world space */
   function fogCanvas() {
     if (!fog) return null;
-    if (!fogDirty && fogCv) return fogCv;
+    if (!fogDirty) return fogEmpty ? null : fogCv;
     fogDirty = false;
+    // nothing left under mist (on land): draw nothing at all
+    fogEmpty = true;
+    for (var q = 0; q < fog.length && fogEmpty; q++) if (!fog[q] && W.tiles[q].terr !== 'water') fogEmpty = false;
+    if (fogEmpty) return null;
     var S = 8, w = W.COLS * S, h = W.ROWS * S;
     if (!noiseCv) {
       noiseCv = document.createElement('canvas'); noiseCv.width = w; noiseCv.height = h;

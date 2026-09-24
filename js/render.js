@@ -433,6 +433,7 @@ var RENDER = (function () {
     if (!DBG.noWeather) drawWeather();
 
     /* ---- 9. overlays ---- */
+    drawPlans(z);
     if (ghost) drawGhost(z);
     if (selected && selected.b) drawSelection(selected.b, z);
     if (selected && selected.t) drawTileSelection(selected.t, z);
@@ -789,6 +790,7 @@ var RENDER = (function () {
     g.globalAlpha = 0.93;
     g.drawImage(fc, 0, 0, W.COLS, W.ROWS);
     screenTransform();
+    if (QLEVEL !== 'high') { g.globalAlpha = 1; return; }   // the lifted layer is a luxury
     var z0 = cam.z, ox = cw / 2 - (cam.x - cam.y) * z0 / 2, oy = ch / 2 - (cam.x + cam.y) * z0 / 4 - z0 * 0.32;
     g.setTransform(dpr * z0 / 2, dpr * z0 / 4, -dpr * z0 / 2, dpr * z0 / 4, dpr * ox, dpr * oy);
     g.globalAlpha = 0.8;
@@ -927,9 +929,9 @@ var RENDER = (function () {
     var def = ghost.def || DATA.B[ghost.id];
     var wT = def.w || 1, hT = def.h || 1;
     footprintPath(ghost.x, ghost.y, wT, hT, 0.02);
-    g.fillStyle = ghost.ok ? 'rgba(125,212,90,.32)' : 'rgba(212,85,58,.38)';
+    g.fillStyle = ghost.plan ? 'rgba(224,178,60,.30)' : ghost.ok ? 'rgba(125,212,90,.32)' : 'rgba(212,85,58,.38)';
     g.fill();
-    g.strokeStyle = ghost.ok ? '#b4f58a' : '#f59a7a'; g.lineWidth = 2.5; g.stroke();
+    g.strokeStyle = ghost.plan ? '#f0d27a' : ghost.ok ? '#b4f58a' : '#f59a7a'; g.lineWidth = 2.5; g.stroke();
     var sp = ART.building(ghost.b ? { id: ghost.b.id, def: def, level: ghost.b.level, compact: ghost.b.compact } : { id: ghost.id, def: def, level: 1 }, SIM.season().key);
     if (sp) drawSprite(sp, ghost.x, ghost.y, 0.62);
     if (def.radius && def.aura) auraRing(ghost.x + wT / 2, ghost.y + hT / 2, def.radius + .5);
@@ -942,11 +944,35 @@ var RENDER = (function () {
       var tw = g.measureText(ghost.preview).width + 16;
       g.fillStyle = 'rgba(24,18,12,.88)';
       ART.rr(g, s.x - tw / 2, top - 15, tw, 22, 11); g.fill();
-      g.strokeStyle = ghost.ok ? '#8fd06a' : '#e0795f'; g.lineWidth = 1.5; g.stroke();
+      g.strokeStyle = ghost.plan ? '#e0b23c' : ghost.ok ? '#8fd06a' : '#e0795f'; g.lineWidth = 1.5; g.stroke();
       g.fillStyle = '#f4ead0';
       g.fillText(ghost.preview, s.x, top + 1);
       g.textAlign = 'left';
     }
+  }
+
+  /* buildings marked out and waiting for materials: pegs and string */
+  function drawPlans(z) {
+    var ps = SIM.plans;
+    if (!ps.length) return;
+    ps.forEach(function (p, i) {
+      var d = DATA.B[p.id], wT = d.w || 1, hT = d.h || 1;
+      footprintPath(p.x, p.y, wT, hT, 0.06);
+      g.fillStyle = 'rgba(224,178,60,.14)'; g.fill();
+      g.setLineDash([5, 4]); g.strokeStyle = 'rgba(240,210,122,.9)'; g.lineWidth = 1.6; g.stroke(); g.setLineDash([]);
+      var sp = ART.building({ id: p.id, def: d, level: 1 }, SIM.season().key);
+      if (sp && z > 26) drawSprite(sp, p.x, p.y, 0.22);
+      if (z > 30) {
+        var s = toScreen(p.x + wT / 2, p.y + hT / 2);
+        g.fillStyle = 'rgba(24,18,12,.82)'; ART.rr(g, s.x - 11, s.y - 11, 22, 18, 9); g.fill();
+        g.fillStyle = '#f0d98a'; g.font = '700 11px sans-serif'; g.textAlign = 'center';
+        g.fillText(i === 0 ? '⏳' : String(i + 1), s.x, s.y + 3); g.textAlign = 'left';
+      }
+    });
+  }
+  function pickPlan(sx, sy) {
+    var t = tileAtScreen(sx, sy);
+    return SIM.planAt(t.x, t.y);
   }
 
   function drawSelection(b, z) {
@@ -988,7 +1014,7 @@ var RENDER = (function () {
   }
 
   return {
-    init: init, resize: resize, draw: draw, pickBuilding: pickBuilding, pickFind: pickFind, pickShip: pickShip, pickAgent: pickAgent, pickSite: pickSite,
+    init: init, resize: resize, draw: draw, pickBuilding: pickBuilding, pickFind: pickFind, pickShip: pickShip, pickAgent: pickAgent, pickSite: pickSite, pickPlan: pickPlan,
     toScreen: toScreen, toWorld: toWorld, tileAtScreen: tileAtScreen,
     centreOn: centreOn, pan: pan, zoomAt: zoomAt,
     get cam() { return cam; },

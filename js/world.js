@@ -184,6 +184,7 @@ var W = (function () {
         if (!EXPLORE.seen(t.x, t.y)) return { ok: false, why: 'Unexplored — send a scout first' };
         if (EXPLORE.blocked(t.x, t.y)) return { ok: false, why: 'Something is already here' };
       }
+      if (typeof SIM !== 'undefined' && SIM.planAt && SIM.planAt(t.x, t.y)) return { ok: false, why: 'Already planned — tap the plan to cancel it' };
     }
     if (def.near) {
       var n = nearCount(x, y, def.near.terrain, 1);

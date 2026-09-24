@@ -18,6 +18,7 @@ var UI = (function () {
 
   var buildMode = null;      // building id currently being placed
   var moveTarget = null;     // a building being moved, when buildMode is for a move
+  var rowMode = false;       // drag lays a row instead of panning
   var openPanel = null;
   var openTab = {};
   var selected = null;       // {b:building} or {t:tile}
@@ -28,14 +29,50 @@ var UI = (function () {
   /* =========================================================
      TOASTS
      ========================================================= */
+  /* One line of news at a time. Everything also goes into the news log
+     (tap the line to read it), so nothing is lost when the line moves on. */
+  var newsQ = [], newsNow = null, newsTimer = null;
   function toast(msg, kind) {
-    var t = h('<div class="toast ' + (kind || '') + '">' + msg + '</div>');
-    el('toasts').appendChild(t);
-    setTimeout(function () {
+    var G = SIM.G;
+    if (G) {
+      if (!G.news) G.news = [];
+      if (!G.news.length || G.news[0].m !== msg) {
+        G.news.unshift({ s: SIM.season().name.slice(0, 3) + ' ' + SIM.year(), m: msg, k: kind || '' });
+        if (G.news.length > 40) G.news.pop();
+      }
+    }
+    if ((newsNow && newsNow.msg === msg) || newsQ.some(function (n) { return n.msg === msg; })) return;
+    newsQ.push({ msg: msg, kind: kind || '' });
+    // a long queue drops the calmest news first; it is all still in the log
+    while (newsQ.length > 3) {
+      var calm = -1;
+      for (var i = 0; i < newsQ.length; i++) if (newsQ[i].kind !== 'bad' && newsQ[i].kind !== 'war') { calm = i; break; }
+      newsQ.splice(calm >= 0 ? calm : 0, 1);
+    }
+    if (!newsNow) nextNews();
+  }
+  function nextNews() {
+    var box = el('toasts');
+    clearTimeout(newsTimer);
+    if (!newsQ.length) { newsNow = null; box.innerHTML = ''; return; }
+    newsNow = newsQ.shift();
+    box.innerHTML = '';
+    var t = h('<div class="toast ' + newsNow.kind + '">' + newsNow.msg + (newsQ.length ? '<i class="more">+' + newsQ.length + '</i>' : '') + '</div>');
+    t.addEventListener('click', function () { U.sfx.tap(); openSheet('news'); });
+    box.appendChild(t);
+    var dur = (newsNow.kind === 'bad' || newsNow.kind === 'war' ? 3400 : 2600) * (newsQ.length ? 0.7 : 1);
+    newsTimer = setTimeout(function () {
       t.classList.add('out');
-      setTimeout(function () { if (t.parentNode) t.parentNode.removeChild(t); }, 320);
-    }, 2800);
-    while (el('toasts').children.length > 4) el('toasts').removeChild(el('toasts').firstChild);
+      newsTimer = setTimeout(nextNews, 260);
+    }, dur);
+  }
+  function newsBody(box) {
+    var n = (SIM.G.news || []);
+    if (!n.length) { box.appendChild(h('<p class="hint">Nothing yet.</p>')); return; }
+    box.appendChild(h('<div class="card">' + n.map(function (l) {
+      var col = l.k === 'bad' ? '#e0795f' : l.k === 'war' ? '#e0b23c' : l.k === 'good' ? '#8fd06a' : '#8a7a5e';
+      return '<div class="stat-line"><span style="flex:0 0 58px;color:' + col + '">' + l.s + '</span><b style="font-weight:400;text-align:left;flex:1">' + l.m + '</b></div>';
+    }).join('') + '</div>'));
   }
 
   /* =========================================================
@@ -173,12 +210,19 @@ var UI = (function () {
     tech: { title: 'Research', tabs: function () { return [{ key: 1, name: 'Tier I' }, { key: 2, name: 'Tier II' }, { key: 3, name: 'Tier III' }]; }, body: techBody },
     decrees: { title: 'Royal Decrees', tabs: function () { return [{ key: 'all', name: 'Decrees' }]; }, body: decreesBody },
     alerts: { title: 'Needs attention', tabs: function () { return [{ key: 'all', name: 'All' }]; }, body: alertsBody },
+    news: { title: 'News', tabs: function () { return [{ key: 'all', name: 'Latest' }]; }, body: newsBody },
     world: { title: 'The Realm', tabs: function () { return [{ key: 'castle', name: 'Castle' }, { key: 'trade', name: 'Trade' }, { key: 'sea', name: 'Sea chart' }, { key: 'honours', name: 'Honours' }, { key: 'chronicle', name: 'Chronicle' }, { key: 'settings', name: 'Settings' }]; }, body: worldBody }
   };
 
+  try { var savedTabs = JSON.parse(localStorage.getItem('ashveil.tabs') || '{}'); Object.keys(savedTabs).forEach(function (k) { openTab[k] = savedTabs[k]; }); } catch (e) {}
+  function rememberTabs() { try { localStorage.setItem('ashveil.tabs', JSON.stringify(openTab)); } catch (e) {} }
+  /* tabs that show slow-changing things, drawn once rather than every moment */
+  var STILL = { 'world:sea': 1, 'world:honours': 1, 'world:settings': 1, 'world:chronicle': 1, 'people:folk': 1, 'people:overview': 1, 'news:all': 1, 'army:dip': 1 };
+  var touchedSheet = 0;
   function renderSheet(rebuildTabs) {
     if (!openPanel) return;
     var p = PANELS[openPanel];
+    if (!p) return;
     el('sheet-title').textContent = p.title;
     var tabs = p.tabs();
     if (openTab[openPanel] === undefined) openTab[openPanel] = tabs[0].key;
@@ -189,6 +233,7 @@ var UI = (function () {
         var b = h('<button class="tab' + (openTab[openPanel] === t.key ? ' active' : '') + '">' + t.name + '</button>');
         b.addEventListener('click', function () {
           openTab[openPanel] = t.key;
+          rememberTabs();
           renderSheet(true);
         });
         box.appendChild(b);
@@ -282,16 +327,46 @@ var UI = (function () {
       '</div></div>');
     card.querySelector('.card-ic').appendChild(ART.icon(id, 44));
     var btn = h('<button class="btn wide">Place</button>');
-    btn.disabled = !!lock || maxed || !SIM.canAfford(cost);
+    btn.disabled = !!lock || maxed;
     if (maxed) btn.textContent = 'Limit reached (' + def.max + ')';
-    else if (!lock && !SIM.canAfford(cost)) btn.textContent = 'Need ' + DATA.RES.filter(function (r) {
-      return cost[r.key] && G.res[r.key] < cost[r.key];
-    }).map(function (r) { return r.name.toLowerCase(); }).join(' & ');
+    else if (!lock && !SIM.canAfford(cost)) {
+      // mark it out now; the builders start as soon as the stores can pay
+      var eta = affordIn(cost);
+      btn.classList.add('sec');
+      btn.innerHTML = '📐 Plan it <small>' + (eta < 0 ? 'short of ' + shortOf(cost) + ' — nothing coming in' : eta < 3 ? 'ready any moment' : 'ready in ~' + fmtWait(eta)) + '</small>';
+    }
     btn.addEventListener('click', function () { startBuild(id); });
     card.appendChild(btn);
     return card;
   }
+  /* seconds (at 1×) until the stores could pay, or −1 if they never will */
+  function affordIn(cost) {
+    var G = SIM.G, net = SIM.ledger(), worst = 0;
+    for (var k in cost) {
+      var need = cost[k] - (G.res[k] || 0);
+      if (need <= 0) continue;
+      var rate = net[k] || 0;
+      if (k === 'food') rate = SIM.foodTrend(net);
+      if (rate <= 0.0005) return -1;
+      if (SIM.cap(k) < cost[k]) return -1;
+      worst = Math.max(worst, need / rate);
+    }
+    return worst;
+  }
+  function shortOf(cost) {
+    return Object.keys(cost).filter(function (k) { return SIM.G.res[k] < cost[k]; }).join(' & ');
+  }
+  function fmtWait(sec) {
+    if (sec < 90) return Math.ceil(sec / 5) * 5 + 's';
+    if (sec < DATA.SEASON_LEN * 2) return Math.round(sec / 60) + ' min';
+    return (sec / DATA.SEASON_LEN).toFixed(1) + ' seasons';
+  }
   function buildBody(box, cat) {
+    var plans = SIM.plans;
+    if (plans.length) {
+      box.appendChild(h('<p class="hint">📐 <b>' + plans.length + ' planned</b> — ' + plans.map(function (p) { return DATA.B[p.id].name; }).join(', ') +
+        '. The builders start each one, in order, as soon as it can be paid for. Tap a plan on the map to cancel it.</p>'));
+    }
     var adv = SIM.advice();
     if (cat === 'suggested') {
       if (!adv.order.length) {
@@ -991,6 +1066,9 @@ var UI = (function () {
     el('build-banner').classList.remove('hidden');
     el('build-banner-text').textContent = 'Placing ' + DATA.B[id].name +
       (DATA.B[id].isRoad || DATA.B[id].isWall ? ' — drag to lay a line' : ' — tap a tile');
+    rowMode = false;
+    el('build-row').classList.remove('on');
+    el('build-row').classList.toggle('hidden', !!(DATA.B[id].isRoad || DATA.B[id].isWall || DATA.B[id].max || DATA.B[id].unique));
     updateGhost(RENDER.size.w / 2, RENDER.size.h / 2);
     U.sfx.tap();
   }
@@ -998,6 +1076,7 @@ var UI = (function () {
     clearSelection(); closeSheet();
     buildMode = b.id; moveTarget = b;
     el('build-banner').classList.remove('hidden');
+    el('build-row').classList.add('hidden');
     var mc = SIM.moveCost(b);
     el('build-banner-text').textContent = 'Moving ' + (b.def.name) + ' — tap the new spot (' +
       Object.keys(mc).map(function (k) { return mc[k] + ' ' + k; }).join(', ') + ')';
@@ -1007,6 +1086,8 @@ var UI = (function () {
   function cancelBuild() {
     moveTarget = null;
     buildMode = null;
+    rowMode = false;
+    if (el('build-row')) el('build-row').classList.remove('on');
     RENDER.setGhost(null);
     el('build-banner').classList.add('hidden');
   }
@@ -1028,10 +1109,9 @@ var UI = (function () {
     var chk = W.canPlace(buildMode, t.x, t.y);
     var cost = SIM.costOf(buildMode);
     var afford = SIM.canAfford(cost);
-    var ok = chk.ok && afford;
-    RENDER.setGhost({ id: buildMode, x: t.x, y: t.y, ok: ok,
-      why: chk.ok ? (afford ? '' : 'Not enough materials') : chk.why,
-      preview: chk.ok ? SIM.preview(buildMode, t.x, t.y) || DATA.B[buildMode].name : chk.why });
+    RENDER.setGhost({ id: buildMode, x: t.x, y: t.y, ok: chk.ok, plan: chk.ok && !afford,
+      why: chk.ok ? '' : chk.why,
+      preview: chk.ok ? (afford ? SIM.preview(buildMode, t.x, t.y) || DATA.B[buildMode].name : '📐 Plan — waits for ' + shortOf(cost)) : chk.why });
   }
   function tryPlaceAt(sx, sy) {
     var t = plotAt(sx, sy, buildMode);
@@ -1045,16 +1125,17 @@ var UI = (function () {
       } else { U.sfx.err(); toast(mr.why, 'bad'); }
       return mr.ok;
     }
-    var r = SIM.place(buildMode, t.x, t.y);
-    if (r.ok) {
+    var r = SIM.canAfford(SIM.costOf(buildMode)) ? SIM.place(buildMode, t.x, t.y) : SIM.planBuild(buildMode, t.x, t.y);
+    if (r.ok && r.plan) {
+      U.sfx.tap(); U.vibrate(8);
+      toast('📐 Planned. Builders start when you have the ' + shortOf(SIM.costOf(buildMode)) + '.', '');
+      refreshHUD();
+    } else if (r.ok) {
       showUndo();
       U.sfx.place(); U.vibrate(12);
       RENDER.puff(t.x + (DATA.B[buildMode].w || 1) / 2, t.y + (DATA.B[buildMode].h || 1) / 2, '#c9b58a', 9);
       refreshHUD();
-      if (!SIM.canAfford(SIM.costOf(buildMode))) {
-        toast('Out of materials for more ' + DATA.B[buildMode].name.toLowerCase() + 's', 'war');
-        cancelBuild();
-      }
+      if (DATA.B[buildMode].max && SIM.countAll(buildMode) >= DATA.B[buildMode].max) cancelBuild();
     } else {
       U.sfx.err();
       toast(r.why, 'bad');
@@ -1295,7 +1376,7 @@ var UI = (function () {
         var armed = false;
         db.addEventListener('click', function () {
           if (!armed) { armed = true; db.textContent = 'Sure?'; setTimeout(function () { armed = false; db.textContent = 'Demolish'; }, 2600); return; }
-          SIM.demolish(b); clearSelection(); refreshHUD(); U.sfx.place();
+          SIM.demolish(b); clearSelection(); refreshHUD(); U.sfx.place(); showUndo();
         });
         acts.appendChild(db);
       } else {
@@ -1305,6 +1386,24 @@ var UI = (function () {
       }
     } else if (selected.p) {
       personCard(FOLK.get(selected.p), ic, body, acts);
+    } else if (selected.plan) {
+      var pl = selected.plan, pd = DATA.B[pl.id], pc = SIM.costOf(pl.id), pos = SIM.plans.indexOf(pl);
+      if (pos < 0) { clearSelection(); return; }
+      ic.appendChild(ART.icon(pl.id, 40));
+      el('insp-name').textContent = 'Planned: ' + pd.name;
+      el('insp-sub').textContent = pos === 0 ? 'next in line' : 'number ' + (pos + 1) + ' in line';
+      var e2 = affordIn(pc);
+      body.innerHTML = '<div class="cost">' + costPills(pc) + '</div>' +
+        '<div class="stat-line"><span>Builders start</span><b>' + (SIM.canAfford(pc) ? (pos === 0 ? 'any moment' : 'after the plans before it') : e2 < 0 ? 'when you have more ' + shortOf(pc) : 'in about ' + fmtWait(e2)) + '</b></div>' +
+        (pl.by && pl.by !== 'you' ? '<div class="stat-line"><span>Marked out by</span><b>' + pl.by + '</b></div>' : '');
+      var cb = h('<button class="btn danger">✕ Cancel this plan</button>');
+      cb.addEventListener('click', function () { SIM.cancelPlan(pl); clearSelection(); U.sfx.tap(); toast('Plan cancelled.', ''); });
+      acts.appendChild(cb);
+      if (pos > 0) {
+        var fb = h('<button class="btn sec">⤒ Build this first</button>');
+        fb.addEventListener('click', function () { var ps = SIM.plans; ps.splice(ps.indexOf(pl), 1); ps.unshift(pl); U.sfx.tap(); renderInspector(); });
+        acts.appendChild(fb);
+      }
     } else if (selected.site) {
       var st = selected.site, sd = EXPLORE.SITES[st.k];
       ic.textContent = sd.ic; ic.style.fontSize = '24px';
@@ -1426,16 +1525,15 @@ var UI = (function () {
       }
 
       var def = buildMode ? DATA.B[buildMode] : null;
-      if (buildMode && def && (def.isRoad || def.isWall) && moved) {
-        // drag-paint roads and walls
-        var t = RENDER.tileAtScreen(e.clientX, e.clientY - rectTop());
+      if (buildMode && !moveTarget && def && (def.isRoad || def.isWall || rowMode) && moved) {
+        // drag-paint roads, walls — and in row mode, anything
+        var t = (def.w || 1) > 1 ? plotAt(e.clientX, e.clientY - rectTop(), buildMode) : RENDER.tileAtScreen(e.clientX, e.clientY - rectTop());
         var key = t.x + ',' + t.y;
         if (key !== lastPaint) {
           lastPaint = key;
-          if (W.canPlace(buildMode, t.x, t.y).ok && SIM.canAfford(SIM.costOf(buildMode))) {
-            SIM.place(buildMode, t.x, t.y);
-            U.sfx.tap();
-            refreshHUD();
+          if (W.canPlace(buildMode, t.x, t.y).ok) {
+            var pr = SIM.canAfford(SIM.costOf(buildMode)) ? SIM.place(buildMode, t.x, t.y) : (rowMode ? SIM.planBuild(buildMode, t.x, t.y) : { ok: false });
+            if (pr.ok) { U.sfx.tap(); U.vibrate(6); refreshHUD(); }
           }
         }
         updateGhost(e.clientX, e.clientY - rectTop());
@@ -1468,6 +1566,8 @@ var UI = (function () {
         if (fi >= 0) { collectFind(fi); return; }
         var site = RENDER.pickSite(e.clientX, sy);
         if (site) { select({ site: site }); U.sfx.tap(); return; }
+        var plan = RENDER.pickPlan(e.clientX, sy);
+        if (plan) { select({ plan: plan }); U.sfx.tap(); return; }
         var hitB = RENDER.pickBuilding(e.clientX, sy);
         // a villager right under the finger beats the building behind them
         var ag = typeof FOLK !== 'undefined' ? RENDER.pickAgent(e.clientX, sy, !!hitB) : null;
@@ -1498,6 +1598,8 @@ var UI = (function () {
       if (k === '1') setSpeed(1);
       if (k === '2') setSpeed(2);
       if (k === '3') setSpeed(4);
+      if (k === '4') setSpeed(8);
+      if (k === 'n') startSkip();
       var pan = 60;
       if (k === 'arrowleft') RENDER.pan(pan, 0);
       if (k === 'arrowright') RENDER.pan(-pan, 0);
@@ -1509,13 +1611,38 @@ var UI = (function () {
   /* =========================================================
      SPEED
      ========================================================= */
+  var SPEEDS = [0, 1, 2, 4, 8];
   function setSpeed(v) {
+    if (skipping && v !== SKIP_SPEED) endSkip(true);
     SIM.G.speed = v;
-    [0, 1, 2, 3].forEach(function (i) {
+    SPEEDS.forEach(function (val, i) {
       var b = el('spd-' + i);
-      var val = [0, 1, 2, 4][i];
-      b.classList.toggle('active', val === v);
+      if (b) b.classList.toggle('active', val === v);
     });
+  }
+  /* "Skip to next season": run fast until the season turns, or until
+     something needs you */
+  var skipping = null, SKIP_SPEED = 30;
+  function startSkip() {
+    if (skipping) { endSkip(false); return; }
+    if (modalBusy || SIM.G.war) { toast('Not while something needs you.', 'war'); return; }
+    skipping = { to: SIM.seasonIndex() + 1, prev: SIM.G.speed || 1 };
+    SIM.G.speed = SKIP_SPEED;
+    SPEEDS.forEach(function (val, i) { el('spd-' + i).classList.remove('active'); });
+    el('season-chip').classList.add('skipping');
+    U.sfx.tap();
+  }
+  function endSkip(quiet) {
+    if (!skipping) return;
+    var prev = skipping.prev;
+    skipping = null;
+    el('season-chip').classList.remove('skipping');
+    if (!quiet) setSpeed(prev);
+  }
+  function checkSkip() {
+    if (!skipping) return;
+    if (SIM.seasonIndex() >= skipping.to) { endSkip(false); toast(SIM.season().icon + ' ' + SIM.season().name + ' has come.', 'good'); }
+    else if (modalBusy || SIM.G.war || BATTLE.isOpen() || SIM.burning().length) endSkip(false);
   }
 
   function toggleSound() {
@@ -1685,12 +1812,72 @@ var UI = (function () {
   }
 
   function fireEvent() {
-    if (modalBusy || BATTLE.isOpen()) { return; }
+    var L = pickEvent();
+    if (L) showEvent(DATA.EVENTS[L.i]);
+  }
+  function pickEvent() {
     var G = SIM.G;
     var pool = DATA.EVENTS.filter(function (e) { return !e.when || e.when(G); });
-    if (!pool.length) return;
-    var ev = U.pick(Math.random, pool);
-    showEvent(ev);
+    if (!pool.length) return null;
+    // not the same letter twice running
+    var last = G.lastEvent, ev = U.pick(Math.random, pool);
+    if (pool.length > 1 && DATA.EVENTS.indexOf(ev) === last) ev = U.pick(Math.random, pool);
+    G.lastEvent = DATA.EVENTS.indexOf(ev);
+    return { k: 'event', i: DATA.EVENTS.indexOf(ev) };
+  }
+
+  /* ---------------- letters ----------------
+     Offers, requests and festivals arrive as sealed scrolls. The game keeps
+     going; open them when it suits you. Most go stale after a while. */
+  function letterTitle(L) {
+    if (L.k === 'event') return (DATA.EVENTS[L.i] || {}).title || 'A letter';
+    if (L.k === 'festival') return (DATA.FESTIVALS[L.key] || {}).title || 'A festival';
+    return 'Your steward asks for a word';
+  }
+  function letterArt(L) {
+    if (L.k === 'event') return (DATA.EVENTS[L.i] || {}).art || '📜';
+    if (L.k === 'festival') return (DATA.FESTIVALS[L.key] || {}).art || '🎉';
+    return '🕯️';
+  }
+  function addLetter(L) {
+    if (!L) return;
+    var G = SIM.G;
+    if (!G.letters) G.letters = [];
+    if (L.k !== 'event' && G.letters.some(function (x) { return x.k === L.k && x.key === L.key; })) return;
+    if (G.letters.length >= 4) G.letters.shift();   // the oldest goes unanswered
+    L.t = G.time;
+    L.until = L.k === 'relief' ? Infinity : G.time + DATA.SEASON_LEN * (L.k === 'festival' ? 1 : 1.5);
+    G.letters.push(L);
+    toast('📜 ' + letterTitle(L) + ' — tap the scroll to read it.', '');
+    U.sfx.season();
+    refreshLetters();
+  }
+  function refreshLetters() {
+    var G = SIM.G, n = (G && G.letters || []).length, b = el('btn-letters');
+    if (!b) return;
+    b.classList.toggle('hidden', !n);
+    el('letter-badge').textContent = n;
+    b.classList.toggle('fresh', n > 0);
+  }
+  function openLetter() {
+    var G = SIM.G;
+    if (!G.letters || !G.letters.length || modalBusy || BATTLE.isOpen()) return;
+    var L = G.letters.shift();
+    refreshLetters();
+    U.sfx.tap();
+    if (L.k === 'event') showEvent(DATA.EVENTS[L.i]);
+    else if (L.k === 'festival') festivalEvent(L.key);
+    else reliefEvent();
+  }
+  function expireLetters() {
+    var G = SIM.G;
+    if (!G.letters || !G.letters.length) return;
+    var keep = [];
+    G.letters.forEach(function (L) {
+      if (G.time > L.until) toast(letterTitle(L) + ' — the moment passed.', '');
+      else keep.push(L);
+    });
+    if (keep.length !== G.letters.length) { G.letters = keep; refreshLetters(); }
   }
 
   function showEvent(ev) {
@@ -1860,7 +2047,7 @@ var UI = (function () {
       if (!r.ok) { toast(r.why, 'bad'); return; }
       U.sfx.tap();
       RENDER.puff(r.b.x + (r.b.def.w || 1) / 2, r.b.y + (r.b.def.h || 1) / 2, '#c9b58a', 8);
-      toast('Taken back — everything it cost is returned.', 'good');
+      toast(r.restored ? r.b.def.name + ' put back as it was.' : 'Taken back — everything it cost is returned.', 'good');
       refreshHUD();
     });
     el('btn-center').addEventListener('click', function () {
@@ -1868,6 +2055,17 @@ var UI = (function () {
       if (c) RENDER.centreOn(c.x, c.y);
     });
     el('btn-alerts').addEventListener('click', function () { U.sfx.tap(); openSheet('alerts'); });
+    el('btn-letters').addEventListener('click', openLetter);
+    el('season-chip').addEventListener('click', startSkip);
+    el('build-row').addEventListener('click', function () {
+      rowMode = !rowMode; U.sfx.tap();
+      el('build-row').classList.toggle('on', rowMode);
+      el('build-banner-text').textContent = rowMode ? 'Drag across the ground to lay a row' : 'Placing ' + DATA.B[buildMode].name + ' — tap a tile';
+    });
+    ['pointerdown', 'scroll', 'touchmove'].forEach(function (ev) {
+      el('sheet-body').addEventListener(ev, function () { touchedSheet = performance.now(); }, { passive: true });
+    });
+    refreshLetters();
     el('goal-card').addEventListener('click', function () {
       U.sfx.tap();
       if (el('goal-card').dataset.go === 'alerts') { openSheet('alerts'); return; }
@@ -1879,15 +2077,15 @@ var UI = (function () {
     document.querySelectorAll('.war-orders button').forEach(function (b) {
       b.addEventListener('click', function () { WAR.orderAll(b.dataset.o); U.sfx.horn(); U.vibrate(15); });
     });
-    [0, 1, 2, 3].forEach(function (i) {
-      el('spd-' + i).addEventListener('click', function () { setSpeed([0, 1, 2, 4][i]); U.sfx.tap(); });
+    [0, 1, 2, 3, 4].forEach(function (i) {
+      el('spd-' + i).addEventListener('click', function () { setSpeed(SPEEDS[i]); U.sfx.tap(); });
     });
     el('bt-done').addEventListener('click', function () { BATTLE.close(); });
     el('dep-begin').addEventListener('click', function () { BATTLE.beginFight(); });
 
     SIM.on(function (kind, payload) {
       if (kind === 'toast') { toast(payload.msg, payload.kind); chronicle(payload.msg); }
-      if (kind === 'event') { if (eventQueue.length < 3) eventQueue.push('event'); }
+      if (kind === 'event') addLetter(pickEvent());
       if (kind === 'raid-incoming') {
         // never let raids stack up behind a modal — one war band at a time
         if (!eventQueue.some(function (e) { return e && e.k === 'raid'; })) {
@@ -1895,8 +2093,8 @@ var UI = (function () {
         }
       }
       if (kind === 'campaign-arrived') eventQueue.push('campaign');
-      if (kind === 'relief') eventQueue.push('relief');
-      if (kind === 'festival') eventQueue.push({ k: 'festival', key: payload });
+      if (kind === 'relief') addLetter({ k: 'relief' });
+      if (kind === 'festival') addLetter({ k: 'festival', key: payload });
       if (kind === 'chapter') {
         // several chapters closing at once (an old, advanced kingdom) make one card, not a stack
         eventQueue = eventQueue.filter(function (e) { return !(e && e.k === 'chapter'); });
@@ -1915,6 +2113,7 @@ var UI = (function () {
       }
       if (kind === 'voyage') { toast('⛵ ' + payload.msg, 'good'); chronicle(payload.msg); U.sfx.quest(); if (openPanel === 'world') renderSheet(); }
       if (kind === 'honour') { toast('🏅 Honour earned: ' + payload.name + ' — ' + payload.desc, 'good'); chronicle('Honour earned: ' + payload.name + '.'); U.sfx.victory(); }
+      if (kind === 'plan-built') toast('📐 The builders have started the planned ' + DATA.B[payload.plan.id].name.toLowerCase() + '.', 'good');
       if (kind === 'harvest') { toast('🌾 Harvest time! ' + payload + ' food stands in the fields — the farmhands are bringing it in.', 'good'); chronicle('The harvest began: ' + payload + ' in the fields.'); U.sfx.quest(); }
       if (kind === 'fire') {
         toast('🔥 Fire at the ' + payload.def.name.toLowerCase() + '! Tap it to call the bucket brigade.', 'bad');
@@ -2003,8 +2202,54 @@ var UI = (function () {
   }
 
   /* drain queued events between frames so two never stack */
+  /* ---------------- tips, once each, when they are useful ---------------- */
+  var TIPS = [
+    { id: 'row', test: function (G) { return G.count.house >= 4; }, text: 'Placing lots of cottages? Press ⟷ Row in the build bar and drag across the ground.' },
+    { id: 'plan', test: function (G) { return G.time > 90; }, text: 'Short of materials? Place it anyway — it is marked out as a plan and built the moment you can pay.' },
+    { id: 'speed', test: function (G) { return G.time > 150 && G.speed === 1; }, text: 'Waiting for something? Tap the season to skip ahead, or try 4× and 8×.' },
+    { id: 'autumn', test: function (G) { return SIM.season().key === 'autumn' && G.count.farm > 0; }, text: 'Autumn: the farmhands are bringing the harvest in. Store enough for winter.' },
+    { id: 'winter', test: function (G) { return SIM.season().key === 'winter'; }, text: 'Nothing grows in winter. Hunters and fishers still bring food in.' },
+    { id: 'beds', test: function (G) { return G.pop >= SIM.housing() - 0.01 && G.time > 60; }, text: 'Every bed is full. More cottages, more people — and more hands for work.' },
+    { id: 'market', test: function (G) { return G.count.market > 0; }, text: 'With a market you can sell what you have too much of: The Realm → Trade.' },
+    { id: 'harbour', test: function (G) { return G.count.fishery > 0; }, text: 'A fishing hut is a harbour too. The Realm → Sea chart sends ships to chart the islands.' },
+    { id: 'mist', test: function (G) { return SIM.seasonIndex() >= 2 && typeof EXPLORE !== 'undefined' && EXPLORE.known() < 0.55; }, text: 'Tap the mist to send a scout. There are things out there worth finding.' },
+    { id: 'army', test: function (G) { return SIM.graceLeft() <= 1 && SIM.armyCount() < 4; }, text: 'Brannoch will not stay patient much longer. A barracks and a few soldiers, soon.' },
+    { id: 'fever', test: function (G) { return G.sickN > 0; }, text: 'Fever spreads in crowded homes far from a well. Tap the house with the yellow cloth.' },
+    { id: 'dip', test: function (G) { return SIM.seasonIndex() >= 9; }, text: 'War is not the only way with Brannoch: Army → Diplomacy.' }
+  ];
+  var tipTimer = 0;
+  function checkTips() {
+    var G = SIM.G;
+    if ((tipTimer += 1) % 90 || G.tut >= 0 || modalBusy || G.time < 30) return;
+    if (!G.tips) G.tips = {};
+    for (var i = 0; i < TIPS.length; i++) {
+      var t = TIPS[i];
+      if (G.tips[t.id]) continue;
+      var ok = false;
+      try { ok = t.test(G); } catch (e) {}
+      if (ok) { G.tips[t.id] = 1; toast('💡 ' + t.text, ''); return; }
+    }
+  }
+
+  /* the first thing you see when you come back to a saved kingdom */
+  function welcomeBack() {
+    var G = SIM.G, lines = [];
+    lines.push(SIM.season().icon + ' ' + SIM.season().name + ', year ' + SIM.year() + ' — ' + Math.floor(G.pop) + ' people, ' + Math.round(G.res.gold) + ' gold, ' + Math.round(G.res.food) + ' food.');
+    var goal = el('gc-goal') && el('gc-goal').textContent;
+    if (goal && goal !== '—') lines.push('🎯 Next goal: ' + goal);
+    var iss = SIM.issues().filter(function (x) { return x.sev >= 1; }).slice(0, 2);
+    iss.forEach(function (x) { lines.push(x.ic + ' ' + x.text); });
+    if (G.letters && G.letters.length) lines.push('📜 ' + G.letters.length + ' letter' + (G.letters.length > 1 ? 's' : '') + ' waiting for you.');
+    if (G.plans && G.plans.length) lines.push('📐 ' + G.plans.length + ' building' + (G.plans.length > 1 ? 's' : '') + ' planned.');
+    if (G.finds && G.finds.length) lines.push('🪵 Something washed up on the shore.');
+    storyCard('🏰', 'Welcome back', lines.join('\n'), [{ label: 'Carry on' }]);
+  }
+
   function pump() {
     refreshWar();
+    checkSkip();
+    expireLetters();
+    checkTips();
     if (modalBusy || BATTLE.isOpen() || !eventQueue.length) return;
     var next = eventQueue.shift();
     if (next && next.k === 'warover') warOver(next.r);
@@ -2020,7 +2265,14 @@ var UI = (function () {
 
   return {
     init: init, refreshHUD: refreshHUD, toast: toast, pump: pump,
-    setSpeed: setSpeed, renderSheet: function () { if (openPanel) renderSheet(); },
+    setSpeed: setSpeed,
+    // the main loop's refresh: live tabs only, and never under a moving finger
+    renderSheet: function () {
+      if (!openPanel || STILL[openPanel + ':' + openTab[openPanel]] || performance.now() - touchedSheet < 1500) return;
+      renderSheet();
+    },
+    refreshSheet: function () { if (openPanel) renderSheet(); },
+    welcomeBack: welcomeBack,
     isModalOpen: function () { return modalBusy; },
     chronicle: chronicle, closeSheet: closeSheet, clearSelection: clearSelection, introCard: introCard,
     ghostTo: function (p) { if (buildMode) updateGhost(p.x, p.y); },

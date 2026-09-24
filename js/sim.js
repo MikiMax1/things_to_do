@@ -366,7 +366,7 @@ var SIM = (function () {
     if (def.build <= 0) { b.built = true; b.prog = 1; }
     b.paid = cost;
     commit(b);
-    lastPlaced = { b: b, at: Date.now() };
+    lastPlaced = { kind: 'place', b: b, at: Date.now() };
     G.stats.built++;
     refreshCounts();
     emit('build', b);
@@ -420,12 +420,26 @@ var SIM = (function () {
      --------------------------------------------------------- */
   var UNDO_MS = 8000, lastPlaced = null;
   function canUndo() {
-    return !!(lastPlaced && Date.now() - lastPlaced.at < UNDO_MS && G.buildings.indexOf(lastPlaced.b) >= 0);
+    if (!lastPlaced || Date.now() - lastPlaced.at >= UNDO_MS) return false;
+    var there = G.buildings.indexOf(lastPlaced.b) >= 0;
+    return lastPlaced.kind === 'demolish' ? !there : there;
   }
   function undoLeft() { return canUndo() ? (UNDO_MS - (Date.now() - lastPlaced.at)) / 1000 : 0; }
   function undoPlace() {
     if (!canUndo()) return { ok: false, why: 'Too late to take that back' };
     var b = lastPlaced.b;
+    if (lastPlaced.kind === 'demolish') {
+      // put it back exactly as it was, if the ground is still free
+      var free = W.footprint(b.def, b.x, b.y).every(function (c) { var t = W.at(c.x, c.y); return t && !t.bld; });
+      if (!free) return { ok: false, why: 'Something else stands there now' };
+      var refund = lastPlaced.refund;
+      lastPlaced = null;
+      Object.keys(refund).forEach(function (k) { G.res[k] = Math.max(0, G.res[k] - refund[k]); });
+      commit(b);
+      refreshCounts();
+      emit('undone', b);
+      return { ok: true, b: b, restored: true };
+    }
     lastPlaced = null;
     removeFromMap(b);
     Object.keys(b.paid || {}).forEach(function (k) { G.res[k] = Math.min(cap(k) + b.paid[k], G.res[k] + b.paid[k]); });
@@ -499,10 +513,14 @@ var SIM = (function () {
       if (b.def.isRoad) t.road = false; else if (t.bld === b) t.bld = null;
     });
     // half the timber and stone come back
-    var cost = costOf(b.id);
+    var cost = costOf(b.id), refund = {};
     ['wood', 'stone'].forEach(function (k) {
-      if (cost[k]) G.res[k] = Math.min(cap(k), G.res[k] + Math.round(cost[k] * (b.built ? 0.4 : 0.9)));
+      if (!cost[k]) return;
+      var before = G.res[k];
+      G.res[k] = Math.min(cap(k), G.res[k] + Math.round(cost[k] * (b.built ? 0.4 : 0.9)));
+      refund[k] = G.res[k] - before;
     });
+    lastPlaced = { kind: 'demolish', b: b, refund: refund, at: Date.now() };
     AGENTS.dropJob(b);
     refreshCounts();
     emit('demolish', b);
@@ -1150,6 +1168,7 @@ var SIM = (function () {
     }
 
     if (typeof WAR !== 'undefined') WAR.tick(dt);
+    tickPlans(dt);
     if (typeof FOLK !== 'undefined') FOLK.tick(dt);
     if (typeof EXPLORE !== 'undefined') EXPLORE.tick(dt);
     if (typeof HONOURS !== 'undefined') HONOURS.tick(dt);
@@ -1373,6 +1392,8 @@ var SIM = (function () {
     G.findTimer = DATA.SEASON_LEN * (0.7 + Math.random() * 0.8);
     if (G.finds.length >= 2) return;
     var spots = beachTiles();
+    // wash up where someone would see it
+    if (typeof EXPLORE !== 'undefined') { var vis = spots.filter(function (t) { return EXPLORE.seen(t.x, t.y); }); if (vis.length) spots = vis; }
     if (!spots.length) return;
     var t = spots[Math.floor(Math.random() * spots.length)];
     var kind = Math.random() < 0.72 ? 'drift' : 'wreck';
@@ -1817,6 +1838,50 @@ var SIM = (function () {
     if (notes.length) emit('toast', { msg: notes.join(' · '), kind: 'good' });
   }
 
+  /* ---------------------------------------------------------
+     plans: a building marked out on the ground that the builders start
+     the moment the stores can pay for it
+     --------------------------------------------------------- */
+  function plans() { if (!G.plans) G.plans = []; return G.plans; }
+  function planAt(x, y) {
+    var ps = (G && G.plans) || [];
+    for (var i = 0; i < ps.length; i++) {
+      var d = DATA.B[ps[i].id];
+      if (x >= ps[i].x && y >= ps[i].y && x < ps[i].x + (d.w || 1) && y < ps[i].y + (d.h || 1)) return ps[i];
+    }
+    return null;
+  }
+  function planBuild(id, x, y, by) {
+    if (!unlocked(id)) return { ok: false, why: lockReason(id) || 'Not yet available' };
+    var def = DATA.B[id];
+    if (def.max && countAll(id) + plans().filter(function (p) { return p.id === id; }).length >= def.max) return { ok: false, why: 'You already have ' + def.max };
+    var chk = W.canPlace(id, x, y);
+    if (!chk.ok) return chk;
+    if (plans().length >= 12) return { ok: false, why: 'Twelve plans are waiting already' };
+    var p = { id: id, x: x, y: y, t: G.time, by: by || 'you' };
+    plans().push(p);
+    emit('planned', p);
+    return { ok: true, plan: p };
+  }
+  function cancelPlan(p) {
+    var i = plans().indexOf(p);
+    if (i >= 0) plans().splice(i, 1);
+  }
+  var planTimer = 0;
+  function tickPlans(dt) {
+    planTimer -= dt;
+    if (planTimer > 0 || !G.plans || !G.plans.length) return;
+    planTimer = 0.8;
+    // first come, first served: a later, cheaper plan never jumps the queue
+    var p = G.plans[0];
+    G.plans.shift();
+    var chk = W.canPlace(p.id, p.x, p.y);
+    if (!chk.ok) { emit('toast', { msg: 'A planned ' + DATA.B[p.id].name.toLowerCase() + ' was dropped: ' + chk.why.toLowerCase() + '.', kind: 'war' }); return; }
+    if (!canAfford(costOf(p.id))) { G.plans.unshift(p); return; }
+    var r = place(p.id, p.x, p.y);
+    if (r.ok) { r.b.fromPlan = true; emit('plan-built', { plan: p, b: r.b }); }
+  }
+
   /* the battle is over — the survivors turn for home */
   function campaignResolved(survivors) {
     if (!G.campaign) return;
@@ -2142,6 +2207,7 @@ var SIM = (function () {
       tut: typeof G.tut === 'number' ? G.tut : -1, mkt: G.mkt || {}, decrees: G.decrees || {}, shiftUntil: G.shiftUntil || -1, finds: G.finds || [],
       dip: G.dip || null, tribute: G.tribute || null,
       folk: typeof FOLK !== 'undefined' ? FOLK.pack() : null,
+      plans: G.plans || [], news: (G.news || []).slice(0, 40), letters: G.letters || [], tips: G.tips || {},
       hist: G.hist || [], fog: G.fog, sites: G.sites || null, sea: G.sea || null, scouts: G.scouts || [], blessing: G.blessing || 0,
       shipTimer: G.shipTimer, findTimer: G.findTimer,
       vets: G.vets || {}, formation: G.formation || 'line', seen: G.seen || {}, campaign: G.campaign || null,
@@ -2202,6 +2268,7 @@ var SIM = (function () {
       chapter: d.chapter || 0, won: !!d.won, weather: 'clear', weatherTimer: 30,
       tut: typeof d.tut === 'number' ? d.tut : -1, mkt: d.mkt || {}, decrees: d.decrees || {}, shiftUntil: d.shiftUntil || -1, finds: d.finds || [],
       dip: d.dip || null, tribute: d.tribute || null, folkSave: d.folk || null,
+      plans: d.plans || [], news: d.news || [], letters: d.letters || [], tips: d.tips || {},
       hist: d.hist || [], fog: d.fog, sites: d.sites || null, sea: d.sea || null, scouts: d.scouts || [], blessing: d.blessing || 0,
       ship: null, shipTimer: d.shipTimer || DATA.SEASON_LEN * 2, findTimer: d.findTimer || 40, fireTimer: 5,
       vets: d.vets || {}, formation: d.formation || 'line',
@@ -2239,6 +2306,9 @@ var SIM = (function () {
     ensurePaths(true);
     assignWorkers();
     AGENTS.reset();
+    // bring the people and the mist back before anything asks about them
+    if (typeof FOLK !== 'undefined') FOLK.tick(0);
+    if (typeof EXPLORE !== 'undefined') EXPLORE.tick(0);
     emit('newgame');
     return true;
   }
@@ -2270,7 +2340,8 @@ var SIM = (function () {
     goodsValue: goodsValue, marketCut: marketCut,
     rebuildPaths: function () { markPathsDirty(); ensurePaths(true); },
     preview: preview, soilMul: soilMul,
-    canUndo: canUndo, undoLeft: undoLeft, undoPlace: undoPlace,
+    canUndo: canUndo, undoLeft: undoLeft, undoPlace: undoPlace, lastAction: function () { return lastPlaced && lastPlaced.kind; },
+    planBuild: planBuild, cancelPlan: cancelPlan, planAt: planAt, get plans() { return plans(); },
     moveCost: moveCost, canMove: canMove, moveBuilding: moveBuilding,
     canTrade: canTrade, priceOf: priceOf, sell: sell, buy: buy, tradeSpread: tradeSpread,
     techAvailable: techAvailable, techClosed: techClosed, startResearch: startResearch,
