@@ -486,3 +486,9 @@ h1,h2,h3{font-family:var(--font);margin:0}
 .btn.dip-act{display:block;text-align:left;margin-bottom:8px}
 .btn.dip-act span,.btn.dip-act small{display:block}
 .btn.dip-act small{opacity:.75;font-weight:400;font-size:11.5px;margin-top:2px}
+.folk-names{display:flex;flex-wrap:wrap;gap:5px;margin:6px 0 2px}
+.folk-names span{background:rgba(0,0,0,.28);border:1px solid #3d2f21;border-radius:10px;padding:2px 8px;font-size:12px;color:#e7dcc4}
+.folk-names span i{font-style:normal;color:#9c8a6a;margin-left:2px}
+.folk-names span.ill{border-color:#8f8a2e;color:#e4d77a}
+.folk-names.fams span{font-size:12.5px}
+#insp-body p.why{font-size:11.5px;color:#bda98a;margin:2px 0 6px}

@@ -763,6 +763,19 @@ var RENDER = (function () {
     }
     return -1;
   }
+  /* the villager under a finger: feet to head, a little generous */
+  function pickAgent(sx, sy, tight) {
+    var best = null, bd = 1e9, z = cam.z, hh = Math.max(7, z * 0.19), k = tight ? 0.55 : 1;
+    AGENTS.list.forEach(function (a) {
+      if (a.state === 'asleep' || a.state === 'abed') return;
+      var s = toScreen(a.x, a.y), cy = s.y - hh * 0.5;
+      var dx = sx - s.x, dy = sy - cy;
+      if (Math.abs(dx) > Math.max(13, hh * 0.6) * k || Math.abs(dy) > Math.max(16, hh * 0.8) * k) return;
+      var d = dx * dx + dy * dy;
+      if (d < bd) { bd = d; best = a; }
+    });
+    return best;
+  }
   function pickShip(sx, sy) {
     var sh = SIM.G && SIM.G.ship;
     if (!sh || sh.phase !== 'anchored') return false;
@@ -778,6 +791,7 @@ var RENDER = (function () {
       g.fillStyle = '#8fd06a'; g.fillRect(s0.x - bw / 2, by, bw * b.prog, 3);
       return;
     }
+    if (typeof FOLK !== 'undefined' && b.def.housing && FOLK.sickAt(b)) drawSickFlag(b, z);
     var jobs = SIM.jobsOf(b);
     var mark = b.paused ? '⏸' : (jobs > 0 && b.workers === 0) ? '!' : null;
     if (!mark || z < 30) return;
@@ -793,6 +807,20 @@ var RENDER = (function () {
     g.textAlign = 'center'; g.textBaseline = 'middle';
     g.fillText(mark, s.x, top + 1);
     g.textAlign = 'left'; g.textBaseline = 'alphabetic';
+  }
+
+  /* the old custom: a yellow cloth hung by the door of a fever house */
+  function drawSickFlag(b, z) {
+    var s = toScreen(b.x + (b.def.w || 1), b.y + (b.def.h || 1) * 0.5);
+    var ph = z * 0.36, x = s.x - z * 0.12, y = s.y - z * 0.02;
+    g.strokeStyle = '#4a3524'; g.lineWidth = Math.max(1, z * 0.02);
+    g.beginPath(); g.moveTo(x, y); g.lineTo(x, y - ph); g.stroke();
+    var wave = Math.sin(time * 4 + b.x) * z * 0.015;
+    g.fillStyle = b.physic && b.physic > SIM.G.time ? '#e8e2cf' : '#d8c13a';
+    g.beginPath(); g.moveTo(x, y - ph); g.quadraticCurveTo(x + z * 0.09, y - ph + wave, x + z * 0.17, y - ph + z * 0.02);
+    g.lineTo(x + z * 0.17, y - ph + z * 0.11); g.quadraticCurveTo(x + z * 0.09, y - ph + z * 0.09 + wave, x, y - ph + z * 0.1); g.fill();
+    if (z > 40) { g.globalAlpha = 0.18 + Math.sin(time * 2) * 0.05; g.fillStyle = '#b9c77a';
+      g.beginPath(); g.ellipse(s.x - z * 0.3, s.y - z * 0.25, z * 0.35, z * 0.16, 0, 0, 6.3); g.fill(); g.globalAlpha = 1; }
   }
 
   /* a diamond on the ground over a block of tiles */
@@ -875,7 +903,7 @@ var RENDER = (function () {
   }
 
   return {
-    init: init, resize: resize, draw: draw, pickBuilding: pickBuilding, pickFind: pickFind, pickShip: pickShip,
+    init: init, resize: resize, draw: draw, pickBuilding: pickBuilding, pickFind: pickFind, pickShip: pickShip, pickAgent: pickAgent,
     toScreen: toScreen, toWorld: toWorld, tileAtScreen: tileAtScreen,
     centreOn: centreOn, pan: pan, zoomAt: zoomAt,
     get cam() { return cam; },

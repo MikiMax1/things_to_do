@@ -15,6 +15,7 @@ var SIM = (function () {
      new game
      --------------------------------------------------------- */
   function newGame(seed) {
+    if (typeof FOLK !== 'undefined') FOLK.reset();
     seed = seed || Math.floor(Math.random() * 1e9);
     var spot = W.generate(seed);
     G = {
@@ -680,12 +681,12 @@ var SIM = (function () {
   }
 
   function assignWorkers(force) {
-    var key = G.buildings.length + '|' + Math.floor(G.pop) + '|' + (G.research ? 1 : 0);
+    var key = G.buildings.length + '|' + Math.floor(G.pop) + '|' + (G.research ? 1 : 0) + '|' + (G.sickN || 0);
     if (!force && G._workTimer > 0 && G._workKey === key) return;
     G._workTimer = 0.45;
     G._workKey = key;
 
-    var avail = Math.floor(G.pop);
+    var avail = Math.max(0, Math.floor(G.pop) - (G.sickN || 0));   // the sick stay abed
     var list = G.buildings.filter(function (b) { return b.built && jobsOf(b) > 0 && !b.paused; });
     G.buildings.forEach(function (b) { b.workers = 0; });
     if (!list.length) { G.idle = avail; G.builders = Math.min(6, Math.max(1, Math.floor(avail * 0.5) + 1)); return; }
@@ -1045,7 +1046,7 @@ var SIM = (function () {
     // population
     var h = housing();
     if (G.res.food <= 0.5 && G.pop > 1) {
-      G.pop -= 0.045 * dt;
+      G.pop -= 0.045 * dt; G._lossWhy = 'starve';
       if (!G._starveWarned || G.time - G._starveWarned > 20) {
         G._starveWarned = G.time;
         emit('toast', { msg: 'Your people are starving — build farms!', kind: 'bad' });
@@ -1057,7 +1058,7 @@ var SIM = (function () {
       var rate = 0.09 * season().growth * (G.happy / 70) * U.clamp((h - G.pop) / 6, 0.15, 1);
       G.pop = Math.min(h, G.pop + rate * dt);
     } else if (G.happy < 18 && G.pop > 2) {
-      G.pop -= 0.02 * dt;   // people drift away
+      G.pop -= 0.02 * dt; G._lossWhy = 'leave';   // people drift away
     }
 
     // research
@@ -1109,6 +1110,7 @@ var SIM = (function () {
     }
 
     if (typeof WAR !== 'undefined') WAR.tick(dt);
+    if (typeof FOLK !== 'undefined') FOLK.tick(dt);
     tickWeather(dt);
     tickHarvest(dt);
     tickFire(dt);
@@ -1305,7 +1307,7 @@ var SIM = (function () {
     if (id === 'feast') G.happy = U.clamp(G.happy + 15, 0, 100);
     if (id === 'shifts') G.shiftUntil = G.time + DATA.SEASON_LEN * 0.5;
     if (id === 'levy') { var coin = Math.round(5 * G.pop); G.res.gold = Math.min(cap('gold'), G.res.gold + coin); G.happy = U.clamp(G.happy - 10, 0, 100); cost = { coin: coin }; }
-    if (id === 'settlers') G.pop = Math.min(housing(), G.pop + 6);
+    if (id === 'settlers') { G.pop = Math.min(housing(), G.pop + 6); G._gainWhy = 'settlers'; }
     if (!G.decrees) G.decrees = {};
     G.decrees[id] = G.time + d.cooldown * DATA.SEASON_LEN;
     emit('decree', { id: id, cost: cost });
@@ -1862,7 +1864,8 @@ var SIM = (function () {
       if (G.pop < 2) break;
       pay(u.cost);
       G.army[key] = (G.army[key] || 0) + 1;
-      G.pop = Math.max(1, G.pop - 1);
+      G.pop = Math.max(1, G.pop - 1); G._lossWhy = 'soldier';
+      if (typeof FOLK !== 'undefined') FOLK.tick(0);
       made++;
     }
     if (made) { U.sfx.place(); emit('army'); return { ok: true, made: made }; }
@@ -1874,7 +1877,8 @@ var SIM = (function () {
     if (!G.army[key]) return;
     G.army[key]--;
     if (!G.army[key]) delete G.army[key];
-    G.pop += 1;
+    G.pop += 1; G._gainWhy = 'veteran';
+    if (typeof FOLK !== 'undefined') FOLK.tick(0);
     emit('army');
   }
 
@@ -1963,6 +1967,11 @@ var SIM = (function () {
       out.push({ sev: 2, ic: '🔥', text: b.def.name + ' is on fire!', b: b,
         hint: 'Tap it and call the bucket brigade' + (wellsNear(b, 5) ? '' : ' — there is no well nearby') });
     });
+    if (typeof FOLK !== 'undefined' && G.sickN) {
+      var sh = FOLK.sickHomes();
+      out.push({ sev: sh.length > 2 ? 2 : 1, ic: '🤒', text: 'Fever: ' + G.sickN + ' ill in ' + sh.length + ' home' + (sh.length > 1 ? 's' : ''),
+        b: sh.length ? sh[0].b : null, hint: 'Tap the house with the yellow cloth and send for the physician. Wells stop it spreading' });
+    }
     if (G.ship && G.ship.phase === 'anchored' && G.ship.offers.length) {
       out.push({ sev: 0, ic: '⛵', text: 'A merchant ship is at anchor', hint: 'Tap the ship to see what they offer', ship: true });
     }
@@ -2089,6 +2098,7 @@ var SIM = (function () {
       army: G.army, rival: G.rival, quests: G.quests, stats: G.stats, chapter: G.chapter || 0, won: !!G.won,
       tut: typeof G.tut === 'number' ? G.tut : -1, mkt: G.mkt || {}, decrees: G.decrees || {}, shiftUntil: G.shiftUntil || -1, finds: G.finds || [],
       dip: G.dip || null, tribute: G.tribute || null,
+      folk: typeof FOLK !== 'undefined' ? FOLK.pack() : null,
       shipTimer: G.shipTimer, findTimer: G.findTimer,
       vets: G.vets || {}, formation: G.formation || 'line', seen: G.seen || {}, campaign: G.campaign || null,
       festivals: G.festivals || {}, fairUntil: G.fairUntil || -1,
@@ -2129,6 +2139,7 @@ var SIM = (function () {
   }
   function loadGame() {
     var d = U.load();
+    if (typeof FOLK !== 'undefined') FOLK.reset();
     if (!d || !(d.v >= 2 && d.v <= 4)) return false;    // older saves still load
     W.deserialize(d.world);
     var st = d.stats || {};
@@ -2144,7 +2155,7 @@ var SIM = (function () {
       quests: d.quests || {}, stats: st, eventTimer: d.eventTimer,
       chapter: d.chapter || 0, won: !!d.won, weather: 'clear', weatherTimer: 30,
       tut: typeof d.tut === 'number' ? d.tut : -1, mkt: d.mkt || {}, decrees: d.decrees || {}, shiftUntil: d.shiftUntil || -1, finds: d.finds || [],
-      dip: d.dip || null, tribute: d.tribute || null,
+      dip: d.dip || null, tribute: d.tribute || null, folkSave: d.folk || null,
       ship: null, shipTimer: d.shipTimer || DATA.SEASON_LEN * 2, findTimer: d.findTimer || 40, fireTimer: 5,
       vets: d.vets || {}, formation: d.formation || 'line',
       growTimer: 6, reliefTimer: 30, reliefCooldown: 0,

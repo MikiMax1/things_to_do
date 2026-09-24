@@ -168,7 +168,7 @@ var UI = (function () {
 
   var PANELS = {
     build: { title: 'Build', tabs: function () { return [{ key: 'suggested', name: '★ Suggested' }].concat(DATA.CATS); }, body: buildBody },
-    people: { title: 'People', tabs: function () { return [{ key: 'quests', name: 'Story' }, { key: 'overview', name: 'Realm' }, { key: 'jobs', name: 'Work' }]; }, body: peopleBody },
+    people: { title: 'People', tabs: function () { return [{ key: 'quests', name: 'Story' }, { key: 'overview', name: 'Realm' }, { key: 'folk', name: 'Families' }, { key: 'jobs', name: 'Work' }]; }, body: peopleBody },
     army: { title: 'Army', tabs: function () { return [{ key: 'roster', name: 'Roster' }, { key: 'muster', name: 'Muster' }, { key: 'war', name: 'War' }, { key: 'dip', name: 'Diplomacy' }]; }, body: armyBody },
     tech: { title: 'Research', tabs: function () { return [{ key: 1, name: 'Tier I' }, { key: 2, name: 'Tier II' }, { key: 3, name: 'Tier III' }]; }, body: techBody },
     decrees: { title: 'Royal Decrees', tabs: function () { return [{ key: 'all', name: 'Decrees' }]; }, body: decreesBody },
@@ -313,8 +313,32 @@ var UI = (function () {
   }
 
   /* ---------------- PEOPLE ---------------- */
+  function folkBody(box) {
+    var f = FOLK.summary(), st = f.stats;
+    box.appendChild(h('<div class="card">' +
+      '<div class="stat-line"><span>Households</span><b>' + f.households + '</b></div>' +
+      '<div class="stat-line"><span>Married couples</span><b>' + f.couples + '</b></div>' +
+      '<div class="stat-line"><span>Children · elders</span><b>' + f.children + ' · ' + f.elders + '</b></div>' +
+      (f.oldest ? '<div class="stat-line"><span>Oldest soul</span><b>' + FOLK.full(f.oldest) + ', ' + Math.floor(f.oldest.a) + '</b></div>' : '') +
+      '<div class="stat-line"><span>This year</span><b>' + st.born + ' born · ' + st.wed + ' wed · ' + st.came + ' came · ' + (st.died + st.left) + ' lost</b></div>' +
+      (f.sick ? '<div class="stat-line"><span style="color:#d8c13a">🤒 Fever</span><b>' + f.sick + ' ill in ' + f.sickHomes + ' home' + (f.sickHomes > 1 ? 's' : '') + '</b></div>' : '') +
+      (f.noWell ? '<div class="stat-line"><span>Homes with no well near</span><b style="color:#e0b23c">' + f.noWell + '</b></div>' : '') +
+      '</div>'));
+    box.appendChild(h('<p class="hint">Tap anyone in the lanes to meet them. Crowded homes far from a <b>well</b> breed fever; a yellow cloth on the door marks a sick house — tap it to send for the physician.</p>'));
+    box.appendChild(h('<p class="sect-label">Families of Ashveil</p>'));
+    box.appendChild(h('<div class="card"><p class="folk-names fams">' + FOLK.families().slice(0, 18).map(function (x) {
+      return '<span>' + x.f + ' <i>' + x.n + '</i></span>'; }).join('') + '</p></div>'));
+    if (f.log.length) {
+      box.appendChild(h('<p class="sect-label">Births, weddings and burials</p>'));
+      box.appendChild(h('<div class="card">' + f.log.slice(0, 14).map(function (l) {
+        return '<div class="stat-line"><span style="flex:0 0 58px;color:#8a7a5e">' + l.s + '</span><b style="font-weight:400;text-align:left;flex:1">' + l.m + '</b></div>';
+      }).join('') + '</div>'));
+    }
+  }
+
   function peopleBody(box, tab) {
     var G = SIM.G;
+    if (tab === 'folk') { folkBody(box); return; }
     if (tab === 'overview') {
       var target = SIM.happyTarget();
       box.appendChild(h('<div class="card">' +
@@ -973,13 +997,52 @@ var UI = (function () {
   }
 
   function select(sel) {
+    if (selected && selected.a) selected.a.sel = false;
+    if (sel && sel.a) sel.a.sel = true;
     selected = sel;
     RENDER.setSelected(sel);
     renderInspector();
   }
   function clearSelection() {
+    if (selected && selected.a) selected.a.sel = false;
     selected = null; RENDER.setSelected(null);
     el('inspector').classList.add('hidden');
+  }
+
+  /* one of your people */
+  function personCard(p, ic, body, acts) {
+    if (!p) { clearSelection(); return; }
+    var home = FOLK.homeOf(p), m = FOLK.mood(p), job = FOLK.jobOf(p);
+    ic.textContent = p.sick ? '🤒' : p.a < 6 ? '👶' : p.a < 14 ? (p.s === 'f' ? '👧' : '👦') : p.a >= 62 ? (p.s === 'f' ? '👵' : '👴') : (p.s === 'f' ? '👩' : '👨');
+    ic.style.fontSize = '26px';
+    el('insp-name').textContent = FOLK.full(p);
+    el('insp-sub').textContent = Math.floor(p.a) + ' years old · ' + FOLK.tradeOf(p);
+    var sp = p.sp && FOLK.get(p.sp), pa = p.pa && FOLK.get(p.pa);
+    var kids = FOLK.list.filter(function (q) { return q.pa === p.i || (p.sp && q.pa === p.sp); });
+    var sv = FOLK.servicesOf(home);
+    var col = m.v < 30 ? '#e0795f' : m.v < 55 ? '#e0b23c' : '#8fd06a';
+    var lines = [
+      '<div class="stat-line"><span>Mood</span><b style="color:' + col + '">' + m.word + '</b></div>' +
+        (m.why.length ? '<p class="why">Troubled by ' + m.why.join(', ') + '.</p>' : ''),
+      '<div class="stat-line"><span>Home</span><b>' + (home ? (home.id === 'castle' ? 'a bed in the castle hall' : (home.def.tierNames ? home.def.tierNames[(home.level || 1) - 1] : home.def.name)) : 'none') + '</b></div>',
+      job ? '<div class="stat-line"><span>Works at</span><b>' + job.def.name + '</b></div>' : '',
+      sp ? '<div class="stat-line"><span>Married to</span><b>' + sp.n + '</b></div>' : p.grief > 0 ? '<div class="stat-line"><span>Widowed</span><b>and grieving</b></div>' : '',
+      pa ? '<div class="stat-line"><span>Child of</span><b>' + pa.n + (FOLK.get(pa.sp) ? ' and ' + FOLK.get(pa.sp).n : '') + '</b></div>' : '',
+      kids.length ? '<div class="stat-line"><span>Children</span><b>' + kids.map(function (k) { return k.n; }).join(', ') + '</b></div>' : '',
+      home && home.id !== 'castle' ? '<div class="stat-line"><span>Near home</span><b>' +
+        [sv.well ? '⛲' : '', sv.chapel ? '⛪' : '', sv.tavern ? '🍺' : '', sv.market ? '⚖️' : ''].join(' ') + (sv.well ? '' : ' no well') + '</b></div>' : ''
+    ];
+    body.innerHTML = lines.join('');
+    if (home) {
+      var hb = h('<button class="btn sec">🏠 Show their home</button>');
+      hb.addEventListener('click', function () { RENDER.centreOn(home.x, home.y); select({ b: home }); });
+      acts.appendChild(hb);
+    }
+    if (job) {
+      var jb = h('<button class="btn sec">⚒️ Their workplace</button>');
+      jb.addEventListener('click', function () { RENDER.centreOn(job.x, job.y); select({ b: job }); });
+      acts.appendChild(jb);
+    }
   }
 
   function renderInspector() {
@@ -1020,6 +1083,32 @@ var UI = (function () {
       }
       if (def.upkeep) lines.push('<div class="stat-line"><span>upkeep</span><b>−' + def.upkeep.toFixed(2) + ' g/s</b></div>');
       if (def.housing) lines.push('<div class="stat-line"><span>housing</span><b>+' + def.housing + '</b></div>');
+      if (b.built && typeof FOLK !== 'undefined' && (def.housing || b.id === 'castle')) {
+        var res = FOLK.residents(b), sick = FOLK.sickAt(b), sv = FOLK.servicesOf(b);
+        if (res.length) {
+          var fams = {};
+          res.forEach(function (p) { fams[p.f] = (fams[p.f] || 0) + 1; });
+          lines.push('<div class="stat-line"><span>Home to</span><b>' + Object.keys(fams).map(function (f) { return 'the ' + f + 's'; }).join(', ') + ' (' + res.length + ')</b></div>');
+          lines.push('<p class="folk-names">' + res.map(function (p) {
+            return '<span' + (p.sick ? ' class="ill"' : '') + '>' + p.n + ' <i>' + Math.floor(p.a) + '</i></span>'; }).join('') + '</p>');
+        }
+        if (b.id !== 'castle') lines.push('<div class="stat-line"><span>Nearby</span><b>' +
+          [sv.well ? '⛲ well' : '<s>no well</s>', sv.chapel ? '⛪ chapel' : '', sv.tavern ? '🍺 tavern' : '', sv.market ? '⚖️ market' : '']
+            .filter(Boolean).join(' · ') + '</b></div>');
+        if (sick) {
+          var doc = b.physic && b.physic > SIM.G.time;
+          lines.push('<div class="stat-line"><span style="color:#d8c13a">🤒 Fever</span><b>' + sick + ' ill' + (doc ? ' · the physician is here' : sv.well ? '' : ' · no clean water near') + '</b></div>');
+          var pb2 = h('<button class="btn">⚕️ Send for the physician (−25 gold)</button>');
+          pb2.disabled = doc;
+          if (doc) pb2.textContent = '⚕️ The physician is tending them';
+          pb2.addEventListener('click', function () {
+            var r = FOLK.physician(b);
+            if (!r.ok) { toast(r.why, 'bad'); U.sfx.err(); return; }
+            toast('The physician comes with herbs and clean linen.', 'good'); U.sfx.tap(); renderInspector(); refreshHUD();
+          });
+          acts.appendChild(pb2);
+        }
+      }
       // NB: contentment is still pooled realm-wide, so don't claim a radius
       // the simulation does not honour — see "the balance audit" in PLAN.md
       if (def.happy) lines.push('<div class="stat-line"><span>contentment</span><b>+' + def.happy + ' realm-wide</b></div>');
@@ -1096,6 +1185,8 @@ var UI = (function () {
         ub.addEventListener('click', function () { clearSelection(); openTab.world = 'castle'; openSheet('world'); });
         acts.appendChild(ub);
       }
+    } else if (selected.p) {
+      personCard(FOLK.get(selected.p), ic, body, acts);
     } else if (selected.t) {
       var t = selected.t;
       var terr = DATA.TERRAIN[t.terr];
@@ -1226,6 +1317,9 @@ var UI = (function () {
         var fi = RENDER.pickFind(e.clientX, sy);
         if (fi >= 0) { collectFind(fi); return; }
         var hitB = RENDER.pickBuilding(e.clientX, sy);
+        // a villager right under the finger beats the building behind them
+        var ag = typeof FOLK !== 'undefined' ? RENDER.pickAgent(e.clientX, sy, !!hitB) : null;
+        if (ag && ag.pid && FOLK.get(ag.pid)) { select({ p: ag.pid, a: ag }); U.sfx.tap(); return; }
         var t = RENDER.tileAtScreen(e.clientX, sy);
         var tile = W.at(t.x, t.y);
         if (hitB) select({ b: hitB });
@@ -1657,6 +1751,7 @@ var UI = (function () {
       if (kind === 'war-flee') toast(payload.why === 'broken' ? 'The raiders break and run for their boats!' : 'The raiders are loading their plunder onto the ships…', payload.why === 'broken' ? 'good' : 'war');
       if (kind === 'war-over') eventQueue.unshift({ k: 'warover', r: payload });
       if (kind === 'weather' && payload === 'rain') toast('🌧️ Rain sweeps in off the sea — the fields drink it up.', '');
+      if (kind === 'folk' && payload.toast) { chronicle(payload.msg); toast(payload.msg, /died|Fever|fever/.test(payload.msg) ? 'bad' : 'good'); }
       if (kind === 'harvest') { toast('🌾 Harvest time! ' + payload + ' food stands in the fields — the farmhands are bringing it in.', 'good'); chronicle('The harvest began: ' + payload + ' in the fields.'); U.sfx.quest(); }
       if (kind === 'fire') {
         toast('🔥 Fire at the ' + payload.def.name.toLowerCase() + '! Tap it to call the bucket brigade.', 'bad');
