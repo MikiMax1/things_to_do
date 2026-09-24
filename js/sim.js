@@ -1363,6 +1363,8 @@ var SIM = (function () {
     var wet = Math.random() < RAIN_CHANCE[season().key];
     if (wet && G.weather !== 'rain') emit('weather', 'rain');
     G.weather = wet ? 'rain' : 'clear';
+    // now and then a summer or autumn rain comes in as a storm: wind, lightning
+    G.storm = wet && (season().key === 'summer' || season().key === 'autumn') && Math.random() < 0.3;
     G.weatherTimer = wet ? 14 + Math.random() * 16 : 24 + Math.random() * 30;
   }
   function rainMul() { return G.weather === 'rain' ? 1.12 : 1; }

@@ -130,6 +130,7 @@ var U = (function () {
     death:    function () { tone(220, .2, 'sawtooth', .12, 90); },
     victory:  function () { [523,659,784,1046,1318].forEach(function(f,i){ setTimeout(function(){ tone(f,.24,'triangle',.18); }, i*110); }); },
     defeat:   function () { [440,392,330,262].forEach(function(f,i){ setTimeout(function(){ tone(f,.3,'sine',.16); }, i*160); }); },
+    thunder:  function () { noise(1.6, 0.34, 180); setTimeout(function () { noise(1.1, 0.18, 120); }, 260); },
     season:   function () { tone(392, .18, 'sine', .12); setTimeout(function(){ tone(523,.22,'sine',.12); }, 140); }
   };
 

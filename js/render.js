@@ -139,7 +139,8 @@ var RENDER = (function () {
 
   /* ---------------- particles ---------------- */
   function smoke(x, y, h) {
-    particles.push({ kind: 'smoke', x: x, y: y, h: h, vx: 0.05 + Math.random() * .04, vy: -0.03, vh: 0.28 + Math.random() * .15,
+    var wd = SCENERY.wind();
+    particles.push({ kind: 'smoke', x: x, y: y, h: h, vx: (0.03 + Math.random() * .03) * wd * 1.6, vy: -0.03 * wd, vh: 0.28 / Math.max(0.8, wd * 0.8) + Math.random() * .15,
       life: 3 + Math.random() * 2, max: 5, sz: 0.018 + Math.random() * 0.012 });
   }
   function puff(x, y, col, n) {
@@ -178,7 +179,7 @@ var RENDER = (function () {
   function updateWeather(dt, season) {
     var rainy = SIM.G && SIM.G.weather === 'rain';
     var kind = season === 'winter' ? 'snow' : rainy ? 'rain' : season === 'autumn' ? 'leaf' : season === 'spring' ? 'petal' : null;
-    var rate = kind === 'snow' ? 60 : kind === 'rain' ? 220 : kind === 'leaf' ? 7 : kind === 'petal' ? 6 : 0;
+    var rate = kind === 'snow' ? 60 : kind === 'rain' ? (SIM.G.storm ? 420 : 220) : kind === 'leaf' ? 7 : kind === 'petal' ? 6 : 0;
     if (calm) rate *= (kind === 'leaf' || kind === 'petal') ? 0 : 0.3;   // reduce motion
     var n = rate * dt * (cw / 400) * Q[QLEVEL].weather;
     while (n > 0) {
@@ -216,10 +217,21 @@ var RENDER = (function () {
     g.drawImage(sp.c, s.x - sp.ax * k, s.y - sp.ay * k, sp.c.width * k, sp.c.height * k);
     if (alpha !== undefined && alpha < 1) g.globalAlpha = 1;
   }
+  /* Shadows turn with the sun: long to the west in the morning, short at
+     noon, long to the east towards evening. A shear about the building's
+     base line swings the baked shadow round. */
+  function sunShear() {
+    var p = dayPhase();
+    return U.clamp((p - 0.36) / 0.3, -1, 1) * 0.45;
+  }
   function drawShadow(sp, x, y, scaleMul) {
     if (!sp.sh) return;
     var s = toScreen(x, y), k = cam.z / sp.s * (scaleMul || 1);
-    g.drawImage(sp.sh, s.x - sp.ax * k, s.y - sp.ay * k, sp.c.width * k, sp.c.height * k);
+    var sh = calm ? 0 : sunShear();
+    if (Math.abs(sh) < 0.01) { g.drawImage(sp.sh, s.x - sp.ax * k, s.y - sp.ay * k, sp.c.width * k, sp.c.height * k); return; }
+    g.setTransform(dpr, 0, -dpr * sh, dpr, dpr * (s.x + sh * s.y), dpr * 0);
+    g.drawImage(sp.sh, s.x - sp.ax * k - (s.x), s.y - sp.ay * k, sp.c.width * k, sp.c.height * k);
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
 
   function spriteOf(b, season) {
@@ -264,6 +276,15 @@ var RENDER = (function () {
     }
 
     if (!DBG.noWater && Q[QLEVEL].glints) drawWater(x0, x1, y0, y1, z);
+
+    // the small life of the island (scenery.js)
+    var sceneApi = { toScreen: toScreen, z: z, cw: cw, ch: ch, x0: x0, x1: x1, y0: y0, y1: y1, onScreen: onScreen,
+                     night: nightAmount(), dayPhase: dayPhase(), calm: calm };
+    SCENERY.update(dt, sceneApi);
+    var rich = QLEVEL !== 'saver';
+    if (!DBG.noWater && rich) SCENERY.drawSurf(g, sceneApi);
+    if (rich) SCENERY.drawPuddles(g, sceneApi);
+    SCENERY.drawJumps(g, sceneApi);
 
     var night = nightAmount(), golden = goldenAmount();
     var sun = 1 - night;
@@ -314,6 +335,7 @@ var RENDER = (function () {
       WAR.state.ships.forEach(function (s) { if (onScreen(s.x, s.y, 120)) items.push({ k: 'wship', s: s, d: s.x + s.y }); });
       WAR.state.units.forEach(function (u) { if ((!u.dead || u.fade > 0) && !u.fled && onScreen(u.x, u.y, 40)) items.push({ k: 'war', u: u, d: u.x + u.y + (u.dead ? -0.3 : 0.03) }); });
     }
+    if (rich) SCENERY.homeItems(items, sceneApi);
     items.sort(function (p, q) { return p.d - q.d; });
 
     /* ---- 3. ground cover: fields, then every shadow ---- */
@@ -338,7 +360,7 @@ var RENDER = (function () {
     }
 
     /* ---- 4. the world, back to front ---- */
-    var wind = Math.sin(time * 0.7) * 0.5 + Math.sin(time * 1.9) * 0.25;
+    var wind = SCENERY.wind() * 0.75 + Math.sin(time * 1.9) * 0.2;
     // trees standing just in front of a building thin out so it can be seen
     var screenT = {};
     G.buildings.forEach(function (b) {
@@ -376,6 +398,8 @@ var RENDER = (function () {
         var ss = toScreen(it.s.x, it.s.y); WAR.drawShip(g, it.s, ss.x, ss.y, z);
       } else if (it.k === 'war') {
         var su = toScreen(it.u.x, it.u.y); WAR.drawUnit(g, it.u, su.x, su.y, z);
+      } else if (it.k === 'scn') {
+        it.o.draw(g);
       } else if (it.k === 'site') {
         drawSite(it.s, z);
       } else if (it.k === 'scout') {
@@ -431,6 +455,7 @@ var RENDER = (function () {
 
     /* ---- 8. weather over everything ---- */
     if (!DBG.noWeather) drawWeather();
+    SCENERY.drawSky(g, sceneApi);
 
     /* ---- 9. overlays ---- */
     drawPlans(z);
