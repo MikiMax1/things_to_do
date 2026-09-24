@@ -168,8 +168,16 @@
       <p class="tagline">Raise a living realm from the ash.</p>
       <button class="primary" id="btn-continue" type="button">Continue</button>
       <button class="primary" id="btn-new" type="button">New Kingdom</button>
+      <div id="setup" class="hidden">
+        <p class="setup-label">The island</p><div class="setup-row" data-k="map"></div>
+        <p class="setup-label">The world</p><div class="setup-row" data-k="diff"></div>
+        <p class="setup-label">The beginning</p><div class="setup-row" data-k="scen"></div>
+        <p id="setup-desc"></p>
+        <button class="primary" id="btn-found" type="button">Found the kingdom</button>
+        <button class="setup-back" id="btn-setup-back" type="button">Back</button>
+      </div>
       <div id="loading" class="hidden"><p>Raising the land…</p><div class="load-bar"><i id="load-fill"></i></div></div>
-      <p class="version">v3.0 · tap · drag · pinch</p>
+      <p class="version">v4.0 · tap · drag · pinch</p>
     </div>
   </div>
 </div>
@@ -182,6 +190,7 @@
 <script src="js/sim.js"></script>
 <script src="js/folk.js"></script>
 <script src="js/explore.js"></script>
+<script src="js/honours.js"></script>
 <script src="js/agents.js"></script>
 <script src="js/render.js"></script>
 <script src="js/battle.js"></script>

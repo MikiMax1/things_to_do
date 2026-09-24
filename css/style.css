@@ -493,3 +493,39 @@ h1,h2,h3{font-family:var(--font);margin:0}
 .folk-names.fams span{font-size:12.5px}
 #insp-body p.why{font-size:11.5px;color:#bda98a;margin:2px 0 6px}
 .sea-chart{display:block;width:100%;height:300px;border-radius:12px;border:1px solid #6b5436;box-shadow:inset 0 0 30px rgba(80,50,20,.35);margin-bottom:10px;touch-action:manipulation}
+/* new kingdom setup */
+#setup{margin-top:4px;text-align:left}
+#setup .setup-label{font-size:11px;letter-spacing:2px;text-transform:uppercase;color:#c9a86a;margin:10px 0 5px}
+.setup-row{display:flex;flex-wrap:wrap;gap:6px}
+.setup-pill{flex:1 1 auto;min-width:0;padding:8px 10px;border-radius:12px;border:1px solid #6b543a;background:rgba(30,22,15,.72);color:#f3e6c4;font:600 13px system-ui,sans-serif;cursor:pointer}
+.setup-pill i{font-style:normal;margin-right:4px}
+.setup-pill.on{background:linear-gradient(180deg,#e0b23c,#b58a24);color:#2a1d0e;border-color:#f0d27a}
+#setup-desc{font-size:12px;line-height:1.45;color:#e3d6b6;background:rgba(20,15,10,.62);border-radius:10px;padding:8px 10px;margin:12px 0 10px}
+#setup-desc b{color:#f0d98a}
+.setup-back{display:block;margin:8px auto 0;background:none;border:0;color:#d9c9a3;font:500 13px system-ui,sans-serif;text-decoration:underline;cursor:pointer}
+#title-screen.setting-up .tagline{display:none}
+#title-screen.setting-up h1{font-size:30px;margin-bottom:4px}
+.score-big{font:700 38px var(--font,Georgia,serif);color:#f0d98a;line-height:1.1;margin:4px 0}
+.honours{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.honour{background:rgba(0,0,0,.25);border:1px solid #3d2f21;border-radius:12px;padding:9px 10px;opacity:.5;filter:grayscale(1)}
+.honour.got{opacity:1;filter:none;border-color:#8a6f45;background:linear-gradient(180deg,rgba(224,178,60,.14),rgba(0,0,0,.2))}
+.honour i{font-style:normal;font-size:20px;display:block}
+.honour b{display:block;font-size:13px;color:#f3e6c4;margin-top:2px}
+.honour span{display:block;font-size:11px;color:#bda98a;margin-top:2px;line-height:1.3}
+.ledger-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.ledger-grid span{font-size:11px;color:#bda98a}
+.ledger-grid canvas{display:block;width:100%;height:54px;background:rgba(0,0,0,.2);border-radius:8px;margin-top:3px}
+/* comfort settings */
+html.big-text #sheet-body, html.big-text #insp-body, html.big-text #insp-actions, html.big-text #toasts,
+html.big-text .ev-card p, html.big-text #goal-card, html.big-text #tut{zoom:1.14}
+html.calm *, html.calm *::before, html.calm *::after{animation-duration:.001s !important;animation-iteration-count:1 !important;transition-duration:.001s !important}
+#setup{background:rgba(18,12,8,.78);border:1px solid rgba(201,168,106,.35);border-radius:16px;padding:6px 12px 10px;backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px)}
+#title-screen.setting-up{overflow-y:auto;-webkit-overflow-scrolling:touch}
+#title-screen.setting-up .title-inner{margin-top:auto;margin-bottom:auto;padding:12px 0}
+@media (orientation:landscape) and (max-height:500px){
+  #title-screen.setting-up h1{display:none}
+  #title-screen.setting-up .version{display:none}
+  #setup .setup-label{margin:6px 0 4px}
+  .setup-pill{padding:6px 8px;font-size:12px}
+  #setup-desc{margin:8px 0;font-size:11.5px}
+}

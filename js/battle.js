@@ -976,7 +976,7 @@ var BATTLE = (function () {
         loot.food = Math.round(20 + startFoes * 4);
         loot.iron = Math.round(startFoes * 1.6);
         title = 'Victory';
-        G.tribute = { left: 4, amt: Math.round(30 + startFoes * 4) };
+        G.tribute = { left: 4, amt: Math.round(30 + startFoes * 4) }; G._stormed = true;
         body = 'The gate is down and Brannoch\'s town is taken and stripped. They will pay tribute every season for a year — <b>' +
                G.tribute.amt + ' gold</b> a time.';
       }

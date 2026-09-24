@@ -250,7 +250,7 @@ var FOLK = (function () {
       // never two of the same name under one roof
       var taken = g.folk.filter(function (q) { return q !== kid && (q.pa === mum.i || q.pa === dad.i || q === mum || q === dad); }).map(function (q) { return q.n; });
       for (var tries = 0; tries < 8 && taken.indexOf(kid.n) >= 0; tries++) kid.n = pick(kid.s === 'f' ? F_NAMES : M_NAMES);
-      s.born++;
+      s.born++; g.stats.births = (g.stats.births || 0) + 1;
       note('A child, ' + kid.n + ', is born to ' + mum.n + ' and ' + dad.n + ' ' + mum.f + '.');
       return;
     }
@@ -369,7 +369,7 @@ var FOLK = (function () {
           var occ = homesOf[b.uid] || [];
           if (!occ.length || b === g.buildings[0]) return;
           var crowd = occ.length / capOf(b);
-          var risk = 0.0045 * crowd * crowd * (servicesOf(b).well ? 0.35 : 1) * sanit * winter;
+          var risk = 0.0045 * crowd * crowd * (servicesOf(b).well ? 0.35 : 1) * sanit * winter * (SIM.diff ? SIM.diff().fever : 1);
           if (R() < risk) {
             var p = pick(occ);
             if (p.sick) return;

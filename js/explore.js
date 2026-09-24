@@ -96,7 +96,8 @@ var EXPLORE = (function () {
     var small = document.createElement('canvas'); small.width = W.COLS + 2; small.height = W.ROWS + 2;
     var sx = small.getContext('2d'), mi = sx.createImageData(W.COLS + 2, W.ROWS + 2);
     for (var yy = -1; yy <= W.ROWS; yy++) for (var xx = -1; xx <= W.COLS; xx++) {
-      var on = xx < 0 || yy < 0 || xx >= W.COLS || yy >= W.ROWS ? !seen(U.clamp(xx, 0, W.COLS - 1), U.clamp(yy, 0, W.ROWS - 1)) : !seen(xx, yy);
+      var tx = U.clamp(xx, 0, W.COLS - 1), ty = U.clamp(yy, 0, W.ROWS - 1), tt = W.at(tx, ty);
+      var on = !seen(tx, ty) && tt && tt.terr !== 'water' && !(xx < 0 || yy < 0 || xx >= W.COLS || yy >= W.ROWS);
       var j = ((yy + 1) * (W.COLS + 2) + xx + 1) * 4;
       mi.data[j] = mi.data[j + 1] = mi.data[j + 2] = 255; mi.data[j + 3] = on ? 255 : 0;
     }

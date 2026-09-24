@@ -106,7 +106,7 @@ function place(id, n) {
 }
 
 function runKingdom(seed, seasons) {
-  SIM.newGame(seed);
+  SIM.newGame(seed, { map: process.argv[4] || 'green', diff: process.argv[3] || 'fair', scen: process.argv[5] || 'standard' });
   const G = SIM.G;
   const rec = { starved: 0, broke: 0, raids: 0, minFood: 1e9, minGold: 1e9, churn: 0, reached: [0, 99, 99, 99, 99] };
   let lastTiers = null;

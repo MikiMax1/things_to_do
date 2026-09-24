@@ -54,6 +54,7 @@ var RENDER = (function () {
     }
   }
 
+  var calm = document.documentElement.classList.contains('calm');
   function init(canvas) {
     cv = canvas; g = cv.getContext('2d');
     resize();
@@ -178,6 +179,7 @@ var RENDER = (function () {
     var rainy = SIM.G && SIM.G.weather === 'rain';
     var kind = season === 'winter' ? 'snow' : rainy ? 'rain' : season === 'autumn' ? 'leaf' : season === 'spring' ? 'petal' : null;
     var rate = kind === 'snow' ? 60 : kind === 'rain' ? 220 : kind === 'leaf' ? 7 : kind === 'petal' ? 6 : 0;
+    if (calm) rate *= (kind === 'leaf' || kind === 'petal') ? 0 : 0.3;   // reduce motion
     var n = rate * dt * (cw / 400) * Q[QLEVEL].weather;
     while (n > 0) {
       if (n < 1 && Math.random() > n) break;
@@ -353,7 +355,7 @@ var RENDER = (function () {
         var thin = screenT[Math.floor(tr.x) + ',' + Math.floor(tr.y)];
         if (thin) g.globalAlpha = 0.42;
         // trees lean a touch in the wind, from the root
-        if (z > 44 && Q[QLEVEL].lean) {
+        if (z > 44 && Q[QLEVEL].lean && !calm) {
           var lean = (wind + Math.sin(time * 1.3 + tr.ph) * 0.35) * 0.018;
           g.setTransform(dpr, 0, dpr * lean, dpr, dpr * s.x, dpr * s.y);
           g.drawImage(sp.c, -sp.ax * k, -sp.ay * k, sp.c.width * k, sp.c.height * k);
@@ -992,7 +994,7 @@ var RENDER = (function () {
     get cam() { return cam; },
     setGhost: function (gh) { ghost = gh; },
     getGhost: function () { return ghost; },
-    setSelected: function (s) { selected = s; },
+    setSelected: function (s) { selected = s; }, setCalm: function (on) { calm = on; },
     puff: puff, floater: floater, nightAmount: nightAmount, DBG: DBG,
     quality: function () { return QLEVEL; }, qualityPref: function () { return QPREF; }, setQuality: setQuality,
     set onQuality(f) { onQuality = f; },

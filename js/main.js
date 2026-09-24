@@ -94,6 +94,39 @@
     }
   }
 
+  /* the choices before a new reign: island, world, beginning */
+  var setup = { map: 'green', diff: 'fair', scen: 'standard' };
+  var MAPS = {
+    green: { name: 'Green Isle', ic: '🌿', desc: 'Meadows, woods and a little of everything. The classic start.' },
+    forest: { name: 'Forest Isle', ic: '🌲', desc: 'Deep woods to the shore. Timber is easy; open fields are not.' },
+    highland: { name: 'Highlands', ic: '⛰️', desc: 'Hills and crags. Stone and iron for the taking, thin soil for farms.' },
+    twin: { name: 'Twin Isles', ic: '🏝️', desc: 'Two islands joined by a spit of sand. Tight, and beautiful.' }
+  };
+  function openSetup() {
+    try { var sv = JSON.parse(localStorage.getItem('ashveil.setup') || 'null'); if (sv) setup = sv; } catch (e) {}
+    el('title-screen').classList.add('setting-up');
+    el('btn-new').style.display = 'none'; el('btn-continue').style.display = 'none';
+    el('setup').classList.remove('hidden');
+    renderSetup();
+  }
+  function renderSetup() {
+    var lists = { map: MAPS, diff: SIM.DIFFS, scen: SIM.SCENARIOS };
+    var rows = document.querySelectorAll('#setup .setup-row');
+    Array.prototype.forEach.call(rows, function (row) {
+      var k = row.dataset.k, L = lists[k];
+      row.innerHTML = '';
+      Object.keys(L).forEach(function (id) {
+        var o = L[id], b = document.createElement('button');
+        b.type = 'button'; b.className = 'setup-pill' + (setup[k] === id ? ' on' : '');
+        b.innerHTML = (o.ic ? '<i>' + o.ic + '</i>' : '') + o.name;
+        b.addEventListener('click', function () { setup[k] = id; U.sfx.tap(); renderSetup(); });
+        row.appendChild(b);
+      });
+    });
+    el('setup-desc').innerHTML = '<b>' + MAPS[setup.map].name + '.</b> ' + MAPS[setup.map].desc + '<br><b>' + SIM.DIFFS[setup.diff].name + '.</b> ' +
+      SIM.DIFFS[setup.diff].desc + '<br><b>' + SIM.SCENARIOS[setup.scen].name + '.</b> ' + SIM.SCENARIOS[setup.scen].desc;
+  }
+
   function boot() {
     ART.bake();
     try { paintTitle(); } catch (e) { /* the title works without its painting */ }
@@ -119,9 +152,20 @@
         el('btn-new').textContent = 'Tap again — this replaces your saved kingdom';
         return;
       }
+      openSetup();
+    });
+    el('btn-found').addEventListener('click', function () {
+      U.resumeAudio(); U.sfx.tap();
+      try { localStorage.setItem('ashveil.setup', JSON.stringify(setup)); } catch (e) {}
+      el('setup').classList.add('hidden');
       U.wipe();
-      SIM.newGame();
+      SIM.newGame(null, { map: setup.map, diff: setup.diff, scen: setup.scen });
       prepare(enter);
+    });
+    el('btn-setup-back').addEventListener('click', function () {
+      el('setup').classList.add('hidden');
+      el('btn-new').style.display = ''; if (SIM.hasSave()) el('btn-continue').style.display = 'block';
+      el('title-screen').classList.remove('setting-up');
     });
 
     // keep the canvas honest through rotations and browser chrome changes
@@ -167,7 +211,7 @@
     UI.setSpeed(1);
     UI.refreshHUD();
     UI.chronicle('Ashveil is founded.');
-    if (SIM.G.time < 1) UI.introCard();
+    if (SIM.G.fresh) { SIM.G.fresh = false; UI.introCard(); }
     else UI.toast('Welcome back to Ashveil.', 'good');
     running = true;
     last = performance.now();
@@ -197,6 +241,8 @@
         remain -= d;
       }
       AGENTS.update(Math.min(dt * Math.min(speed, 2), 0.15));
+      U.ambient(dt, { night: RENDER.nightAmount(), season: SIM.season().key, rain: SIM.G.weather === 'rain' || SIM.G.weather === 'storm',
+                      storm: SIM.G.weather === 'storm', war: !!SIM.G.war || BATTLE.isOpen() });
     }
 
     RENDER.draw(dt);
