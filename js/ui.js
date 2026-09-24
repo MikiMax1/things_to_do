@@ -66,6 +66,56 @@ var UI = (function () {
       newsTimer = setTimeout(nextNews, 260);
     }, dur);
   }
+  /* Village Growth: how much the villagers may build for themselves */
+  function growBody(box, tab) {
+    var s2 = STEWARD.state();
+    if (tab === 'log') {
+      if (!s2.log.length) { box.appendChild(h('<p class="hint">Nothing yet. Turn Village Growth on and the villagers will start to build.</p>')); return; }
+      box.appendChild(h('<div class="card">' + s2.log.map(function (l) {
+        return '<div class="stat-line"><span style="flex:0 0 58px;color:#8a7a5e">' + l.s + '</span><b style="font-weight:400;text-align:left;flex:1">' + l.m + '</b></div>';
+      }).join('') + '</div>'));
+      return;
+    }
+    box.appendChild(h('<p class="hint" style="margin-top:0">Let the villagers build for themselves, a little at a time, out of the treasury. You can still build anything yourself — your own plans always come first.</p>'));
+    Object.keys(STEWARD.MODES).forEach(function (m) {
+      var M = STEWARD.MODES[m], on = s2.mode === m;
+      var c = h('<div class="card" style="' + (on ? 'border-color:#e0b23c' : '') + '"><div class="card-row"><div class="card-ic" style="font-size:20px">' + M.ic + '</div>' +
+        '<div class="card-main"><h4>' + M.name + (on ? ' ✓' : '') + '</h4><p>' + M.desc + '</p></div></div></div>');
+      c.addEventListener('click', function () { STEWARD.setMode(m); U.sfx.tap(); refreshHUD(); renderSheet(); if (m !== 'off') toast(M.ic + ' Village Growth: ' + M.name + '.', 'good'); });
+      box.appendChild(c);
+    });
+    if (s2.mode === 'off') return;
+    box.appendChild(h('<p class="sect-label">Always keep in the treasury</p>'));
+    var rr = h('<div class="pill-row"></div>');
+    [0, 60, 120, 250, 500].forEach(function (v) {
+      var pb = h('<button class="pill' + (s2.reserve === v ? ' on' : '') + '">' + v + ' gold</button>');
+      pb.addEventListener('click', function () { STEWARD.setReserve(v); U.sfx.tap(); renderSheet(); });
+      rr.appendChild(pb);
+    });
+    box.appendChild(rr);
+    if (s2.mode === 'needs' || s2.mode === 'steward') {
+      box.appendChild(h('<p class="sect-label">Lean towards</p>'));
+      var fr = h('<div class="pill-row"></div>');
+      Object.keys(STEWARD.FOCUS).forEach(function (f) {
+        var F = STEWARD.FOCUS[f], pb = h('<button class="pill' + (s2.focus === f ? ' on' : '') + '">' + F.ic + ' ' + F.name + '</button>');
+        pb.addEventListener('click', function () { STEWARD.setFocus(f); U.sfx.tap(); renderSheet(); });
+        fr.appendChild(pb);
+      });
+      box.appendChild(fr);
+    }
+    box.appendChild(h('<p class="sect-label">Ground to leave alone</p>'));
+    var n = Object.keys(s2.clear).length;
+    var kb = h('<button class="btn sec wide">🚫 Mark ground to keep clear' + (n ? ' (' + n + ' tiles)' : '') + '</button>');
+    kb.addEventListener('click', function () { startClearPaint(); });
+    box.appendChild(kb);
+    if (n) {
+      var cb = h('<button class="btn sec wide">Clear all the marks</button>');
+      cb.addEventListener('click', function () { s2.clear = {}; U.sfx.tap(); renderSheet(); });
+      box.appendChild(cb);
+    }
+    box.appendChild(h('<p class="hint">They stop for raids, fires and famine, never start a war or break a treaty, and every building they raise shows in the news with the reason — undo it straight after if you disagree.</p>'));
+  }
+
   function newsBody(box) {
     var n = (SIM.G.news || []);
     if (!n.length) { box.appendChild(h('<p class="hint">Nothing yet.</p>')); return; }
@@ -116,7 +166,7 @@ var UI = (function () {
     });
     var mood = G.happy > 75 ? '😀' : G.happy > 55 ? '🙂' : G.happy > 35 ? '😐' : G.happy > 18 ? '😟' : '😠';
     var mp = el('mini-pop'), mh = el('mini-happy'), ma = el('mini-army'), mn = el('mini-note');
-    mp.textContent = '👥 ' + Math.floor(G.pop) + '/' + SIM.housing();
+    mp.textContent = '👥 ' + Math.floor(G.pop) + '/' + Math.floor(SIM.housing());
     mp.className = 'mini' + (G.pop >= SIM.housing() ? ' warn' : '');
     mh.textContent = mood + ' ' + Math.round(G.happy) + '%';
     mh.className = 'mini' + (G.happy < 25 ? ' warn' : '');
@@ -129,6 +179,9 @@ var UI = (function () {
     if (G.rationUntil > G.time) note = '🥣 Rationing';
     if (G.workNow) note = DATA.PROJECTS[G.workNow].ic + ' ' + Math.round(SIM.workProgress(G.workNow) * 100) + '%' + (G.workWaiting ? ' — needs ' + G.workWaiting : '');
     mn.textContent = note;
+    var gc = el('grow-chip'), gm = STEWARD.MODES[STEWARD.state().mode];
+    gc.textContent = (STEWARD.on() ? gm.ic + ' ' + gm.name : '🌱 Growth: off');
+    gc.classList.toggle('on', STEWARD.on());
     mn.className = 'mini dim' + (note ? '' : ' hidden');
 
     var n = SIM.issueCount();
@@ -214,6 +267,7 @@ var UI = (function () {
     decrees: { title: 'Royal Decrees', tabs: function () { return [{ key: 'all', name: 'Decrees' }]; }, body: decreesBody },
     alerts: { title: 'Needs attention', tabs: function () { return [{ key: 'all', name: 'All' }]; }, body: alertsBody },
     news: { title: 'News', tabs: function () { return [{ key: 'all', name: 'Latest' }]; }, body: newsBody },
+    grow: { title: 'Village Growth', tabs: function () { return [{ key: 'all', name: 'Growth' }, { key: 'log', name: 'What they built' }]; }, body: growBody },
     world: { title: 'The Realm', tabs: function () { return [{ key: 'castle', name: 'Castle' }, { key: 'trade', name: 'Trade' }, { key: 'sea', name: 'Sea chart' }, { key: 'honours', name: 'Honours' }, { key: 'chronicle', name: 'Chronicle' }, { key: 'settings', name: 'Settings' }]; }, body: worldBody }
   };
 
@@ -428,7 +482,7 @@ var UI = (function () {
       });
       box.appendChild(led);
       box.appendChild(h('<div class="card">' +
-        '<div class="stat-line"><span>Villagers</span><b>' + Math.floor(G.pop) + ' / ' + SIM.housing() + ' housing</b></div>' +
+        '<div class="stat-line"><span>Villagers</span><b>' + Math.floor(G.pop) + ' / ' + Math.floor(SIM.housing()) + ' housing</b></div>' +
         '<div class="stat-line"><span>At work</span><b>' + (Math.floor(G.pop) - (G.idle || 0)) + '</b></div>' +
         '<div class="stat-line"><span>Labourers (foraging &amp; hauling)</span><b>' + (G.idle || 0) + '</b></div>' +
         '<div class="stat-line"><span>Contentment</span><b>' + Math.round(G.happy) + '% → ' + Math.round(target) + '%</b></div>' +
@@ -881,7 +935,8 @@ var UI = (function () {
     box.appendChild(h('<p class="hint" style="margin-top:0">Honours stay earned from one reign to the next.</p>'));
     var grid = h('<div class="honours"></div>');
     HONOURS.LIST.forEach(function (x) {
-      grid.appendChild(h('<div class="honour' + (have[x.id] ? ' got' : '') + '"><i>' + x.ic + '</i><b>' + x.name + '</b><span>' + x.desc + '</span></div>'));
+      grid.appendChild(h('<div class="honour' + (have[x.id] ? ' got' : '') + '"><i>' + x.ic + '</i><b>' + x.name + '</b><span>' + x.desc +
+        (have[x.id] && have[x.id].help ? ' <em class="helped">with help</em>' : '') + '</span></div>'));
     });
     box.appendChild(grid);
   }
@@ -1149,7 +1204,24 @@ var UI = (function () {
     updateGhost(RENDER.size.w / 2, RENDER.size.h / 2);
     U.sfx.tap();
   }
+  /* painting ground the villagers should leave alone */
+  var clearPaint = false, clearVal = true;
+  function startClearPaint() {
+    closeSheet(); cancelBuild();
+    clearPaint = true;
+    RENDER.setShowClear(true);
+    el('build-banner').classList.remove('hidden');
+    el('build-row').classList.add('hidden');
+    el('build-banner-text').textContent = 'Tap or drag to mark ground to keep clear';
+  }
+  function paintClear(sx, sy, first) {
+    var t = RENDER.tileAtScreen(sx, sy);
+    if (!W.at(t.x, t.y)) return;
+    if (first) clearVal = !STEWARD.cleared(t.x, t.y);
+    STEWARD.toggleClear(t.x, t.y, clearVal);
+  }
   function cancelBuild() {
+    if (clearPaint) { clearPaint = false; RENDER.setShowClear(false); }
     moveTarget = null;
     buildMode = null;
     rowMode = false;
@@ -1554,6 +1626,7 @@ var UI = (function () {
       if (count() === 1) {
         moved = false; downT = performance.now(); downX = e.clientX; downY = e.clientY;
         lastPaint = null;
+        if (clearPaint) { paintClear(e.clientX, e.clientY - rectTop(), true); U.sfx.tap(); }
         longTimer = setTimeout(function () {
           if (!moved && !buildMode) {
             var hb = RENDER.pickBuilding(downX, downY - rectTop());
@@ -1590,6 +1663,7 @@ var UI = (function () {
         return;
       }
 
+      if (clearPaint && moved) { paintClear(e.clientX, e.clientY - rectTop(), false); return; }
       var def = buildMode ? DATA.B[buildMode] : null;
       if (buildMode && !moveTarget && def && (def.isRoad || def.isWall || rowMode) && moved) {
         // drag-paint roads, walls — and in row mode, anything
@@ -1617,6 +1691,7 @@ var UI = (function () {
       var quick = performance.now() - downT < 400;
       if (moved || !quick) return;
       var sy = e.clientY - rectTop();
+      if (clearPaint) return;   // painted as the finger went down and moved
       if (buildMode) {
         updateGhost(e.clientX, sy);
         tryPlaceAt(e.clientX, sy);
@@ -2123,6 +2198,7 @@ var UI = (function () {
     el('btn-alerts').addEventListener('click', function () { U.sfx.tap(); openSheet('alerts'); });
     el('btn-letters').addEventListener('click', openLetter);
     el('season-chip').addEventListener('click', startSkip);
+    el('grow-chip').addEventListener('click', function () { U.sfx.tap(); openSheet('grow'); });
     el('build-row').addEventListener('click', function () {
       rowMode = !rowMode; U.sfx.tap();
       el('build-row').classList.toggle('on', rowMode);
@@ -2180,6 +2256,7 @@ var UI = (function () {
       if (kind === 'voyage') { toast('⛵ ' + payload.msg, 'good'); chronicle(payload.msg); U.sfx.quest(); if (openPanel === 'world') renderSheet(); }
       if (kind === 'honour') { toast('🏅 Honour earned: ' + payload.name + ' — ' + payload.desc, 'good'); chronicle('Honour earned: ' + payload.name + '.'); U.sfx.victory(); }
       if (kind === 'work-done') { var wp = DATA.PROJECTS[payload]; toast(wp.ic + ' ' + wp.name + ' is finished! ' + wp.desc.split('.').slice(1).join('.').trim(), 'good'); chronicle(wp.name + ' was completed.'); U.sfx.quest(); }
+      if (kind === 'grow-built') { toast('🏘️ ' + payload.msg, ''); if (payload.b) showUndo(); }
       if (kind === 'plan-built') toast('📐 The builders have started the planned ' + DATA.B[payload.plan.id].name.toLowerCase() + '.', 'good');
       if (kind === 'harvest') { toast('🌾 Harvest time! ' + payload + ' food stands in the fields — the farmhands are bringing it in.', 'good'); chronicle('The harvest began: ' + payload + ' in the fields.'); U.sfx.quest(); }
       if (kind === 'fire') {

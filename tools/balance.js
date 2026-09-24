@@ -32,7 +32,7 @@ global.document = {
 
 // runInThisContext, not eval: a strict-mode eval keeps its declarations to
 // itself, so the game's globals would never appear.
-for (const f of ['util', 'data', 'world', 'sim', 'folk', 'agents']) {
+for (const f of ['util', 'data', 'world', 'sim', 'folk', 'steward', 'agents']) {
   vm.runInThisContext(fs.readFileSync(path.join(ROOT, 'js', f + '.js'), 'utf8'), { filename: f + '.js' });
 }
 const { U, DATA, W, SIM, AGENTS } = global;
@@ -117,6 +117,10 @@ function runKingdom(seed, seasons) {
   // every kingdom follows its own copy of the plan: counting down a shared
   // one left every kingdom after the first with a plan of single buildings
   const plan = PLAN.map(p => p.slice());
+  // 'steward' as the sixth argument: the Village Growth steward builds instead
+  // of the scripted plan, and the harness only does what a ruler would still do
+  const STEWARDED = process.argv[6] === 'steward';
+  if (STEWARDED) { SIM.G.grow = { mode: 'steward', reserve: 120, focus: 'balanced', clear: {}, log: [] }; }
 
   for (let i = 0; i < ticks; i++) {
     SIM.tick(DT);
@@ -129,14 +133,14 @@ function runKingdom(seed, seasons) {
       for (const k of ['wood', 'stone']) if (G.res[k] < SIM.cap(k) * 0.5) SIM.buy(k, 1);
     }
     // research whatever is available and affordable
-    if (!G.research) {
+    if (!STEWARDED && !G.research) {
       for (const t of Object.keys(DATA.TECH)) {
         if (SIM.techAvailable(t) && SIM.canAfford(DATA.TECH[t].cost)) { SIM.startResearch(t); break; }
       }
     }
     // raise the castle when the realm can spare it, as a player would
     const nc = SIM.nextCastle();
-    if (nc && SIM.canAfford(nc.cost) && G.res.gold > nc.cost.gold + 120) SIM.upgradeCastle();
+    if (!STEWARDED && nc && SIM.canAfford(nc.cost) && G.res.gold > nc.cost.gold + 120) SIM.upgradeCastle();
     // a player's other habits, from Chapter IV on: raise soldiers, clear the
     // bandit camp now and then, and pour spare gold into great works
     const chN0 = G.chapter || 0;
@@ -149,7 +153,7 @@ function runKingdom(seed, seasons) {
       rec.battles++; if (r.won) rec.battleWins++;
     }
     if (G.workNow && (G.res.wood < 80 || G.res.stone < 80)) G.workNow = null;   // never starve the builders
-    if (!G.workNow && G.res.gold > SIM.cap('gold') * 0.7 && G.res.wood > 150 && G.res.stone > 150) {
+    if (!STEWARDED && !G.workNow && G.res.gold > SIM.cap('gold') * 0.7 && G.res.wood > 150 && G.res.stone > 150) {
       const w = Object.keys(DATA.PROJECTS).find(id => !SIM.done(id) && SIM.workAvailable(id));
       if (w) SIM.startWork(w);
     }
@@ -158,7 +162,7 @@ function runKingdom(seed, seasons) {
     if (G.won && rec.wonAt === 99) rec.wonAt = (i * DT) / DATA.SEASON_LEN;
     // follow the build plan whenever it is affordable
     sinceBuild += DT;
-    if (step < plan.length && sinceBuild > 4) {
+    if (!STEWARDED && step < plan.length && sinceBuild > 4) {
       const [id, n] = plan[step];
       if (SIM.unlocked(id) && SIM.canAfford(SIM.costOf(id))) {
         if (place(id, 1) > 0) {

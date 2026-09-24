@@ -434,6 +434,7 @@ var RENDER = (function () {
 
     /* ---- 9. overlays ---- */
     drawPlans(z);
+    if (showClear) drawClear(z);
     if (ghost) drawGhost(z);
     if (selected && selected.b) drawSelection(selected.b, z);
     if (selected && selected.t) drawTileSelection(selected.t, z);
@@ -951,6 +952,18 @@ var RENDER = (function () {
     }
   }
 
+  /* ground the villagers are told to leave alone */
+  var showClear = false;
+  function drawClear(z) {
+    var c = STEWARD.state().clear;
+    Object.keys(c).forEach(function (k) {
+      var p = k.split(','), x = +p[0], y = +p[1];
+      footprintPath(x, y, 1, 1, 0.04);
+      g.fillStyle = 'rgba(200,70,50,.28)'; g.fill();
+      g.strokeStyle = 'rgba(240,120,90,.8)'; g.lineWidth = 1.2; g.stroke();
+    });
+  }
+
   /* buildings marked out and waiting for materials: pegs and string */
   function drawPlans(z) {
     var ps = SIM.plans;
@@ -1014,7 +1027,7 @@ var RENDER = (function () {
   }
 
   return {
-    init: init, resize: resize, draw: draw, pickBuilding: pickBuilding, pickFind: pickFind, pickShip: pickShip, pickAgent: pickAgent, pickSite: pickSite, pickPlan: pickPlan,
+    init: init, resize: resize, draw: draw, pickBuilding: pickBuilding, pickFind: pickFind, pickShip: pickShip, pickAgent: pickAgent, pickSite: pickSite, pickPlan: pickPlan, setShowClear: function (v) { showClear = v; },
     toScreen: toScreen, toWorld: toWorld, tileAtScreen: tileAtScreen,
     centreOn: centreOn, pan: pan, zoomAt: zoomAt,
     get cam() { return cam; },

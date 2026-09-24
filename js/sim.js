@@ -39,6 +39,7 @@ var SIM = (function () {
     if (typeof FOLK !== 'undefined') FOLK.reset();
     if (typeof EXPLORE !== 'undefined') EXPLORE.reset();
     if (typeof HONOURS !== 'undefined') HONOURS.reset();
+    if (typeof STEWARD !== 'undefined') STEWARD.reset();
     seed = seed || Math.floor(Math.random() * 1e9);
     setup = setup || { map: 'green', diff: 'fair', scen: 'standard' };
     var spot = W.generate(seed, setup.map);
@@ -1298,6 +1299,7 @@ var SIM = (function () {
     if (typeof FOLK !== 'undefined') FOLK.tick(dt);
     if (typeof EXPLORE !== 'undefined') EXPLORE.tick(dt);
     if (typeof HONOURS !== 'undefined') HONOURS.tick(dt);
+    if (typeof STEWARD !== 'undefined') STEWARD.tick(dt);
     tickWeather(dt);
     tickHarvest(dt);
     tickFire(dt);
@@ -2308,9 +2310,23 @@ var SIM = (function () {
     if (net.wood < 0.05 && G.res.wood < 90) need('lumber', 'Timber is running low');
     if ((G.count.quarry || 0) === 0 && G.res.stone < 60) need('quarry', 'Nothing brings in stone');
     if (net.gold < 0.15) need('market', 'Gold comes in slowly');
-    if (G.res.food >= cap('food') - 5) need('granary', 'The barns are full');
+    if (G.res.food >= cap('food') - 5 && G.res.food < G.pop * 20) need('granary', 'The barns are full');
     if (G.res.wood >= cap('wood') - 5 || G.res.stone >= cap('stone') - 5) need('warehouse', 'The stores are full');
     if (raidSoon() && deterrence() < 1) { need('tower', 'Brannoch is coming'); need('barracks', 'Brannoch is coming'); }
+    // what the next castle is short of, and who makes it
+    var ncs = nextCastle(), MAKER = { iron: 'mine', stone: 'quarry', wood: 'lumber' };
+    if (ncs && (G.chapter || 0) >= 2) Object.keys(ncs.cost).forEach(function (k) {
+      if (MAKER[k] && G.res[k] < ncs.cost[k] && !(net[k] > 0.05)) need(MAKER[k], 'The ' + ncs.name + ' needs ' + k);
+    });
+    // what stands between the homes and the next standing
+    var earned = houseTierEarned(), top = 1;
+    G.buildings.forEach(function (b) { if (b.def.evolves && b.built) top = Math.max(top, b.level || 1); });
+    var nextT = DATA.HOUSE_TIERS[Math.min(top, DATA.HOUSE_TIERS.length - 1)];
+    if (earned <= top && nextT && top < DATA.HOUSE_TIERS.length) {
+      if ((G.breadCov || 0) < nextT.bread) { need('bakery', 'Homes need more bread to rise'); need('windmill', 'Homes need more bread to rise'); }
+      if (nextT.cloth > 0 && G.res.cloth < nextT.cloth) { need('pasture', 'Fine homes want cloth — it starts with wool'); if (G.count.pasture) need('weaver', 'Fine homes want cloth'); }
+      if (G.happy < nextT.happy) { need('chapel', 'Homes rise only in a contented town'); need('tavern', 'Homes rise only in a contented town'); }
+    }
     return { map: out, order: order };
   }
 
@@ -2344,6 +2360,7 @@ var SIM = (function () {
       tut: typeof G.tut === 'number' ? G.tut : -1, mkt: G.mkt || {}, decrees: G.decrees || {}, shiftUntil: G.shiftUntil || -1, finds: G.finds || [],
       dip: G.dip || null, tribute: G.tribute || null,
       folk: typeof FOLK !== 'undefined' ? FOLK.pack() : null,
+      grow: G.grow || null,
       works: G.works || {}, workNow: G.workNow || null, rationUntil: G.rationUntil || 0, fireCalm: G.fireCalm || 0, banditAt: G.banditAt || -1e9,
       plans: G.plans || [], news: (G.news || []).slice(0, 40), letters: G.letters || [], tips: G.tips || {},
       hist: G.hist || [], fog: G.fog, sites: G.sites || null, sea: G.sea || null, scouts: G.scouts || [], blessing: G.blessing || 0,
@@ -2390,6 +2407,7 @@ var SIM = (function () {
     if (typeof FOLK !== 'undefined') FOLK.reset();
     if (typeof EXPLORE !== 'undefined') EXPLORE.reset();
     if (typeof HONOURS !== 'undefined') HONOURS.reset();
+    if (typeof STEWARD !== 'undefined') STEWARD.reset();
     if (!d || !(d.v >= 2 && d.v <= 4)) return false;    // older saves still load
     W.deserialize(d.world);
     var st = d.stats || {};
@@ -2406,6 +2424,7 @@ var SIM = (function () {
       chapter: d.chapter || 0, won: !!d.won, weather: 'clear', weatherTimer: 30,
       tut: typeof d.tut === 'number' ? d.tut : -1, mkt: d.mkt || {}, decrees: d.decrees || {}, shiftUntil: d.shiftUntil || -1, finds: d.finds || [],
       dip: d.dip || null, tribute: d.tribute || null, folkSave: d.folk || null,
+      grow: d.grow || null,
       works: d.works || {}, workNow: d.workNow || null, rationUntil: d.rationUntil || 0, fireCalm: d.fireCalm || 0, banditAt: d.banditAt === undefined ? -1e9 : d.banditAt,
       plans: d.plans || [], news: d.news || [], letters: d.letters || [], tips: d.tips || {},
       hist: d.hist || [], fog: d.fog, sites: d.sites || null, sea: d.sea || null, scouts: d.scouts || [], blessing: d.blessing || 0,
@@ -2465,7 +2484,7 @@ var SIM = (function () {
     fieldStrength: fieldStrength, unitStrength: unitStrength, totalStrength: totalStrength,
     launchCampaign: launchCampaign, campaignResolved: campaignResolved,
     campaignSlots: campaignSlots, awayCount: awayCount, MARCH_SEASONS: MARCH_SEASONS,
-    raidPower: raidPower, graceLeft: graceLeft, get GRACE_SEASONS() { return graceSeasons(); }, DIFFS: DIFFS, SCENARIOS: SCENARIOS, diff: diff,
+    raidPower: raidPower, graceLeft: graceLeft, raidSoon: raidSoon, get GRACE_SEASONS() { return graceSeasons(); }, DIFFS: DIFFS, SCENARIOS: SCENARIOS, diff: diff,
     deterrence: deterrence, raidCause: raidCause,
     jobsOf: jobsOf, staffRatio: staffRatio, efficiency: efficiency,
     scoreOf: scoreOf, priorityLabel: priorityLabel, assignWorkers: assignWorkers,
