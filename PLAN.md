@@ -69,6 +69,44 @@ years (Fair: all; Steward: 7–9 in 10; Harsh: 4 in 5), gold not idle at its
 cap, contentment earned rather than automatic, and no kingdom burned flat by
 bad luck. Pass `steward` as the sixth argument to let Village Growth play.
 
+The v5 balance pass (13 set-ups × 12 kingdoms, before and after):
+- **The harness charged the bandits blind.** It attacked the camp whenever it
+  had six soldiers, lost two fights in three (~19 defeats a reign), and the
+  war record's −2 a defeat is what kept end-of-decade contentment near 80. It
+  also bled the army Chapter IV asks for (Fair: 10 in 12 won). It now fights
+  only at the odds the bandit card shows green or amber — and the true
+  picture appeared: contentment sat at 100% for 40–60% of every reign.
+- **Contentment had no ceiling that mattered.** Amenities counted up to 1.35×
+  the people (two wells held a village of 30 at the top), and a grown town's
+  target summed to 105–125, so high tax, enclosure or a lost battle cost
+  nothing. Coverage now stops at enough (1.0), and a big town's expectations
+  grow a little faster (−0.15 a head over 45, up to −22). Fair kingdoms now
+  spend 7–34% of the reign at 100% instead of 40–60%, averaging about 82%;
+  Harsh sits near 71%.
+- **Village Growth chose the forks.** Enclosure or common fields, guild or free
+  trade: the steward took whichever came first, for good. Those are now left
+  to the ruler (the harness's ruler takes one when there is coin to spare),
+  and the steward may dip into the gold reserve when the larder is empty —
+  on Harsh a reserve of 120 above a treasury of 70 let a village starve.
+- **Harsh could lock itself.** Timber spent before a lumber camp (idle hands
+  now gather enough deadwood for one), and wood and stone with no market and
+  no coin to build one (the vault now opens for that too, after a year and a
+  half). The harness also no longer spends the last stone on the keep before
+  it has a quarry, which stranded a Harsh kingdom now and then.
+- **Fire chains.** An untended fire far from a well always burns down, and
+  spread along rows of farms. Now, once a roof falls, the street turns out
+  for the blazes it spread to: kingdoms that lost 2–3 buildings to one fire
+  went from 6 in 20 to 2 in 20, with the same average loss.
+- The harness now also reports contentment through the reign, the share of
+  it at 100%, and why any reign was not won; a new cottage no longer counts
+  as a house "flickering".
+
+After: all 13 set-ups win every reign or all but one; Fair 18/18 on every
+island and scenario, won in 18–23 seasons; Steward won in ~20 seasons on every
+difficulty with contentment 87% (was 95%). Gentle + Steward still ends at
+~94% — the cosy mode. Still open: tools are never made by the scripted plan
+or a Balanced steward (no smithy), so the 25% tool bonus goes unmeasured.
+
 ## v4: the five-phase plan (done)
 
 Asked for: "make a plan to make the game as good as possible", then "go do the
