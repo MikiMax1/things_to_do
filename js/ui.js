@@ -935,9 +935,11 @@ var UI = (function () {
         lastPaint = null;
         longTimer = setTimeout(function () {
           if (!moved && !buildMode) {
+            var hb = RENDER.pickBuilding(downX, downY - rectTop());
             var t = RENDER.tileAtScreen(downX, downY - rectTop());
             var tile = W.at(t.x, t.y);
-            if (tile) { U.vibrate(18); select(tile.bld ? { b: tile.bld } : { t: tile }); }
+            if (hb) { U.vibrate(18); select({ b: hb }); }
+            else if (tile) { U.vibrate(18); select(tile.bld ? { b: tile.bld } : { t: tile }); }
           }
         }, 420);
       } else if (count() === 2) {
@@ -999,10 +1001,12 @@ var UI = (function () {
         updateGhost(e.clientX, sy);
         tryPlaceAt(e.clientX, sy);
       } else {
+        var hitB = RENDER.pickBuilding(e.clientX, sy);
         var t = RENDER.tileAtScreen(e.clientX, sy);
         var tile = W.at(t.x, t.y);
-        if (!tile) { clearSelection(); return; }
-        if (tile.bld) select({ b: tile.bld });
+        if (hitB) select({ b: hitB });
+        else if (!tile) { clearSelection(); return; }
+        else if (tile.bld) select({ b: tile.bld });
         else select({ t: tile });
         U.sfx.tap();
       }

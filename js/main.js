@@ -23,7 +23,8 @@
     sky.addColorStop(0, '#1b2440'); sky.addColorStop(0.55, '#6a4a5a'); sky.addColorStop(1, '#e89a5a');
     g.fillStyle = sky; g.fillRect(0, 0, W, horizon + 1);
     // the low sun and its glow
-    var sun = g.createRadialGradient(W * 0.72, horizon - 6, 2, W * 0.72, horizon - 6, W * 0.6);
+    var sunX = W > H * 1.2 ? W * 0.52 : W * 0.72;
+    var sun = g.createRadialGradient(sunX, horizon - 6, 2, sunX, horizon - 6, W * 0.6);
     sun.addColorStop(0, 'rgba(255,225,160,.95)'); sun.addColorStop(0.08, 'rgba(255,190,110,.55)'); sun.addColorStop(1, 'rgba(255,150,80,0)');
     g.fillStyle = sun; g.fillRect(0, 0, W, horizon + 40);
     // a few thin clouds catching the light
@@ -42,10 +43,12 @@
       var yy = horizon + 3 + Math.pow(k / 60, 1.6) * (H - horizon) * 0.8;
       var ww = 6 + k * 1.4;
       g.fillStyle = 'rgba(255,200,130,' + (0.5 - k / 140) + ')';
-      g.fillRect(W * 0.72 - ww / 2 + Math.sin(k * 7.3) * 10, yy, ww * (0.4 + (k % 3) * 0.3), 1.4);
+      g.fillRect(sunX - ww / 2 + Math.sin(k * 7.3) * 10, yy, ww * (0.4 + (k % 3) * 0.3), 1.4);
     }
     // the island
-    var ix = W * 0.5, iy = H * 0.47, iw = Math.min(W * 0.44, 230);
+    var wide = W > H * 1.2;
+    var ix = wide ? W * 0.3 : W * 0.5, iy = wide ? H * 0.58 : H * 0.47;
+    var iw = wide ? Math.min(W * 0.24, H * 0.6, 230) : Math.min(W * 0.44, 230);
     g.fillStyle = '#5b4a36';
     g.beginPath(); g.ellipse(ix, iy + 10, iw, iw * 0.23, 0, 0, 6.3); g.fill();
     var land = g.createLinearGradient(ix - iw, 0, ix + iw, 0);
@@ -80,9 +83,15 @@
     g.globalCompositeOperation = 'soft-light';
     g.fillStyle = 'rgba(255,150,70,.35)'; g.fillRect(0, 0, W, H);
     g.globalCompositeOperation = 'source-over';
-    var foot = g.createLinearGradient(0, H * 0.55, 0, H);
-    foot.addColorStop(0, 'rgba(8,10,16,0)'); foot.addColorStop(1, 'rgba(8,10,16,.85)');
-    g.fillStyle = foot; g.fillRect(0, H * 0.55, W, H * 0.45);
+    if (wide) {
+      var side = g.createLinearGradient(W * 0.5, 0, W, 0);
+      side.addColorStop(0, 'rgba(8,10,16,0)'); side.addColorStop(1, 'rgba(8,10,16,.8)');
+      g.fillStyle = side; g.fillRect(W * 0.5, 0, W * 0.5, H);
+    } else {
+      var foot = g.createLinearGradient(0, H * 0.55, 0, H);
+      foot.addColorStop(0, 'rgba(8,10,16,0)'); foot.addColorStop(1, 'rgba(8,10,16,.85)');
+      g.fillStyle = foot; g.fillRect(0, H * 0.55, W, H * 0.45);
+    }
   }
 
   function boot() {

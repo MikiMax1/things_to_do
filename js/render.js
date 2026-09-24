@@ -662,8 +662,31 @@ var RENDER = (function () {
     g.lineWidth = 2; g.stroke();
   }
 
+  /* Which building is drawn under a screen point. Tall roofs stand in front
+     of the ground behind them, so the tile under a finger is not enough:
+     test sprites front to back, down to the painted pixel. */
+  var _alpha = null;
+  function pickBuilding(sx, sy) {
+    if (!SIM.G) return null;
+    var season = SIM.season().key, z = cam.z;
+    var list = SIM.G.buildings.slice().sort(function (a, b) {
+      return (b.x + b.y + ((b.def.w || 1) + (b.def.h || 1)) / 2) - (a.x + a.y + ((a.def.w || 1) + (a.def.h || 1)) / 2);
+    });
+    if (!_alpha) { var c = document.createElement('canvas'); c.width = c.height = 1; _alpha = c.getContext('2d', { willReadFrequently: true }); }
+    for (var i = 0; i < list.length; i++) {
+      var b = list[i], sp = b.built ? spriteOf(b, season) : ART.scaffold(b);
+      var s = toScreen(b.x, b.y), k = z / sp.s;
+      var lx = (sx - (s.x - sp.ax * k)) / k, ly = (sy - (s.y - sp.ay * k)) / k;
+      if (lx < 0 || ly < 0 || lx >= sp.c.width || ly >= sp.c.height) continue;
+      _alpha.clearRect(0, 0, 1, 1);
+      _alpha.drawImage(sp.c, Math.floor(lx), Math.floor(ly), 1, 1, 0, 0, 1, 1);
+      if (_alpha.getImageData(0, 0, 1, 1).data[3] > 40) return b;
+    }
+    return null;
+  }
+
   return {
-    init: init, resize: resize, draw: draw,
+    init: init, resize: resize, draw: draw, pickBuilding: pickBuilding,
     toScreen: toScreen, toWorld: toWorld, tileAtScreen: tileAtScreen,
     centreOn: centreOn, pan: pan, zoomAt: zoomAt,
     get cam() { return cam; },
