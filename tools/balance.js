@@ -108,7 +108,7 @@ function place(id, n) {
 function runKingdom(seed, seasons) {
   SIM.newGame(seed);
   const G = SIM.G;
-  const rec = { starved: 0, broke: 0, raids: 0, minFood: 1e9, minGold: 1e9, churn: 0 };
+  const rec = { starved: 0, broke: 0, raids: 0, minFood: 1e9, minGold: 1e9, churn: 0, reached: [0, 99, 99, 99, 99] };
   let lastTiers = null;
   let step = 0, sinceBuild = 0;
   const DT = 0.5, ticks = Math.round(seasons * DATA.SEASON_LEN / DT);
@@ -125,6 +125,9 @@ function runKingdom(seed, seasons) {
         if (SIM.techAvailable(t) && SIM.canAfford(DATA.TECH[t].cost)) { SIM.startResearch(t); break; }
       }
     }
+    // raise the castle when the realm can spare it, as a player would
+    const nc = SIM.nextCastle();
+    if (nc && G.castle < 2 && SIM.canAfford(nc.cost) && G.res.gold > nc.cost.gold + 120) SIM.upgradeCastle();
     // follow the build plan whenever it is affordable
     sinceBuild += DT;
     if (step < PLAN.length && sinceBuild > 4) {
@@ -142,6 +145,8 @@ function runKingdom(seed, seasons) {
     const tiers = G.buildings.filter(b => b.def.evolves && b.built).map(b => b.level || 1).join(',');
     if (lastTiers !== null && tiers !== lastTiers) rec.churn++;
     lastTiers = tiers;
+    const chN = G.chapter || 0;
+    if (rec.reached[chN] === 99) rec.reached[chN] = (i * DT) / DATA.SEASON_LEN;
     if (G.res.food <= 0.5) rec.starved += DT;
     if (G.res.gold <= 1) rec.broke += DT;
     rec.minFood = Math.min(rec.minFood, G.res.food);
@@ -158,7 +163,9 @@ function runKingdom(seed, seasons) {
     starvedPct: rec.starved / (seasons * DATA.SEASON_LEN) * 100,
     brokePct: rec.broke / (seasons * DATA.SEASON_LEN) * 100,
     raids: rec.raids, minFood: rec.minFood, minGold: rec.minGold,
-    churn: rec.churn / seasons
+    churn: rec.churn / seasons,
+    chapter: (G.chapter || 0) + 1,
+    ch2: rec.reached[1], ch3: rec.reached[2], ch4: rec.reached[3]
   };
 }
 
@@ -186,6 +193,10 @@ function simulate(runs, seasons) {
   row('lowest food seen', 'minFood', 0);
   row('lowest gold seen', 'minGold', 0);
   row('housing changes/season', 'churn', 2);
+  row('chapter reached', 'chapter', 1);
+  row('season chapter II opens', 'ch2', 1);
+  row('season chapter III opens', 'ch3', 1);
+  row('season chapter IV opens', 'ch4', 1);
 
   console.log('\n  health checks:');
   const chk = (ok, msg) => console.log('   ' + (ok ? 'PASS' : 'FAIL') + '  ' + msg);
@@ -196,6 +207,7 @@ function simulate(runs, seasons) {
   chk(avg('tier') > 1.2, 'homes get past cottages');
   chk(avg('churn') < 1.0, 'house standings settle rather than flicker (<1 change per season)');
   chk(all.every(r => isFinite(r.pop) && isFinite(r.gold)), 'no NaN anywhere in the economy');
+  chk(avg('ch3') < 20, 'the story moves: chapter III opens within 20 seasons (5 years)');
   return all;
 }
 
