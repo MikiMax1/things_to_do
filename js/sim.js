@@ -29,7 +29,7 @@ var SIM = (function () {
       castle: 0,
       army: { militia: 4 },
       rival: { str: 30, anger: 0, nextRaid: DATA.SEASON_LEN * 6.5, warned: false },
-      quests: {}, questShown: [],
+      quests: {}, questShown: [], chapter: 0, won: false, weather: 'clear', weatherTimer: 40,
       stats: { wins: 0, losses: 0, built: 0, raidsSurvived: 0, techDone: 0, upgrades: 0, traded: 0 },
       vets: {}, formation: 'line', campaign: null,
       eventTimer: DATA.SEASON_LEN * 1.6,
@@ -272,14 +272,27 @@ var SIM = (function () {
   function unlocked(id) {
     var def = DATA.B[id];
     if (def.tech && !G.tech[def.tech]) return false;
+    if (def.castleReq && G.castle < def.castleReq) return false;
     if (def.unique) return false;
     return true;
+  }
+  function lockReason(id) {
+    var def = DATA.B[id];
+    if (def.tech && !G.tech[def.tech]) return 'Requires ' + DATA.TECH[def.tech].name;
+    if (def.castleReq && G.castle < def.castleReq) return 'Requires the ' + DATA.CASTLE[def.castleReq].name;
+    return '';
+  }
+  /* every one standing or going up, for limits like "one cathedral" */
+  function countAll(id) {
+    var n = 0;
+    G.buildings.forEach(function (b) { if (b.id === id) n++; });
+    return n;
   }
 
   function place(id, x, y) {
     var def = DATA.B[id];
-    if (!unlocked(id)) return { ok: false, why: 'Not yet researched' };
-    if (def.max && G.count[id] >= def.max) return { ok: false, why: 'You already have ' + def.max };
+    if (!unlocked(id)) return { ok: false, why: lockReason(id) || 'Not yet available' };
+    if (def.max && countAll(id) >= def.max) return { ok: false, why: 'You already have ' + def.max };
     var chk = W.canPlace(id, x, y);
     if (!chk.ok) return chk;
     var cost = costOf(id);
@@ -726,7 +739,7 @@ var SIM = (function () {
     if (b.def.produces) {
       Object.keys(b.def.produces).forEach(function (k) {
         var v = b.def.produces[k] * eff * techMul(k);
-        if (b.def.seasonal && k === 'food') v *= foodSeasonMul();
+        if (b.def.seasonal && k === 'food') v *= foodSeasonMul() * rainMul();
         if (b.def.seasonalWool) v *= (0.55 + season().food * 0.45);
         if (b.def.scaleNear) {
           var n = W.nearCount(b.x, b.y, b.def.scaleNear.terrain, 1);
@@ -831,7 +844,16 @@ var SIM = (function () {
     G.buildings.forEach(function (b) {
       if (b.built) { b.t += dt; return; }
       var speed = (1 + G.builders * 0.35) / Math.max(1, b.def.build);
-      b.prog += speed * dt;
+      var dp = speed * dt;
+      if (b.def.wonderCost) {
+        // each slice of progress must be paid for as it is laid
+        var wc = b.def.wonderCost, short2 = null;
+        Object.keys(wc).forEach(function (k) { if (!short2 && G.res[k] < wc[k] * dp) short2 = k; });
+        b.waiting = short2;
+        if (short2) return;
+        Object.keys(wc).forEach(function (k) { G.res[k] -= wc[k] * dp; });
+      }
+      b.prog += dp;
       if (b.prog >= 1) {
         b.prog = 1; b.built = true;
         refreshCounts();
@@ -913,6 +935,7 @@ var SIM = (function () {
       }
     }
 
+    tickWeather(dt);
     regrow(dt);
     checkRelief(dt);
     tickCampaign(dt);
@@ -939,6 +962,23 @@ var SIM = (function () {
 
     checkQuests();
   }
+
+  /* ---------------------------------------------------------
+     weather: rain comes and goes, most often in spring and autumn,
+     and waters the fields while it lasts
+     --------------------------------------------------------- */
+  var RAIN_CHANCE = { spring: 0.40, summer: 0.18, autumn: 0.45, winter: 0 };
+  function tickWeather(dt) {
+    if (G.weatherTimer === undefined) { G.weatherTimer = 30; G.weather = 'clear'; }
+    G.weatherTimer -= dt;
+    if (season().key === 'winter' && G.weather === 'rain') G.weather = 'clear';
+    if (G.weatherTimer > 0) return;
+    var wet = Math.random() < RAIN_CHANCE[season().key];
+    if (wet && G.weather !== 'rain') emit('weather', 'rain');
+    G.weather = wet ? 'rain' : 'clear';
+    G.weatherTimer = wet ? 14 + Math.random() * 16 : 24 + Math.random() * 30;
+  }
+  function rainMul() { return G.weather === 'rain' ? 1.12 : 1; }
 
   /* ---------------------------------------------------------
      woodland: always fellable, and it grows back
@@ -1259,36 +1299,58 @@ var SIM = (function () {
   /* ---------------------------------------------------------
      objectives
      --------------------------------------------------------- */
-  function questMet(q) {
-    var n = q.need;
-    if (n.pop && G.pop < n.pop) return false;
-    if (n.army && armyCount() < n.army) return false;
-    if (n.castle && G.castle < n.castle) return false;
-    if (n.tech && G.stats.techDone < n.tech) return false;
-    if (n.wins && G.stats.wins < n.wins) return false;
-    if (n.upgrades && (G.stats.upgrades || 0) < n.upgrades) return false;
-    if (n.res) { for (var rk in n.res) if ((G.res[rk] || 0) < n.res[rk]) return false; }
-    if (n.houseTier && countHouseTier(n.houseTier.lvl) < n.houseTier.n) return false;
-    if (n.bld) {
-      for (var k in n.bld) if ((G.count[k] || 0) < n.bld[k]) return false;
+  function goalProgress(q) {
+    var n = q.need, have = 0, need = 1;
+    if (n.pop) { have = Math.floor(G.pop); need = n.pop; }
+    else if (n.army) { have = armyCount() + awayCount(); need = n.army; }
+    else if (n.castle) { have = G.castle; need = n.castle; }
+    else if (n.tech) { have = G.stats.techDone; need = n.tech; }
+    else if (n.wins) { have = G.stats.wins; need = n.wins; }
+    else if (n.houseTier) { have = countHouseTier(n.houseTier.lvl); need = n.houseTier.n; }
+    else if (n.bld) {
+      var k = Object.keys(n.bld)[0];
+      have = G.count[k] || 0; need = n.bld[k];
+      if (DATA.B[k] && DATA.B[k].wonder) {
+        // show how far the work has got, not just whether it is done
+        G.buildings.forEach(function (b) { if (b.id === k && !b.built) have = Math.max(have, b.prog * 0.999); });
+      }
     }
-    return true;
+    return { have: Math.min(have, need), need: need, done: have >= need };
   }
+  function questMet(q) { return goalProgress(q).done; }
+  function chapter() { return DATA.CHAPTERS[Math.min(G.chapter || 0, DATA.CHAPTERS.length - 1)]; }
+  function giveReward(r) {
+    Object.keys(r || {}).forEach(function (k) { G.res[k] = Math.min(cap(k), G.res[k] + r[k]); });
+  }
+  /* Goals of the current chapter are checked; when every one is done the
+     chapter closes, pays out, and the next opens — whose goals may well be
+     met already, so this loops until nothing more changes. */
   function checkQuests() {
-    DATA.QUESTS.forEach(function (q) {
-      if (G.quests[q.id]) return;
-      if (!questMet(q)) return;
-      G.quests[q.id] = true;
-      Object.keys(q.reward).forEach(function (k) {
-        G.res[k] = Math.min(cap(k), G.res[k] + q.reward[k]);
+    if (!G || G.won) return;
+    var guard = 0;
+    while (guard++ < 8) {
+      var ch = chapter(), changed = false;
+      ch.goals.forEach(function (q) {
+        if (G.quests[q.id] || !questMet(q)) return;
+        G.quests[q.id] = true;
+        giveReward(q.reward);
+        U.sfx.quest();
+        emit('toast', { msg: '✓ ' + q.label, kind: 'good' });
+        emit('quest', q);
+        changed = true;
       });
-      U.sfx.quest();
-      emit('toast', { msg: 'Charter fulfilled — ' + q.label, kind: 'good' });
-      emit('quest', q);
-    });
+      var allDone = ch.goals.every(function (q) { return G.quests[q.id]; });
+      if (!allDone) return;
+      giveReward(ch.reward);
+      var idx = G.chapter || 0;
+      emit('chapter', { idx: idx, ch: ch });
+      if (idx >= DATA.CHAPTERS.length - 1) { G.won = true; emit('victory'); return; }
+      G.chapter = idx + 1;
+      if (!changed && guard > 6) return;
+    }
   }
-  function activeQuests(n) {
-    return DATA.QUESTS.filter(function (q) { return !G.quests[q.id]; }).slice(0, n || 3);
+  function activeQuests() {
+    return chapter().goals.filter(function (q) { return !G.quests[q.id]; });
   }
 
   /* apply an event choice */
@@ -1369,6 +1431,41 @@ var SIM = (function () {
     _issCache = out; _issAt = G.time;
     return out;
   }
+  /* What would help most right now, as {buildingId: reason}. Drives the
+     Suggested tab so a new player never has to guess what is missing. */
+  function advice() {
+    var net = ledger(), out = {}, order = [];
+    function need(id, why) {
+      if (out[id] || !DATA.B[id] || !unlocked(id)) return;
+      var def = DATA.B[id];
+      if (def.max && countAll(id) >= def.max) return;
+      out[id] = why; order.push(id);
+    }
+    // chapter goals first: that is where the player is being led
+    activeQuests().forEach(function (q) {
+      if (q.need.bld) Object.keys(q.need.bld).forEach(function (k) { need(k, 'For your chapter: ' + q.label.toLowerCase()); });
+      if (q.need.pop) need('house', 'For your chapter: more homes, more villagers');
+    });
+    if (G.res.food < G.pop * 3 || net.food < -0.01) {
+      need('farm', 'Food is running short');
+      var coast = W.tiles.some(function (t) { return (t.terr === 'sand' || t.terr === 'grass') && !t.bld && W.nearCount(t.x, t.y, ['water', 'shore'], 1) > 0; });
+      if (coast) need('fishery', 'Food is running short — fish don\'t mind winter');
+    }
+    if (G.pop >= housing() - 1) need('house', 'Every bed is full — no room to grow');
+    if (G.happy < 50) {
+      if (!G.count.well) need('well', 'The people are unhappy');
+      need('tavern', 'The people are unhappy');
+      need('chapel', 'The people are unhappy');
+    }
+    if (net.wood < 0.05 && G.res.wood < 90) need('lumber', 'Timber is running low');
+    if ((G.count.quarry || 0) === 0 && G.res.stone < 60) need('quarry', 'Nothing brings in stone');
+    if (net.gold < 0.15) need('market', 'Gold comes in slowly');
+    if (G.res.food >= cap('food') - 5) need('granary', 'The barns are full');
+    if (G.res.wood >= cap('wood') - 5 || G.res.stone >= cap('stone') - 5) need('warehouse', 'The stores are full');
+    if (raidSoon() && deterrence() < 1) { need('tower', 'Brannoch is coming'); need('barracks', 'Brannoch is coming'); }
+    return { map: out, order: order };
+  }
+
   function issueCount() {
     var n = 0;
     issues().forEach(function (i) { if (i.sev >= 1) n++; });
@@ -1395,7 +1492,7 @@ var SIM = (function () {
       v: 4, world: W.serialize(),
       time: G.time, res: G.res, pop: G.pop, happy: G.happy,
       castle: G.castle, tech: G.tech, research: G.research,
-      army: G.army, rival: G.rival, quests: G.quests, stats: G.stats,
+      army: G.army, rival: G.rival, quests: G.quests, stats: G.stats, chapter: G.chapter || 0, won: !!G.won,
       vets: G.vets || {}, formation: G.formation || 'line', seen: G.seen || {}, campaign: G.campaign || null,
       festivals: G.festivals || {}, fairUntil: G.fairUntil || -1,
       eventTimer: G.eventTimer, speed: G.speed,
@@ -1422,6 +1519,7 @@ var SIM = (function () {
       buildings: [], tech: d.tech || {}, research: d.research || null,
       castle: d.castle || 0, army: d.army || {}, rival: d.rival,
       quests: d.quests || {}, stats: st, eventTimer: d.eventTimer,
+      chapter: d.chapter || 0, won: !!d.won, weather: 'clear', weatherTimer: 30,
       vets: d.vets || {}, formation: d.formation || 'line',
       growTimer: 6, reliefTimer: 30, reliefCooldown: 0,
       speed: d.speed || 1, log: []
@@ -1490,7 +1588,8 @@ var SIM = (function () {
     techAvailable: techAvailable, techClosed: techClosed, startResearch: startResearch,
     unitAvailable: unitAvailable, recruit: recruit, disband: disband,
     activeQuests: activeQuests, applyEffects: applyEffects, checkQuests: checkQuests,
-    issues: issues, issueCount: issueCount,
+    goalProgress: goalProgress, chapter: chapter, lockReason: lockReason, countAll: countAll, rainMul: rainMul,
+    issues: issues, issueCount: issueCount, advice: advice,
     happyTarget: happyTarget
   };
 })();

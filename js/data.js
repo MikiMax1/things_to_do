@@ -194,6 +194,16 @@ var DATA = (function () {
       terrain: ['grass', 'meadow', 'sand', 'hill'], max: 3,
       desc: 'Scholars. Required for advanced research; speeds all study.'
     },
+    /* The crowning work. It is paid for as it rises rather than up front,
+       so no storehouse is ever too small for it — the realm's income sets
+       the pace. Finishing it completes the last chapter. */
+    cathedral: {
+      id: 'cathedral', name: 'Great Cathedral', cat: 'civic', ic: '⛪', w: 3, h: 3, wonder: true, max: 1,
+      castleReq: 2, cost: { stone: 60, wood: 40, gold: 120 }, build: 900, jobs: 0, happy: 22,
+      wonderCost: { stone: 700, wood: 420, iron: 120, gold: 1500, cloth: 60 },
+      terrain: ['grass', 'meadow', 'sand', 'hill'],
+      desc: 'The crowning work of Ashveil, raised stone by stone over many seasons. It draws on your stores as it climbs and waits whenever they run dry. Finishing it completes your reign.'
+    },
     /* Kept only so kingdoms saved before footpaths still load; roads are no
        longer placeable. Paths are derived from where your buildings stand. */
     road: {
@@ -378,23 +388,67 @@ var DATA = (function () {
     shieldwall: { name: 'Shieldwall', ic: '⛨', desc: '+4 defence and +10% health, but advances slowly.', atk: 0.94, def: 4, hp: 1.10, spd: 0.72 }
   };
 
-  /* ---------------- objectives ---------------- */
-  var QUESTS = [
-    { id: 'q_house',  label: 'Raise 3 cottages',        need: { bld: { house: 3 } },   reward: { gold: 60 } },
-    { id: 'q_farm',   label: 'Raise 3 farms',           need: { bld: { farm: 3 } },    reward: { food: 90 } },
-    { id: 'q_pop20',  label: 'Reach 20 villagers',      need: { pop: 20 },             reward: { gold: 90 } },
-    { id: 'q_lumber', label: 'Build a lumber camp',     need: { bld: { lumber: 1 } },  reward: { wood: 60 } },
-    { id: 'q_quarry', label: 'Cut stone from the hills',need: { bld: { quarry: 1 } },  reward: { stone: 60 } },
-    { id: 'q_market', label: 'Open 2 markets',          need: { bld: { market: 2 } },  reward: { gold: 120 } },
-    { id: 'q_tech1',  label: 'Complete any research',   need: { tech: 1 },             reward: { gold: 100 } },
-    { id: 'q_keep',   label: 'Upgrade to a Stone Keep', need: { castle: 1 },           reward: { stone: 80, gold: 80 } },
-    { id: 'q_army',   label: 'Muster 12 soldiers',      need: { army: 12 },            reward: { gold: 140 } },
-    { id: 'q_win1',   label: 'Win a battle',            need: { wins: 1 },             reward: { gold: 160, iron: 25 } },
-    { id: 'q_pop60',  label: 'Reach 60 villagers',      need: { pop: 60 },             reward: { gold: 240 } },
-    { id: 'q_tech5',  label: 'Complete 5 researches',   need: { tech: 5 },             reward: { gold: 300, iron: 60 } },
-    { id: 'q_castle3',label: 'Raise the Great Castle',  need: { castle: 2 },           reward: { gold: 400 } },
-    { id: 'q_break',  label: 'Break Brannoch (3 wins)', need: { wins: 3 },             reward: { gold: 500, iron: 120 } }
+  /* ---------------- the story: five chapters ----------------
+     One chapter's goals are shown at a time, on screen, so there is always
+     a clear next thing to do. Finish them all and the chapter closes with a
+     reward; finish the fifth and your reign is complete. */
+  var CHAPTERS = [
+    { title: 'The Founding', icon: '🌱',
+      text: 'A wooden hall, a few families and a green island. Give them roofs over their heads, food in the barn and timber for the winter.',
+      goals: [
+        { id: 'c1_house', label: 'Raise 4 cottages', need: { bld: { house: 4 } }, reward: { gold: 60 } },
+        { id: 'c1_farm', label: 'Plant 2 farms', need: { bld: { farm: 2 } }, reward: { food: 80 } },
+        { id: 'c1_lumber', label: 'Build a lumber camp', need: { bld: { lumber: 1 } }, reward: { wood: 60 } },
+        { id: 'c1_pop', label: 'Grow to 15 villagers', need: { pop: 15 }, reward: { gold: 80 } }
+      ],
+      reward: { gold: 120, wood: 80 },
+      done: 'Smoke rises from a dozen chimneys. Ashveil is a village now, and people on the mainland have started to say its name.' },
+    { title: 'A Village', icon: '🏘️',
+      text: 'A village needs more than bread. Cut stone, dig a well, open a market square, and set your first scholars to work.',
+      goals: [
+        { id: 'c2_quarry', label: 'Cut stone at a quarry', need: { bld: { quarry: 1 } }, reward: { stone: 60 } },
+        { id: 'c2_well', label: 'Dig a well', need: { bld: { well: 1 } }, reward: { gold: 40 } },
+        { id: 'c2_market', label: 'Open a market', need: { bld: { market: 1 } }, reward: { gold: 100 } },
+        { id: 'c2_tech', label: 'Complete a research', need: { tech: 1 }, reward: { gold: 100 } },
+        { id: 'c2_pop', label: 'Grow to 25 villagers', need: { pop: 25 }, reward: { food: 120 } }
+      ],
+      reward: { gold: 200, stone: 80 },
+      done: 'Traders tie up at your jetty now, and the market bell rings every morning.' },
+    { title: 'A Market Town', icon: '🏰',
+      text: 'Raise a stone keep in place of the wooden hall. Give the town a chapel and a bakery, and let its homes grow into townhouses.',
+      goals: [
+        { id: 'c3_keep', label: 'Raise the Stone Keep', need: { castle: 1 }, reward: { stone: 80, gold: 80 } },
+        { id: 'c3_chapel', label: 'Build a chapel', need: { bld: { chapel: 1 } }, reward: { gold: 80 } },
+        { id: 'c3_bakery', label: 'Bake bread', need: { bld: { bakery: 1 } }, reward: { food: 150 } },
+        { id: 'c3_town', label: 'See 3 homes become townhouses', need: { houseTier: { lvl: 2, n: 3 } }, reward: { gold: 150 } },
+        { id: 'c3_pop', label: 'Grow to 45 villagers', need: { pop: 45 }, reward: { gold: 150 } }
+      ],
+      reward: { gold: 300, iron: 40 },
+      done: 'Ashveil has a keep of stone and streets of townhouses. It has also caught the eye of its neighbour.' },
+    { title: 'The Brannoch War', icon: '⚔️',
+      text: 'Brannoch will not let a rival grow unchallenged. Arm your people, watch the border, and win the battles that decide who rules these waters.',
+      goals: [
+        { id: 'c4_barracks', label: 'Build a barracks', need: { bld: { barracks: 1 } }, reward: { gold: 100 } },
+        { id: 'c4_tower', label: 'Raise a watchtower', need: { bld: { tower: 1 } }, reward: { stone: 80 } },
+        { id: 'c4_army', label: 'Muster 12 soldiers', need: { army: 12 }, reward: { gold: 140 } },
+        { id: 'c4_wins', label: 'Win 2 battles', need: { wins: 2 }, reward: { gold: 200, iron: 40 } },
+        { id: 'c4_pop', label: 'Grow to 60 villagers', need: { pop: 60 }, reward: { food: 200 } }
+      ],
+      reward: { gold: 400, iron: 80 },
+      done: 'Brannoch\'s banners have been beaten back across the flats. For the first time, Ashveil is spoken of as a power.' },
+    { title: 'The Crown of Ashveil', icon: '👑',
+      text: 'One work remains: a cathedral great enough to be seen from the mainland. Raise the Great Castle, build a realm that can pay for it, and crown your reign.',
+      goals: [
+        { id: 'c5_castle', label: 'Raise the Great Castle', need: { castle: 2 }, reward: { gold: 300 } },
+        { id: 'c5_fine', label: 'See 3 homes become fine houses', need: { houseTier: { lvl: 3, n: 3 } }, reward: { gold: 200 } },
+        { id: 'c5_pop', label: 'Grow to 80 villagers', need: { pop: 80 }, reward: { gold: 250 } },
+        { id: 'c5_wonder', label: 'Complete the Great Cathedral', need: { bld: { cathedral: 1 } }, reward: {} }
+      ],
+      reward: {},
+      done: 'The cathedral bells ring out across the water. Your reign will be remembered.' }
   ];
+  /* the old flat list, kept so its ids still mean something in old saves */
+  var QUESTS = [];
 
   /* ---------------- the year's occasions ----------------
      One per season, every year, in a known order. Unlike a random event
@@ -533,7 +587,7 @@ var DATA = (function () {
   return {
     SEASON_LEN: SEASON_LEN, SEASONS: SEASONS, TERRAIN: TERRAIN, RES: RES,
     B: B, CATS: CATS, CASTLE: CASTLE, TECH: TECH, UNITS: UNITS, FOE_UNITS: FOE_UNITS,
-    QUESTS: QUESTS, EVENTS: EVENTS, RAID_CAUSES: RAID_CAUSES, FESTIVALS: FESTIVALS,
+    QUESTS: QUESTS, CHAPTERS: CHAPTERS, EVENTS: EVENTS, RAID_CAUSES: RAID_CAUSES, FESTIVALS: FESTIVALS,
     TRADE: TRADE, TRADE_LOT: TRADE_LOT, UPGRADE: UPGRADE, FORMATIONS: FORMATIONS, GROUNDS: GROUNDS,
     HOUSE_TIERS: HOUSE_TIERS, CLOTH_PER_FINE_HOUSE: CLOTH_PER_FINE_HOUSE
   };

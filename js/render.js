@@ -196,7 +196,11 @@ var RENDER = (function () {
     time += dt;
     var season = SIM.season().key;
     if (season !== lastSeason) {
-      if (lastSeason !== null) TERRAIN.setSeason(season);
+      if (lastSeason !== null) {
+        TERRAIN.setSeason(season);
+        // last season's snow and leaves settle rather than hang in the air
+        weather.forEach(function (w) { w.life = Math.min(w.life, 1.5 + Math.random() * 2); });
+      }
       lastSeason = season;
     }
     TERRAIN.sync();
@@ -307,6 +311,9 @@ var RENDER = (function () {
       }
     });
 
+    /* ---- 4b. what each workplace makes, rising off it now and then ---- */
+    if (G.speed > 0 && z >= 34) productionPops(dt * G.speed, onScreen);
+
     /* ---- 5. particles ---- */
     particles.forEach(function (p) {
       var s = toScreen(p.x, p.y);
@@ -349,7 +356,7 @@ var RENDER = (function () {
       var s = toScreen(f.x, f.y);
       var rise = (1.6 - f.life) * z * 0.35;
       g.globalAlpha = U.clamp(f.life, 0, 1);
-      g.font = '700 ' + Math.max(12, z * .2).toFixed(0) + 'px -apple-system,system-ui,sans-serif';
+      g.font = '700 ' + (f.small ? Math.max(11, Math.min(15, z * .17)) : Math.max(12, z * .2)).toFixed(0) + 'px -apple-system,system-ui,sans-serif';
       g.textAlign = 'center';
       g.lineWidth = 3.5; g.strokeStyle = 'rgba(20,14,8,.8)';
       g.strokeText(f.text, s.x, s.y - rise);
@@ -358,6 +365,34 @@ var RENDER = (function () {
       g.globalAlpha = 1;
     });
     g.textAlign = 'left';
+  }
+
+  /* ---------------- produce you can see ---------------- */
+  var POP_COL = { food: '#e8d27a', wood: '#d9b27a', stone: '#d8d4cc', iron: '#b8c0d0', gold: '#f0cd6a',
+                  tools: '#c8d0dc', bread: '#f0c890', wool: '#f4f0e6', cloth: '#e8a0c8' };
+  var POP_IC = {};
+  var rateAt = 0;
+  function productionPops(gdt, onScreen) {
+    if (!POP_IC.food) DATA.RES.forEach(function (r) { POP_IC[r.key] = r.ic; });
+    var fresh = time - rateAt > 0.5;
+    if (fresh) rateAt = time;
+    var shown = 0;
+    SIM.G.buildings.forEach(function (b) {
+      if (!b.built || b.paused) return;
+      var main = b.def.produces ? Object.keys(b.def.produces)[0] : (b.def.trade && b.id !== 'castle' ? 'gold' : null);
+      if (!main) return;
+      if (fresh) { var o = SIM.output(b); b._rate = o[main] || 0; }
+      if (!(b._rate > 0)) return;
+      b._acc = (b._acc || 0) + b._rate * gdt;
+      var step = (main === 'iron' || main === 'tools' || main === 'cloth' || main === 'bread' || main === 'wool') ? 1 : 3;
+      if (b._acc < step) return;
+      var n = Math.floor(b._acc);
+      b._acc -= n;
+      var cx = b.x + (b.def.w || 1) / 2, cy = b.y + (b.def.h || 1) / 2;
+      if (shown > 3 || floaters.length > 10 || !onScreen(cx, cy, 0)) return;
+      shown++;
+      floaters.push({ x: cx, y: cy, text: '+' + n + ' ' + POP_IC[main], col: POP_COL[main] || '#f0e2bd', life: 1.3, small: true });
+    });
   }
 
   /* ---------------- the sea moves ---------------- */
@@ -512,6 +547,17 @@ var RENDER = (function () {
   function drawBuilding(b, z, night, season) {
     if (!b.built) {
       var sc = ART.scaffold(b);
+      // the building itself rises inside its scaffolding, course by course
+      var f = U.clamp((b.prog - 0.18) / 0.82, 0, 1);
+      if (f > 0) {
+        var full = spriteOf(b, season), s0 = toScreen(b.x, b.y), k0 = z / full.s;
+        var top0 = s0.y - full.ay * k0, hh = full.c.height * k0;
+        var cut = top0 + hh * (1 - f);
+        g.save();
+        g.beginPath(); g.rect(s0.x - full.ax * k0 - 2, cut, full.c.width * k0 + 4, hh); g.clip();
+        g.drawImage(full.c, s0.x - full.ax * k0, top0, full.c.width * k0, hh);
+        g.restore();
+      }
       drawSprite(sc, b.x, b.y);
       if (Math.random() < 0.04) puff(b.x + (b.def.w || 1) * Math.random(), b.y + (b.def.h || 1) * Math.random(), '#c9b58a', 1);
       return;
@@ -545,12 +591,12 @@ var RENDER = (function () {
     }
     var jobs = SIM.jobsOf(b);
     var mark = b.paused ? '⏸' : (jobs > 0 && b.workers === 0) ? '!' : null;
-    if (!mark) return;
+    if (!mark || z < 30) return;
     var s = toScreen(b.x + (b.def.w || 1) / 2, b.y + (b.def.h || 1) / 2);
     var sp = spriteOf(b, SIM.season().key);
     var top = s.y - (sp.top || 1) * z * 0.56 - 12;
-    var r = Math.max(8, z * 0.11);
-    g.fillStyle = mark === '!' ? 'rgba(150,40,26,.9)' : 'rgba(20,16,10,.85)';
+    var r = Math.max(6.5, Math.min(10, z * 0.08));
+    g.fillStyle = mark === '!' ? 'rgba(150,40,26,.82)' : 'rgba(20,16,10,.8)';
     g.beginPath(); g.arc(s.x, top, r, 0, 6.3); g.fill();
     g.strokeStyle = '#f0d98a'; g.lineWidth = 1.5; g.stroke();
     g.fillStyle = '#fff4d0';

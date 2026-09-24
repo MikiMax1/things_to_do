@@ -1107,6 +1107,60 @@ var ART = (function () {
       sp.lights.push([0.5, 0.5, 1.4, 0.7, 0.55]);
     },
 
+    cathedral: function (sp) {
+      var B = '#cdc4b0', sw = function (deco) { return stoneWall({ col: B, ashlar: true, course: 9, deco: deco }); };
+      var lancets = function (g, W, H, L, F) {
+        for (var x = 16; x < W - 16; x += 30) win(g, F, x, H * 0.22, 12, H * 0.52, L, { arch: true, stained: true, frame: '#8a8272', glow: 0.5, str: 0.6 });
+        g.fillStyle = col('#a39a86', L); g.fillRect(0, H * 0.12, W, 3);
+      };
+      // choir and apse at the far end
+      box(sp, 0.35, 1.05, 0.95, 1.95, 0, 0.7, sw(lancets), sw(lancets), false);
+      gable(sp, 0.35, 1.05, 0.95, 1.95, 0.7, 1.15, 'u', slateRoof('#56606c'), sw());
+      // the nave, long and high
+      box(sp, 0.95, 1.0, 2.55, 2.0, 0, 0.95, sw(lancets), sw(lancets), false);
+      // flying buttresses along the front flank
+      [1.2, 1.6, 2.0, 2.35].forEach(function (u) {
+        box(sp, u - 0.05, 2.0, u + 0.05, 2.28, 0, 0.62, sw(), sw(), flat(C.stoneL));
+      });
+      gable(sp, 0.95, 1.0, 2.55, 2.0, 0.95, 1.55, 'u', slateRoof('#56606c'), sw(function (g, W, H, L, F) {
+        // the rose window in the west gable
+        var cx = W / 2, cy = H * 0.62, r = Math.min(W, H) * 0.24;
+        g.fillStyle = col('#8a8272', L); g.beginPath(); g.arc(cx, cy, r + 3, 0, 6.3); g.fill();
+        var gr = g.createRadialGradient(cx, cy, 1, cx, cy, r);
+        gr.addColorStop(0, '#f0c850'); gr.addColorStop(0.5, '#a83a4a'); gr.addColorStop(1, '#2f4f86');
+        g.fillStyle = gr; g.beginPath(); g.arc(cx, cy, r, 0, 6.3); g.fill();
+        g.strokeStyle = col('#8a8272', L); g.lineWidth = 1.4;
+        for (var i = 0; i < 12; i++) { var a = i / 12 * 6.283; g.beginPath(); g.moveTo(cx, cy); g.lineTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r); g.stroke(); }
+        F.lamp(cx, cy, 0.9, 0.7);
+      }));
+      // the transept crossing the nave, with its own gable to the front
+      box(sp, 1.55, 0.55, 2.05, 2.45, 0, 1.0, sw(function (g, W, H, L, F) {
+        door(g, F, W / 2 - 12, H - 40, 24, 40, L, { lamp: true, col: '#4a3226' });
+        win(g, F, W / 2 - 8, H * 0.2, 16, H * 0.36, L, { arch: true, stained: true, frame: '#8a8272', glow: 0.6, str: 0.7 });
+      }), sw(lancets), false);
+      gable(sp, 1.55, 0.55, 2.05, 2.45, 1.0, 1.5, 'v', slateRoof('#56606c'), sw());
+      // the spire over the crossing
+      box(sp, 1.62, 1.32, 1.98, 1.68, 1.2, 1.9, sw(function (g, W, H, L, F) { win(g, F, W / 2 - 6, H * 0.25, 12, H * 0.5, L, { arch: true, frame: '#8a8272' }); }),
+        sw(function (g, W, H, L, F) { win(g, F, W / 2 - 6, H * 0.25, 12, H * 0.5, L, { arch: true, frame: '#8a8272' }); }), flat(C.stoneD));
+      hip(sp, 1.62, 1.32, 1.98, 1.68, 1.9, 3.1, slateRoof('#4a5460'), 0.02, false);
+      var g = sp.g, tip = P(sp, 1.8, 1.5, 3.1);
+      g.fillStyle = C.gold; g.fillRect(tip.x - 1.6, tip.y - 18, 3.2, 18); g.fillRect(tip.x - 6, tip.y - 13, 12, 3);
+      // twin towers on the west front
+      [[2.55, 1.0], [2.55, 1.62]].forEach(function (t) {
+        box(sp, t[0], t[1], t[0] + 0.38, t[1] + 0.38, 0, 1.75, sw(function (g2, W, H, L, F) {
+          for (var f = 0.12; f < 0.9; f += 0.26) win(g2, F, W / 2 - 5, H * f, 10, H * 0.14, L, { arch: true, frame: '#8a8272' });
+        }), sw(function (g2, W, H, L, F) {
+          for (var f = 0.12; f < 0.9; f += 0.26) win(g2, F, W / 2 - 5, H * f, 10, H * 0.14, L, { arch: true, frame: '#8a8272' });
+          if (t[1] > 1.5) door(g2, F, W / 2 - 10, H - 36, 20, 36, L, { lamp: true, col: '#4a3226' });
+        }), flat(C.stoneD));
+        crenels(sp, [t[0] + 0.36, t[1] + 0.03], [t[0] + 0.36, t[1] + 0.35], 1.75, 4, B);
+        crenels(sp, [t[0] + 0.03, t[1] + 0.36], [t[0] + 0.35, t[1] + 0.36], 1.75, 4, B);
+        hip(sp, t[0] + 0.04, t[1] + 0.04, t[0] + 0.34, t[1] + 0.34, 1.78, 2.55, slateRoof('#4a5460'), 0.0, false);
+      });
+      flag(sp, 2.74, 1.19, 2.95, C.gold, true);
+      flag(sp, 2.74, 1.81, 2.95, C.gold, true);
+    },
+
     wall: function (sp, b) {
       var m = (b && b._mask) || 0;   // 1 −v, 2 +u, 4 +v, 8 −u
       var H = 0.5, T = 0.16;
@@ -1245,7 +1299,7 @@ var ART = (function () {
     castle: [1.4, 1.9, 2.4, 2.9], house: [0.9, 1.2, 1.5], manor: 1.2, farm: 0.8, fishery: 0.7, bakery: 0.8,
     windmill: 1.9, lumber: 0.75, sawmill: 0.8, pasture: 0.5, weaver: 0.9, quarry: 0.7, mine: 0.7,
     smith: 1.0, market: 0.5, granary: 0.95, warehouse: 0.9, well: 0.7, chapel: 1.8, tavern: 1.15,
-    library: 1.3, barracks: 0.9, range: 0.6, tower: 2.3, wall: 0.7
+    library: 1.3, barracks: 0.9, range: 0.6, tower: 2.3, wall: 0.7, cathedral: 3.4
   };
 
   /* Cut a finished sprite down to the pixels actually painted (its own and
@@ -1560,47 +1614,59 @@ var ART = (function () {
     return out;
   }
 
-  /* ---------------- crags ---------------- */
+  /* ---------------- crags ----------------
+     A cluster of weathered boulders: rounded, cracked, lit from the west,
+     with moss in the damp side (or snow on top in winter). */
+  function boulder(g, cx, cy, rw, rh, r, winter) {
+    var n = 11, pts = [];
+    for (var i = 0; i < n; i++) {
+      var a = Math.PI + i / (n - 1) * Math.PI;              // the upper half, left to right
+      var j = 0.78 + r() * 0.34;
+      if (i > 2 && i < n - 3 && r() < 0.5) j *= 0.9;         // a flattish, broken top
+      pts.push([cx + Math.cos(a) * rw * j, cy + Math.sin(a) * rh * j * (0.9 + r() * 0.25)]);
+    }
+    g.beginPath();
+    g.moveTo(cx - rw, cy);
+    pts.forEach(function (p) { g.lineTo(p[0], p[1]); });
+    g.lineTo(cx + rw, cy);
+    g.quadraticCurveTo(cx + rw * 0.6, cy + rh * 0.34, cx, cy + rh * 0.36);
+    g.quadraticCurveTo(cx - rw * 0.6, cy + rh * 0.34, cx - rw, cy);
+    g.closePath();
+    var gr = g.createLinearGradient(cx - rw, cy - rh, cx + rw * 0.8, cy + rh * 0.3);
+    gr.addColorStop(0, '#c4bdb0'); gr.addColorStop(0.35, '#9d968a'); gr.addColorStop(0.75, '#6d675e'); gr.addColorStop(1, '#4e4a44');
+    g.fillStyle = gr; g.fill();
+    g.save(); g.clip();
+    // facets and cracks
+    g.strokeStyle = 'rgba(40,34,28,.3)'; g.lineWidth = 1;
+    for (var k = 0; k < 3; k++) {
+      var x0 = cx - rw * 0.6 + r() * rw * 1.2, y0 = cy - rh * (0.2 + r() * 0.7);
+      g.beginPath(); g.moveTo(x0, y0); g.lineTo(x0 + (r() - .3) * rw * 0.6, y0 + rh * (0.3 + r() * 0.4)); g.stroke();
+    }
+    g.fillStyle = 'rgba(255,255,255,.16)';
+    g.beginPath(); g.ellipse(cx - rw * 0.35, cy - rh * 0.62, rw * 0.35, rh * 0.18, -0.3, 0, 6.3); g.fill();
+    if (winter) {
+      g.fillStyle = '#eef2f7';
+      g.beginPath(); g.ellipse(cx - rw * 0.1, cy - rh * 0.95, rw * 0.85, rh * 0.32, 0, 0, 6.3); g.fill();
+    } else {
+      g.fillStyle = 'rgba(92,120,58,.32)';
+      g.beginPath(); g.ellipse(cx + rw * 0.5, cy - rh * 0.05, rw * 0.3, rh * 0.18, 0.4, 0, 6.3); g.fill();
+    }
+    g.restore();
+  }
   function rock(v, season) {
     var winter = season === 'winter';
     var k = 'rock' + v + (winter ? 'W' : '');
     if (cache[k]) return cache[k];
     var sp = Sprite(0.6, 0.6, 0.6, 0.2, k);
     var base = P(sp, 0.3, 0.3, 0), g = sp.g, r = sp.rnd, S = sp.s;
-    var n = 5 + v;
-    var pts = [], top = [];
-    for (var i = 0; i < n; i++) {
-      var a = i / n * 6.283 + r() * 0.4, rad = 0.2 + r() * 0.1;
-      pts.push([0.3 + Math.cos(a) * rad, 0.3 + Math.sin(a) * rad, 0]);
-      top.push([0.3 + Math.cos(a) * rad * 0.45, 0.3 + Math.sin(a) * rad * 0.45, 0.28 + r() * 0.25]);
-    }
-    shadow(sp, pts.concat(top));
-    // facets from each base edge up to the top ring, lit by their facing
-    var faces = [];
-    for (var j = 0; j < n; j++) {
-      var a0 = pts[j], a1 = pts[(j + 1) % n], t0 = top[j], t1 = top[(j + 1) % n];
-      var nrm = cross([a1[0] - a0[0], a1[1] - a0[1], 0], [t0[0] - a0[0], t0[1] - a0[1], t0[2]]);
-      var mid = [(a0[0] + a1[0]) / 2 - 0.3, (a0[1] + a1[1]) / 2 - 0.3, 0];
-      if (dot(nrm, mid) < 0) nrm = [-nrm[0], -nrm[1], -nrm[2]];
-      faces.push({ q: [a0, a1, t1, t0], n: nrm, d: mid[0] + mid[1] });
-    }
-    faces.sort(function (p, q) { return p.d - q.d; });
-    faces.forEach(function (f) {
-      var L = light(f.n);
-      g.fillStyle = col('#8f887c', L * (0.9 + r() * 0.15));
-      g.beginPath();
-      f.q.forEach(function (p, i) { var s = P(sp, p[0], p[1], p[2]); if (i) g.lineTo(s.x, s.y); else g.moveTo(s.x, s.y); });
-      g.closePath(); g.fill();
-      g.strokeStyle = 'rgba(40,34,28,.35)'; g.lineWidth = 1; g.stroke();
+    // two or three boulders, the big one behind
+    var set = [[0, -0.02, 0.22, 0.22], [-0.14, 0.08, 0.12, 0.12], [0.15, 0.07, 0.1, 0.09]];
+    if (v % 2) set = [[0.02, -0.03, 0.24, 0.28], [0.17, 0.06, 0.11, 0.11]];
+    if (v === 3) set = [[-0.07, -0.02, 0.17, 0.16], [0.1, 0.0, 0.16, 0.19], [0.0, 0.1, 0.1, 0.08]];
+    set.forEach(function (b) {
+      var p = { x: base.x + b[0] * S, y: base.y + b[1] * S };
+      boulder(g, p.x, p.y, b[2] * S * (0.9 + r() * 0.2), b[3] * S * sp.UP / S * 1.6, r, winter);
     });
-    g.fillStyle = winter ? '#eef2f6' : col('#a39c8f', 1.12);
-    g.beginPath();
-    top.forEach(function (p, i) { var s = P(sp, p[0], p[1], p[2]); if (i) g.lineTo(s.x, s.y); else g.moveTo(s.x, s.y); });
-    g.closePath(); g.fill();
-    if (!winter) {
-      g.fillStyle = 'rgba(90,120,60,.45)';
-      for (var m = 0; m < 4; m++) { var s2 = P(sp, 0.18 + r() * 0.24, 0.18 + r() * 0.24, 0.05 + r() * 0.1); g.beginPath(); g.ellipse(s2.x, s2.y, 3, 1.6, 0, 0, 6.3); g.fill(); }
-    }
     var out = trim({ c: sp.c, sh: null, ax: base.x, ay: base.y, s: S });
     cache[k] = out;
     return out;

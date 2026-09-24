@@ -89,11 +89,47 @@ var UI = (function () {
     abtn.textContent = n === 0 ? '🔕' : '🔔';
     abtn.appendChild(badge);
 
+    refreshGoal();
+
     var s = SIM.season();
     el('season-icon').textContent = s.icon;
     el('season-name').textContent = s.name;
     el('year-label').textContent = 'Yr ' + SIM.year();
     el('season-fill').style.width = (SIM.seasonProgress() * 100).toFixed(1) + '%';
+  }
+
+  var ROMAN = ['I', 'II', 'III', 'IV', 'V', 'VI'];
+  /* The card under the HUD: an emergency if there is one, otherwise the
+     next goal of the current chapter and how close it is. */
+  function refreshGoal() {
+    var G = SIM.G, card = el('goal-card');
+    if (!card) return;
+    var urgent = SIM.issues().filter(function (i) { return i.sev >= 2; })[0];
+    card.classList.toggle('urgent', !!urgent);
+    if (urgent) {
+      el('gc-ch').textContent = '⚠ Needs you now';
+      el('gc-goal').textContent = urgent.text + (urgent.hint ? ' — ' + urgent.hint : '');
+      el('gc-fill').style.width = '0%';
+      card.dataset.go = 'alerts';
+      return;
+    }
+    card.dataset.go = 'story';
+    if (G.won) {
+      el('gc-ch').textContent = '👑 Your reign is complete';
+      el('gc-goal').textContent = 'Ashveil endures. Build on as you please.';
+      el('gc-fill').style.width = '100%';
+      return;
+    }
+    var ch = SIM.chapter(), idx = G.chapter || 0;
+    var act = SIM.activeQuests();
+    el('gc-ch').textContent = 'Chapter ' + ROMAN[idx] + ' · ' + ch.title;
+    if (!act.length) { el('gc-goal').textContent = 'Chapter complete!'; el('gc-fill').style.width = '100%'; return; }
+    var q = act[0], p = SIM.goalProgress(q);
+    var frac = p.need > 0 ? p.have / p.need : 0;
+    var num = p.need > 1 && !(DATA.B.cathedral && q.need.bld && q.need.bld.cathedral) ? ' (' + Math.floor(p.have) + '/' + p.need + ')' : '';
+    if (q.need.bld && q.need.bld.cathedral && p.have > 0) num = ' (' + Math.round(p.have * 100) + '%)';
+    el('gc-goal').textContent = q.label + num + (act.length > 1 ? '  ·  +' + (act.length - 1) + ' more' : '');
+    el('gc-fill').style.width = Math.round(U.clamp(frac, 0, 1) * 100) + '%';
   }
 
   /* =========================================================
@@ -121,8 +157,8 @@ var UI = (function () {
   }
 
   var PANELS = {
-    build: { title: 'Build', tabs: function () { return DATA.CATS; }, body: buildBody },
-    people: { title: 'People', tabs: function () { return [{ key: 'overview', name: 'Realm' }, { key: 'jobs', name: 'Work' }, { key: 'quests', name: 'Charters' }]; }, body: peopleBody },
+    build: { title: 'Build', tabs: function () { return [{ key: 'suggested', name: '★ Suggested' }].concat(DATA.CATS); }, body: buildBody },
+    people: { title: 'People', tabs: function () { return [{ key: 'quests', name: 'Story' }, { key: 'overview', name: 'Realm' }, { key: 'jobs', name: 'Work' }]; }, body: peopleBody },
     army: { title: 'Army', tabs: function () { return [{ key: 'roster', name: 'Roster' }, { key: 'muster', name: 'Muster' }, { key: 'war', name: 'War' }]; }, body: armyBody },
     tech: { title: 'Research', tabs: function () { return [{ key: 1, name: 'Tier I' }, { key: 2, name: 'Tier II' }, { key: 3, name: 'Tier III' }]; }, body: techBody },
     alerts: { title: 'Needs attention', tabs: function () { return [{ key: 'all', name: 'All' }]; }, body: alertsBody },
@@ -181,40 +217,56 @@ var UI = (function () {
   }
 
   /* ---------------- BUILD ---------------- */
+  function buildCard(id, reason) {
+    var G = SIM.G, def = DATA.B[id];
+    var lock = SIM.lockReason(id);
+    var maxed = def.max && SIM.countAll(id) >= def.max;
+    var cost = SIM.costOf(id);
+    var extra = def.wonderCost ? '<p style="color:#d9c89a;margin-top:4px">Then, as it rises: ' +
+      Object.keys(def.wonderCost).map(function (k) { return def.wonderCost[k] + ' ' + k; }).join(', ') + '</p>' : '';
+    var card = h('<div class="card' + (lock ? ' locked' : '') + '">' +
+      '<div class="card-row">' +
+        '<div class="card-ic"></div>' +
+        '<div class="card-main">' +
+          '<h4>' + def.name + (G.count[id] ? ' <span style="opacity:.55;font-weight:400">×' + G.count[id] + '</span>' : '') +
+            ((def.w || 1) > 1 ? ' <span style="opacity:.5;font-weight:400;font-size:11px">' + def.w + '×' + def.h + '</span>' : '') + '</h4>' +
+          '<p>' + def.desc + '</p>' + extra +
+          '<div class="cost">' + costPills(cost) +
+            (def.jobs ? '<b>👷 ' + def.jobs + '</b>' : '') +
+            (def.upkeep ? '<b>−' + def.upkeep.toFixed(2) + 'g/s</b>' : '') +
+          '</div>' +
+          (reason ? '<span class="need-tag' + (/^For your chapter/.test(reason) ? ' chap' : '') + '">' + reason + '</span>' : '') +
+          (lock ? '<p style="color:#e0b23c;margin-top:5px">🔒 ' + lock + '</p>' : '') +
+        '</div>' +
+      '</div></div>');
+    card.querySelector('.card-ic').appendChild(ART.icon(id, 44));
+    var btn = h('<button class="btn wide">Place</button>');
+    btn.disabled = !!lock || maxed || !SIM.canAfford(cost);
+    if (maxed) btn.textContent = 'Limit reached (' + def.max + ')';
+    else if (!lock && !SIM.canAfford(cost)) btn.textContent = 'Need ' + DATA.RES.filter(function (r) {
+      return cost[r.key] && G.res[r.key] < cost[r.key];
+    }).map(function (r) { return r.name.toLowerCase(); }).join(' & ');
+    btn.addEventListener('click', function () { startBuild(id); });
+    card.appendChild(btn);
+    return card;
+  }
   function buildBody(box, cat) {
-    var G = SIM.G;
-    box.appendChild(h('<p class="hint">Pick a building, then tap the land. Walls can be dragged in a line. Footpaths wear themselves in between your buildings — they cost nothing, take no space, and you can build straight over them.</p>'));
+    var adv = SIM.advice();
+    if (cat === 'suggested') {
+      if (!adv.order.length) {
+        box.appendChild(h('<p class="hint">Nothing is urgent. Browse the other tabs — or keep an eye on the goal card at the top of the screen.</p>'));
+        return;
+      }
+      box.appendChild(h('<p class="hint">What your realm needs most right now. Building on woodland clears it for you and puts the timber in store.</p>'));
+      adv.order.slice(0, 6).forEach(function (id) { box.appendChild(buildCard(id, adv.map[id])); });
+      return;
+    }
     var any = false;
     Object.keys(DATA.B).forEach(function (id) {
       var def = DATA.B[id];
       if (def.cat !== cat || def.unique || def.isRoad) return;
-      var locked = def.tech && !G.tech[def.tech];
-      var maxed = def.max && G.count[id] >= def.max;
       any = true;
-      var cost = SIM.costOf(id);
-      var card = h('<div class="card' + (locked ? ' locked' : '') + '">' +
-        '<div class="card-row">' +
-          '<div class="card-ic"></div>' +
-          '<div class="card-main">' +
-            '<h4>' + def.name + (G.count[id] ? ' <span style="opacity:.55;font-weight:400">×' + G.count[id] + '</span>' : '') + '</h4>' +
-            '<p>' + def.desc + '</p>' +
-            '<div class="cost">' + costPills(cost) +
-              (def.jobs ? '<b>👷 ' + def.jobs + '</b>' : '') +
-              (def.upkeep ? '<b>−' + def.upkeep.toFixed(2) + 'g/s</b>' : '') +
-            '</div>' +
-            (locked ? '<p style="color:#e0b23c;margin-top:5px">🔒 Requires ' + DATA.TECH[def.tech].name + '</p>' : '') +
-          '</div>' +
-        '</div></div>');
-      card.querySelector('.card-ic').appendChild(ART.icon(id, 44));
-      var btn = h('<button class="btn wide">Place</button>');
-      btn.disabled = locked || maxed || !SIM.canAfford(cost);
-      if (maxed) btn.textContent = 'Limit reached (' + def.max + ')';
-      else if (!locked && !SIM.canAfford(cost)) btn.textContent = 'Need ' + DATA.RES.filter(function (r) {
-        return cost[r.key] && G.res[r.key] < cost[r.key];
-      }).map(function (r) { return r.name.toLowerCase(); }).join(' & ');
-      btn.addEventListener('click', function () { startBuild(id); });
-      card.appendChild(btn);
-      box.appendChild(card);
+      box.appendChild(buildCard(id, adv.map[id]));
     });
     if (!any) box.appendChild(h('<p class="hint">Nothing here yet — research will unlock more.</p>'));
   }
@@ -306,20 +358,29 @@ var UI = (function () {
     }
 
     if (tab === 'quests') {
-      box.appendChild(h('<p class="hint">Charters from your council. Complete them for supplies.</p>'));
-      var act = SIM.activeQuests(4);
-      act.forEach(function (q) {
-        box.appendChild(h('<div class="card"><div class="card-main"><h4>' + q.label + '</h4>' +
-          '<div class="cost">' + Object.keys(q.reward).map(function (k) {
-            var r = DATA.RES.filter(function (rr) { return rr.key === k; })[0];
-            return '<b>' + (r ? r.ic : '') + ' +' + q.reward[k] + '</b>';
-          }).join('') + '</div></div></div>'));
-      });
-      var doneN = Object.keys(SIM.G.quests).length;
-      box.appendChild(h('<p class="sect-label">Completed — ' + doneN + ' / ' + DATA.QUESTS.length + '</p>'));
-      DATA.QUESTS.filter(function (q) { return SIM.G.quests[q.id]; }).forEach(function (q) {
-        box.appendChild(h('<div class="card" style="opacity:.55"><div class="card-main"><h4>✓ ' + q.label + '</h4></div></div>'));
-      });
+      var idx = G.chapter || 0, ch = SIM.chapter();
+      if (G.won) box.appendChild(h('<div class="card" style="border-color:#e0b23c"><h4 style="font-family:var(--font);font-size:16px">👑 Your reign is complete</h4><p class="story">Every chapter is told. Ashveil is yours to keep building for as long as you like.</p></div>'));
+      box.appendChild(h('<p class="sect-label">Chapter ' + ROMAN[idx] + ' of ' + DATA.CHAPTERS.length + '</p>'));
+      var goals = ch.goals.map(function (q) {
+        var p = SIM.goalProgress(q), done = !!G.quests[q.id];
+        var prog = done ? 'done' : (q.need.bld && q.need.bld.cathedral) ? Math.round(p.have * 100) + '%' : Math.floor(p.have) + ' / ' + p.need;
+        var rw = Object.keys(q.reward).map(function (k) {
+          var r = DATA.RES.filter(function (rr) { return rr.key === k; })[0];
+          return (r ? r.ic : '') + q.reward[k];
+        }).join(' ');
+        return '<div class="goal-row' + (done ? ' done' : '') + '"><span class="tick">' + (done ? '✅' : '▫️') + '</span>' +
+          '<span class="lbl">' + q.label + (rw && !done ? ' <span style="opacity:.6;font-size:11px">· ' + rw + '</span>' : '') + '</span>' +
+          '<span class="prog">' + prog + '</span></div>';
+      }).join('');
+      box.appendChild(h('<div class="card"><h4 style="font-family:var(--font);font-size:16px">' + ch.icon + ' ' + ch.title + '</h4>' +
+        '<p class="story">' + ch.text + '</p>' + goals + '</div>'));
+      if (idx > 0) {
+        box.appendChild(h('<p class="sect-label">Behind you</p>'));
+        for (var i = idx - 1; i >= 0; i--) {
+          var c = DATA.CHAPTERS[i];
+          box.appendChild(h('<div class="card" style="opacity:.6"><div class="card-main"><h4>✓ ' + ROMAN[i] + ' · ' + c.title + '</h4><p>' + c.done + '</p></div></div>'));
+        }
+      }
     }
   }
 
@@ -585,7 +646,7 @@ var UI = (function () {
         '<div class="stat-line"><span>Buildings standing</span><b>' + built + '</b></div>' +
 
         '<div class="stat-line"><span>Research complete</span><b>' + G.stats.techDone + ' / ' + Object.keys(DATA.TECH).length + '</b></div>' +
-        '<div class="stat-line"><span>Charters fulfilled</span><b>' + Object.keys(G.quests).length + ' / ' + DATA.QUESTS.length + '</b></div>' +
+        '<div class="stat-line"><span>Chapter</span><b>' + (G.won ? 'reign complete' : ROMAN[G.chapter || 0] + ' of ' + DATA.CHAPTERS.length) + '</b></div>' +
         '<div class="stat-line"><span>Raids survived</span><b>' + G.stats.raidsSurvived + '</b></div>' +
         '</div>'));
     }
@@ -744,7 +805,7 @@ var UI = (function () {
         (!def.evolves && (b.level || 1) > 1 ? '  ·  Lv ' + b.level : '');
       el('insp-sub').textContent = b.built
         ? (SIM.jobsOf(b) ? b.workers + '/' + SIM.jobsOf(b) + ' workers' : 'no workers needed') + (b.paused ? ' · paused' : '')
-        : 'Under construction — ' + Math.round(b.prog * 100) + '%';
+        : 'Under construction — ' + Math.round(b.prog * 100) + '%' + (b.waiting ? ' · waiting for ' + b.waiting : '');
       var out = SIM.output(b);
       var lines = [];
       if (def.upkeep) lines.push('<div class="stat-line"><span>upkeep</span><b>−' + def.upkeep.toFixed(2) + ' g/s</b></div>');
@@ -866,7 +927,7 @@ var UI = (function () {
     function count() { return Object.keys(pts).length; }
 
     canvas.addEventListener('pointerdown', function (e) {
-      canvas.setPointerCapture(e.pointerId);
+      try { canvas.setPointerCapture(e.pointerId); } catch (err) { /* synthetic or lost pointer */ }
       pts[e.pointerId] = { x: e.clientX, y: e.clientY };
       U.resumeAudio();
       if (count() === 1) {
@@ -1083,6 +1144,60 @@ var UI = (function () {
     U.sfx.season();
   }
 
+  /* a simple story card: title, words, one or more buttons */
+  function storyCard(art, title, text, buttons) {
+    modalBusy = true;
+    var prevSpeed = SIM.G.speed;
+    setSpeed(0);
+    el('ev-art').textContent = art;
+    el('ev-title').textContent = title;
+    el('ev-text').textContent = text;
+    el('ev-text').style.whiteSpace = 'pre-line';
+    var box = el('ev-choices'); box.innerHTML = '';
+    buttons.forEach(function (bt) {
+      var b = h('<button class="ev-choice">' + bt.label + (bt.sub ? '<small>' + bt.sub + '</small>' : '') + '</button>');
+      b.addEventListener('click', function () {
+        el('event-modal').classList.add('hidden');
+        modalBusy = false;
+        setSpeed(prevSpeed || 1);
+        refreshHUD();
+        if (bt.then) bt.then();
+      });
+      box.appendChild(b);
+    });
+    el('event-modal').classList.remove('hidden');
+  }
+  function rewardText(r) {
+    var keys = Object.keys(r || {});
+    if (!keys.length) return '';
+    return keys.map(function (k) {
+      var q = DATA.RES.filter(function (x) { return x.key === k; })[0];
+      return '+' + r[k] + ' ' + (q ? q.ic : k);
+    }).join('  ');
+  }
+  function chapterEvent(idx) {
+    var ch = DATA.CHAPTERS[idx], nxt = DATA.CHAPTERS[idx + 1];
+    U.sfx.victory();
+    chronicle('Chapter ' + ROMAN[idx] + ' closed: ' + ch.title);
+    if (!nxt) return;               // the last chapter ends in the victory card
+    storyCard(ch.icon, 'Chapter ' + ROMAN[idx] + ' complete', ch.done + (rewardText(ch.reward) ? '\n\nThe realm is rewarded: ' + rewardText(ch.reward) : ''), [
+      { label: 'Onward', sub: 'Chapter ' + ROMAN[idx + 1] + ': ' + nxt.title, then: function () {
+        storyCard(nxt.icon, 'Chapter ' + ROMAN[idx + 1] + ' · ' + nxt.title, nxt.text, [{ label: 'Begin', sub: nxt.goals.length + ' goals — see the card at the top of the screen' }]);
+      } }
+    ]);
+  }
+  function victoryEvent() {
+    var G = SIM.G;
+    U.sfx.victory();
+    chronicle('The Great Cathedral is complete. The reign is crowned.');
+    var built = G.buildings.filter(function (b) { return b.built; }).length;
+    storyCard('👑', 'Your Reign Is Complete',
+      DATA.CHAPTERS[DATA.CHAPTERS.length - 1].done +
+      '\n\nYear ' + SIM.year() + ' · ' + Math.floor(G.pop) + ' villagers · ' + built + ' buildings · ' +
+      G.stats.wins + ' battles won · ' + G.stats.techDone + ' discoveries',
+      [{ label: 'Keep ruling', sub: 'Ashveil is yours to build on for as long as you like' }]);
+  }
+
   function fireEvent() {
     if (modalBusy || BATTLE.isOpen()) { return; }
     var G = SIM.G;
@@ -1243,6 +1358,11 @@ var UI = (function () {
       if (c) RENDER.centreOn(c.x, c.y);
     });
     el('btn-alerts').addEventListener('click', function () { U.sfx.tap(); openSheet('alerts'); });
+    el('goal-card').addEventListener('click', function () {
+      U.sfx.tap();
+      if (el('goal-card').dataset.go === 'alerts') { openSheet('alerts'); return; }
+      openTab.people = 'quests'; if (openPanel === 'people') renderSheet(true); else openSheet('people');
+    });
     el('btn-sound').addEventListener('click', toggleSound);
     el('btn-menu').addEventListener('click', function () { openTab.world = 'settings'; openSheet('world'); });
     [0, 1, 2, 3].forEach(function (i) {
@@ -1263,6 +1383,9 @@ var UI = (function () {
       if (kind === 'campaign-arrived') eventQueue.push('campaign');
       if (kind === 'relief') eventQueue.push('relief');
       if (kind === 'festival') eventQueue.push({ k: 'festival', key: payload });
+      if (kind === 'chapter') eventQueue.unshift({ k: 'chapter', idx: payload.idx });
+      if (kind === 'victory') eventQueue.unshift({ k: 'victory' });
+      if (kind === 'weather' && payload === 'rain') toast('🌧️ Rain sweeps in off the sea — the fields drink it up.', '');
       if (kind === 'season') { chronicle(payload.name + ' comes to Ashveil.'); }
       if (kind === 'completed') {
         var cw2 = (payload.def.w || 1) / 2, ch2 = (payload.def.h || 1) / 2;
@@ -1288,7 +1411,9 @@ var UI = (function () {
   function pump() {
     if (modalBusy || BATTLE.isOpen() || !eventQueue.length) return;
     var next = eventQueue.shift();
-    if (next && next.k === 'festival') festivalEvent(next.key);
+    if (next && next.k === 'chapter') chapterEvent(next.idx);
+    else if (next && next.k === 'victory') victoryEvent();
+    else if (next && next.k === 'festival') festivalEvent(next.key);
     else if (next && next.k === 'raid') incomingRaid(next.cause);
     else if (next === 'raid') incomingRaid('raid');
     else if (next === 'campaign') campaignBattle();
