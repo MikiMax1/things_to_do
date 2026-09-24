@@ -20,6 +20,18 @@ where it can go, red where it cannot, and says what it would make on that exact
 spot. **Building on woodland clears it for you** and the timber goes into store.
 Farms and pastures are 2×2 plots with fields that grow through the year.
 
+**Bring in the harvest.** Crops grow through spring and summer and are
+reaped in autumn — the barns fill in a rush. Store enough for winter: nothing
+grows in the snow, though a hunter's lodge still brings venison out of the woods.
+
+**Watch for fire.** Thatch roofs, bakeries and forges can catch. Villagers run
+with buckets; a well nearby makes all the difference. Tap a burning building
+and call the bucket brigade.
+
+**Look along the shore.** Driftwood and wrecks wash up — tap them. Once you
+have a market, merchant ships call with bargains. Tap the 👑 button for royal
+decrees: feasts, double shifts, taxes, and calls for settlers.
+
 **Footpaths wear themselves in.** You never place a path. They are worked out
 from where your buildings stand, cost nothing, and take up no ground.
 

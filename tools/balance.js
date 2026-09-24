@@ -89,7 +89,7 @@ const PLAN = [
   ['market', 1], ['well', 2], ['house', 3], ['farm', 3], ['fishery', 2],
   ['bakery', 2], ['chapel', 1], ['tavern', 1], ['library', 1], ['house', 3],
   ['farm', 3], ['pasture', 2], ['weaver', 1], ['market', 1], ['warehouse', 1],
-  ['barracks', 1], ['house', 3], ['tower', 2], ['farm', 3], ['pasture', 3], ['weaver', 2]
+  ['barracks', 1], ['house', 3], ['tower', 2], ['farm', 3], ['bakery', 2], ['pasture', 3], ['weaver', 2]
 ];
 
 function place(id, n) {
@@ -114,6 +114,9 @@ function runKingdom(seed, seasons) {
   const DT = 0.5, ticks = Math.round(seasons * DATA.SEASON_LEN / DT);
 
   SIM.on(k => { if (k === 'raid-incoming') rec.raids++; });
+  // every kingdom follows its own copy of the plan: counting down a shared
+  // one left every kingdom after the first with a plan of single buildings
+  const plan = PLAN.map(p => p.slice());
 
   for (let i = 0; i < ticks; i++) {
     SIM.tick(DT);
@@ -130,14 +133,14 @@ function runKingdom(seed, seasons) {
     if (nc && G.castle < 2 && SIM.canAfford(nc.cost) && G.res.gold > nc.cost.gold + 120) SIM.upgradeCastle();
     // follow the build plan whenever it is affordable
     sinceBuild += DT;
-    if (step < PLAN.length && sinceBuild > 4) {
-      const [id, n] = PLAN[step];
+    if (step < plan.length && sinceBuild > 4) {
+      const [id, n] = plan[step];
       if (SIM.unlocked(id) && SIM.canAfford(SIM.costOf(id))) {
         if (place(id, 1) > 0) {
-          PLAN[step] = [id, n - 1];
-          if (n - 1 <= 0) { step++; PLAN[step - 1] = [id, n]; }
+          plan[step] = [id, n - 1];
+          if (n - 1 <= 0) step++;
           sinceBuild = 0;
-        }
+        } else step++;        // nowhere to put it on this island: move on
       }
     }
     // housing churn: how often homes change standing. High numbers mean the
@@ -157,13 +160,15 @@ function runKingdom(seed, seasons) {
   return {
     pop: G.pop, happy: G.happy, housing: SIM.housing(),
     tier: SIM.G.buildings.filter(b=>b.def.evolves&&b.built).reduce((a,b)=>a+(b.level||1),0) / Math.max(1,SIM.countHouseTier(1)),
-    gold: net.gold, food: net.food,
+    gold: net.gold, food: SIM.foodTrend ? SIM.foodTrend(net) : net.food,
     goods: SIM.goodsValue(),
     tech: G.stats.techDone,
     starvedPct: rec.starved / (seasons * DATA.SEASON_LEN) * 100,
     brokePct: rec.broke / (seasons * DATA.SEASON_LEN) * 100,
     raids: rec.raids, minFood: rec.minFood, minGold: rec.minGold,
     churn: rec.churn / seasons,
+    bread: G.breadCov || 0, cloth: G.res.cloth, foodStock: G.res.food,
+    burned: G.stats.burned || 0, firesOut: G.stats.firesOut || 0,
     chapter: (G.chapter || 0) + 1,
     ch2: rec.reached[1], ch3: rec.reached[2], ch4: rec.reached[3]
   };
@@ -184,7 +189,7 @@ function simulate(runs, seasons) {
   row('contentment', 'happy');
   row('house standing', 'tier', 2);
   row('gold /s', 'gold', 2);
-  row('food /s', 'food', 2);
+  row('food /s (over a year)', 'food', 2);
   row('goods value /s', 'goods', 2);
   row('technologies', 'tech', 1);
   row('raids faced', 'raids', 1);
@@ -193,6 +198,11 @@ function simulate(runs, seasons) {
   row('lowest food seen', 'minFood', 0);
   row('lowest gold seen', 'minGold', 0);
   row('housing changes/season', 'churn', 2);
+  row('buildings lost to fire', 'burned', 1);
+  row('fires put out', 'firesOut', 1);
+  row('bread coverage', 'bread', 2);
+  row('cloth in store', 'cloth', 0);
+  row('food in store', 'foodStock', 0);
   row('chapter reached', 'chapter', 1);
   row('season chapter II opens', 'ch2', 1);
   row('season chapter III opens', 'ch3', 1);
@@ -208,6 +218,7 @@ function simulate(runs, seasons) {
   chk(avg('churn') < 1.0, 'house standings settle rather than flicker (<1 change per season)');
   chk(all.every(r => isFinite(r.pop) && isFinite(r.gold)), 'no NaN anywhere in the economy');
   chk(avg('ch3') < 20, 'the story moves: chapter III opens within 20 seasons (5 years)');
+  chk(avg('burned') < 3, 'fire is a danger, not a plague (<3 buildings lost in 10 years, nobody fighting it)');
   return all;
 }
 

@@ -97,6 +97,21 @@ var AGENTS = (function () {
     }
     return { x: b.x, y: b.y };
   }
+  /* the nearest few villagers drop what they are doing and run to a fire */
+  function assignBrigades() {
+    var fires = SIM.burning ? SIM.burning() : [];
+    if (!fires.length) return;
+    fires.forEach(function (b) {
+      var have = list.filter(function (a) { return a.brigade === b; }).length;
+      var want = 5 + (b.fire.brigade > 0 ? 3 : 0);
+      if (have >= want) return;
+      var free = list.filter(function (a) { return !a.brigade; });
+      free.sort(function (p, q) { return U.dist2(p.x, p.y, b.x, b.y) - U.dist2(q.x, q.y, b.x, b.y); });
+      free.slice(0, want - have).forEach(function (a) {
+        a.brigade = b; a.state = 'toFire'; a.path = null; a.carry = null;
+      });
+    });
+  }
   function goTo(a, tx, ty) {
     var p = W.path(Math.floor(a.x), Math.floor(a.y), tx, ty, 700);
     if (!p || !p.length) {
@@ -143,10 +158,41 @@ var AGENTS = (function () {
     updateAnimals(dt);
     var castle = G.buildings[0];
 
+    var night = (typeof RENDER !== 'undefined' && RENDER.nightAmount) ? RENDER.nightAmount() : 0;
+    assignBrigades();
+
     for (var i = 0; i < list.length; i++) {
       var a = list[i];
       a.px = a.x; a.py = a.y;
       a.timer -= dt;
+
+      // a fire comes before everything, sleep included
+      if (a.brigade) {
+        if (!a.brigade.fire || G.buildings.indexOf(a.brigade) < 0) { a.brigade = null; a.state = 'idle'; a.path = null; continue; }
+        if (a.path) { follow(a, dt); continue; }
+        if (a.state !== 'douse') {
+          var bb = a.brigade, side = Math.random() < 0.5;
+          var tx = side ? bb.x + (bb.def.w || 1) : bb.x + Math.floor(Math.random() * (bb.def.w || 1));
+          var ty = side ? bb.y + Math.floor(Math.random() * (bb.def.h || 1)) : bb.y + (bb.def.h || 1);
+          a.state = 'douse';
+          goTo(a, tx, ty);
+        } else {
+          a.bob += dt * 6;
+          a.face = (a.brigade.x + a.brigade.y) - (a.x + a.y) > 0 ? 1 : -1;
+        }
+        continue;
+      }
+      // after dark people go home, and the lanes empty
+      if (night > 0.72 && a.home && a.state !== 'asleep') {
+        if (a.state !== 'goingHome') { a.state = 'goingHome'; a.carry = null; goTo(a, a.home.x, a.home.y); }
+        else if (!a.path) a.state = 'asleep';
+        else follow(a, dt);
+        continue;
+      }
+      if (a.state === 'asleep' || a.state === 'goingHome') {
+        if (night < 0.45) { a.state = 'idle'; a.timer = Math.random() * 3; a.path = null; }
+        else { if (a.path) follow(a, dt); continue; }
+      }
 
       if (a.path) { follow(a, dt); continue; }
 
@@ -215,6 +261,7 @@ var AGENTS = (function () {
   /* draw one villager standing at screen pos (feet at px,py) */
   var HAIR = ['#2b1d12', '#5a3a1e', '#8a5a2a', '#c9a15a', '#3a2a22', '#6b6258'];
   function draw(g, a, px, py, z) {
+    if (a.state === 'asleep') return;
     var h = Math.max(7, z * 0.19), w = h * 0.42;
     var moving = !!a.path;
     var step = Math.sin(a.bob);
@@ -258,6 +305,16 @@ var AGENTS = (function () {
       g.beginPath(); g.ellipse(px + a.face * w * 0.35, y0 - h * 0.8, w * 0.32, w * 0.24, 0, 0, 6.3); g.fill();
       g.strokeStyle = 'rgba(0,0,0,.45)'; g.lineWidth = 0.8; g.stroke();
     }
+    // a bucket, and at the fire, water thrown at it
+    if (a.brigade) {
+      var bx2 = px + a.face * w * 0.55, by2 = y0 - h * 0.42;
+      g.fillStyle = '#6b5a44'; g.fillRect(bx2 - w * 0.2, by2, w * 0.4, w * 0.4);
+      if (a.state === 'douse' && !moving && Math.sin(a.bob) > 0.3) {
+        g.strokeStyle = 'rgba(170,210,240,.85)'; g.lineWidth = Math.max(1, w * 0.18);
+        g.beginPath(); g.moveTo(bx2, by2);
+        g.quadraticCurveTo(bx2 + a.face * h * 0.6, by2 - h * 0.9, bx2 + a.face * h * 1.1, by2 - h * 0.5); g.stroke();
+      }
+    }
     // at work: a tool swinging
     if (a.state === 'working' && !moving) {
       var sw2 = Math.sin(a.bob * 3) * 0.9;
@@ -284,6 +341,10 @@ var AGENTS = (function () {
       if (b.id === 'pasture') for (var i = 0; i < (b.compact ? 2 : 5); i++) want.push({ k: 'sheep', home: b, i: i });
       if (b.id === 'fishery') want.push({ k: 'boat', home: b, i: 0 });
     });
+    // a small herd of deer roams the woodland
+    var forests = W.tiles.filter(function (t) { return t.terr === 'forest'; });
+    var herd = Math.min(7, Math.floor(forests.length / 18));
+    for (var d = 0; d < herd; d++) want.push({ k: 'deer', home: null, i: d });
     // keep existing ones that still have a home
     var keep = [];
     want.forEach(function (w) {
@@ -295,7 +356,19 @@ var AGENTS = (function () {
     });
     animals = keep;
   }
+  function forestSpot(near) {
+    for (var i = 0; i < 30; i++) {
+      var t = near ? W.at(Math.floor(near.x) + Math.floor(Math.random() * 7) - 3, Math.floor(near.y) + Math.floor(Math.random() * 7) - 3)
+                   : W.tiles[Math.floor(Math.random() * W.tiles.length)];
+      if (t && t.terr === 'forest' && !t.bld) return { x: t.x + 0.2 + Math.random() * 0.6, y: t.y + 0.2 + Math.random() * 0.6 };
+    }
+    return null;
+  }
   function mkAnimal(w) {
+    if (w.k === 'deer') {
+      var sp0 = forestSpot(null) || { x: W.COLS / 2, y: W.ROWS / 2 };
+      return { k: 'deer', home: null, i: w.i, x: sp0.x, y: sp0.y, tx: sp0.x, ty: sp0.y, t: Math.random() * 5, face: 1, ph: Math.random() * 6, stag: w.i % 3 === 0 };
+    }
     var b = w.home, sz = b.compact ? 1 : (b.def.w || 1);
     var a = { k: w.k, home: b, i: w.i, x: b.x + 0.5, y: b.y + 0.5, tx: 0, ty: 0, t: Math.random() * 4, face: 1, ph: Math.random() * 6 };
     if (w.k === 'sheep') {
@@ -322,8 +395,18 @@ var AGENTS = (function () {
     for (var i = 0; i < animals.length; i++) {
       var a = animals[i], b = a.home;
       a.t -= dt;
+      if (a.k === 'deer' && !a.flee && Math.random() < dt * 2) {
+        for (var j = 0; j < list.length; j += 3) {
+          var v = list[j];
+          if (v.state !== 'asleep' && U.dist2(v.x, v.y, a.x, a.y) < 1.2) {
+            var fs = forestSpot(a);
+            if (fs) { a.tx = fs.x; a.ty = fs.y; a.flee = true; }
+            break;
+          }
+        }
+      }
       var dx = a.tx - a.x, dy = a.ty - a.y, d = Math.hypot(dx, dy);
-      var spd = a.k === 'boat' ? 0.25 : 0.12;
+      var spd = a.k === 'boat' ? 0.25 : a.k === 'deer' ? (a.flee ? 1.1 : 0.16) : 0.12;
       if (d > 0.02) {
         a.x += dx / d * Math.min(d, spd * dt); a.y += dy / d * Math.min(d, spd * dt);
         a.face = (dx - dy) >= 0 ? 1 : -1;
@@ -332,7 +415,12 @@ var AGENTS = (function () {
         a.moving = false;
         if (a.t <= 0) {
           a.t = a.k === 'boat' ? 4 + Math.random() * 8 : 2 + Math.random() * 6;
-          if (a.k === 'sheep') {
+          if (a.k === 'deer') {
+            var here = W.at(Math.floor(a.x), Math.floor(a.y));
+            var n2 = forestSpot(here && here.terr === 'forest' ? a : null);
+            if (n2) { a.tx = n2.x; a.ty = n2.y; }
+            a.flee = false;
+          } else if (a.k === 'sheep') {
             var sz = b.compact ? 1 : (b.def.w || 1);
             var nx = b.x + 0.25 + Math.random() * (sz - 0.5), ny = b.y + 0.25 + Math.random() * (sz - 0.5);
             if (sz > 1 && nx < b.x + 0.65 && ny < b.y + 0.55) nx += 0.8;
@@ -345,6 +433,29 @@ var AGENTS = (function () {
     }
   }
   function drawAnimal(g, a, px, py, z, season) {
+    if (a.k === 'deer') {
+      var r2 = Math.max(3, z * 0.06), stp = a.moving ? Math.sin(SIM.G.time * 12 + a.ph) : 0;
+      var body = season === 'winter' ? '#7a624a' : '#9a6a3e';
+      g.fillStyle = 'rgba(0,0,0,.22)'; g.beginPath(); g.ellipse(px + r2 * 0.5, py, r2 * 1.5, r2 * 0.45, 0, 0, 6.3); g.fill();
+      g.strokeStyle = '#5a3e24'; g.lineWidth = Math.max(1, r2 * 0.22);
+      g.beginPath();
+      g.moveTo(px - r2 * 0.8, py - r2 * 1.1); g.lineTo(px - r2 * 0.8 + stp * r2 * 0.4, py);
+      g.moveTo(px + r2 * 0.8, py - r2 * 1.1); g.lineTo(px + r2 * 0.8 - stp * r2 * 0.4, py);
+      g.stroke();
+      g.fillStyle = body;
+      g.beginPath(); g.ellipse(px, py - r2 * 1.35, r2 * 1.2, r2 * 0.55, 0, 0, 6.3); g.fill();
+      g.fillStyle = '#e8dcc6'; g.beginPath(); g.ellipse(px - a.face * r2 * 1.05, py - r2 * 1.45, r2 * 0.25, r2 * 0.2, 0, 0, 6.3); g.fill();
+      var hx = px + a.face * r2 * 1.1, hy = py - r2 * 2.1;
+      g.strokeStyle = body; g.lineWidth = Math.max(1.2, r2 * 0.35);
+      g.beginPath(); g.moveTo(px + a.face * r2 * 0.8, py - r2 * 1.5); g.lineTo(hx, hy); g.stroke();
+      g.fillStyle = body; g.beginPath(); g.ellipse(hx + a.face * r2 * 0.25, hy, r2 * 0.4, r2 * 0.25, 0, 0, 6.3); g.fill();
+      if (a.stag) {
+        g.strokeStyle = '#d8c8a8'; g.lineWidth = Math.max(0.8, r2 * 0.12);
+        g.beginPath(); g.moveTo(hx, hy - r2 * 0.2); g.lineTo(hx - a.face * r2 * 0.3, hy - r2 * 0.9); g.lineTo(hx - a.face * r2 * 0.6, hy - r2 * 1.1);
+        g.moveTo(hx - a.face * r2 * 0.15, hy - r2 * 0.55); g.lineTo(hx + a.face * r2 * 0.2, hy - r2 * 0.95); g.stroke();
+      }
+      return;
+    }
     if (a.k === 'sheep') {
       var r = Math.max(3, z * 0.055);
       var bob = a.moving ? Math.abs(Math.sin(a.x * 30)) * r * 0.2 : 0;
