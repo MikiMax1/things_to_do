@@ -86,6 +86,17 @@ var AGENTS = (function () {
     });
   }
 
+  /* where on a plot the work is done: out in the fields on a farm or a
+     pasture, at the door anywhere else */
+  function workSpot(b) {
+    var w = b.def.w || 1, h = b.def.h || 1;
+    if ((b.id === 'farm' || b.id === 'pasture') && w > 1) {
+      var cells = [[1, 0], [1, 1], [0, 1]];
+      var c = cells[Math.floor(Math.random() * cells.length)];
+      return { x: b.x + c[0], y: b.y + c[1] };
+    }
+    return { x: b.x, y: b.y };
+  }
   function goTo(a, tx, ty) {
     var p = W.path(Math.floor(a.x), Math.floor(a.y), tx, ty, 700);
     if (!p || !p.length) {
@@ -143,7 +154,8 @@ var AGENTS = (function () {
         case 'idle':
           if (a.job) {
             a.state = 'toWork';
-            goTo(a, a.job.x, a.job.y);
+            var spot0 = workSpot(a.job);
+            goTo(a, spot0.x, spot0.y);
           } else if (a.timer <= 0) {
             var spot = W.randomWalkable(Math.random);
             if (spot) goTo(a, spot.x, spot.y);
@@ -182,7 +194,7 @@ var AGENTS = (function () {
           a.carry = null;
           a.state = 'toWork';
           a.timer = 0.4;
-          if (a.job) goTo(a, a.job.x, a.job.y); else a.state = 'idle';
+          if (a.job) { var sp1 = workSpot(a.job); goTo(a, sp1.x, sp1.y); } else a.state = 'idle';
           break;
 
         case 'toHome':

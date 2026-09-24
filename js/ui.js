@@ -1198,6 +1198,14 @@ var UI = (function () {
       [{ label: 'Keep ruling', sub: 'Ashveil is yours to build on for as long as you like' }]);
   }
 
+  /* the first thing a new ruler sees */
+  function introCard() {
+    var ch = DATA.CHAPTERS[0];
+    storyCard('🏝️', 'Chapter I · ' + ch.title,
+      ch.text + '\n\nDrag to look around, pinch to zoom, and tap anything to see what it does. Your next goal is always in the card at the top of the screen — and the Build menu opens on what your realm needs most.',
+      [{ label: 'Begin', sub: 'Raise cottages, plant farms, fell timber' }]);
+  }
+
   function fireEvent() {
     if (modalBusy || BATTLE.isOpen()) { return; }
     var G = SIM.G;
@@ -1425,6 +1433,6 @@ var UI = (function () {
     init: init, refreshHUD: refreshHUD, toast: toast, pump: pump,
     setSpeed: setSpeed, renderSheet: function () { if (openPanel) renderSheet(); },
     isModalOpen: function () { return modalBusy; },
-    chronicle: chronicle, closeSheet: closeSheet, clearSelection: clearSelection
+    chronicle: chronicle, closeSheet: closeSheet, clearSelection: clearSelection, introCard: introCard
   };
 })();
