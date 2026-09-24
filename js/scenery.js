@@ -260,6 +260,39 @@ var SCENERY = (function () {
     }
   }
 
+  /* ---------------- fireworks over the castle ---------------- */
+  var rockets = [], sparks = [], fwQueue = 0, fwTimer = 0;
+  var FW_COL = ['#ffd24a', '#ff6a4a', '#7ad0ff', '#b98aff', '#8fff8a', '#fff'];
+  function fireworks(n) { fwQueue += n || 5; }
+  function updateFireworks(dt, api) {
+    fwTimer -= dt;
+    if (fwQueue > 0 && fwTimer <= 0) {
+      fwQueue--; fwTimer = 0.35 + Math.random() * 0.5;
+      var c = G().buildings[0], s = api.toScreen(c.x + 1, c.y + 1);
+      rockets.push({ x: s.x + (Math.random() - 0.5) * 120, y: s.y - 20, vy: -(180 + Math.random() * 80), t: 0.9 + Math.random() * 0.4, col: FW_COL[Math.floor(Math.random() * FW_COL.length)] });
+      if (U.sfx.tap) U.sfx.tap();
+    }
+    for (var i = rockets.length - 1; i >= 0; i--) {
+      var r = rockets[i]; r.y += r.vy * dt; r.vy += 60 * dt; r.t -= dt;
+      if (r.t <= 0) {
+        for (var k = 0; k < 26; k++) { var a = k / 26 * 6.283, sp = 60 + Math.random() * 50; sparks.push({ x: r.x, y: r.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 1.2, col: r.col }); }
+        rockets.splice(i, 1);
+        if (U.sfx.clash) setTimeout(function () { U.sfx.arrow && U.sfx.arrow(); }, 120);
+      }
+    }
+    for (var j = sparks.length - 1; j >= 0; j--) {
+      var p = sparks[j]; p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 50 * dt; p.vx *= 0.985; p.life -= dt;
+      if (p.life <= 0) sparks.splice(j, 1);
+    }
+  }
+  function drawFireworks(g2) {
+    if (!rockets.length && !sparks.length) return;
+    g2.save(); g2.globalCompositeOperation = 'lighter';
+    rockets.forEach(function (r) { g2.fillStyle = '#fff3c0'; g2.fillRect(r.x - 1, r.y - 1, 2, 5); });
+    sparks.forEach(function (p) { g2.globalAlpha = Math.min(1, p.life); g2.fillStyle = p.col; g2.fillRect(p.x - 1.2, p.y - 1.2, 2.4, 2.4); });
+    g2.restore();
+  }
+
   /* ---------------- the sky: mist, rainbow, lightning ---------------- */
   function drawSky(g2, api) {
     // dawn mist lying in the low ground and over the water
@@ -282,6 +315,8 @@ var SCENERY = (function () {
       g2.restore();
     }
     drawBirds(g2, api);
+    updateFireworks(1 / 60, api);
+    drawFireworks(g2);
     if (flash > 0.02) {
       g2.fillStyle = 'rgba(235,240,255,' + (flash * flash * 0.55).toFixed(3) + ')';
       g2.fillRect(0, 0, api.cw, api.ch);
@@ -289,7 +324,7 @@ var SCENERY = (function () {
   }
 
   return {
-    update: update, wind: wind, homeItems: homeItems, drawSurf: drawSurf, drawPuddles: drawPuddles,
+    update: update, wind: wind, fireworks: fireworks, homeItems: homeItems, drawSurf: drawSurf, drawPuddles: drawPuddles,
     drawJumps: drawJumps, drawSky: drawSky, get wet() { return wet; }
   };
 })();

@@ -102,8 +102,12 @@
     highland: { name: 'Highlands', ic: '⛰️', desc: 'Hills and crags. Stone and iron for the taking, thin soil for farms.' },
     twin: { name: 'Twin Isles', ic: '🏝️', desc: 'Two islands joined by a spit of sand. Tight, and beautiful.' }
   };
+  var rulerPick = null;
   function openSetup() {
     try { var sv = JSON.parse(localStorage.getItem('ashveil.setup') || 'null'); if (sv) setup = sv; } catch (e) {}
+    rulerPick = setup.ruler || COURT.randomRuler();
+    el('ruler-name').value = rulerPick.name; el('ruler-house').value = rulerPick.house;
+    el('ruler-title').textContent = rulerPick.title;
     el('title-screen').classList.add('setting-up');
     el('btn-new').style.display = 'none'; el('btn-continue').style.display = 'none';
     el('setup').classList.remove('hidden');
@@ -111,7 +115,7 @@
   }
   function renderSetup() {
     var lists = { map: MAPS, diff: SIM.DIFFS, scen: SIM.SCENARIOS };
-    var rows = document.querySelectorAll('#setup .setup-row');
+    var rows = document.querySelectorAll('#setup .setup-row[data-k]');
     Array.prototype.forEach.call(rows, function (row) {
       var k = row.dataset.k, L = lists[k];
       row.innerHTML = '';
@@ -122,6 +126,14 @@
         b.addEventListener('click', function () { setup[k] = id; U.sfx.tap(); renderSetup(); });
         row.appendChild(b);
       });
+    });
+    var br = el('banner-row'); br.innerHTML = '';
+    COURT.BANNERS.forEach(function (bn) {
+      var b = document.createElement('button');
+      b.type = 'button'; b.className = 'banner-pill' + (rulerPick && rulerPick.banner && rulerPick.banner[0] === bn[0] && rulerPick.banner[1] === bn[1] ? ' on' : '');
+      b.style.background = 'linear-gradient(90deg,' + bn[0] + ' 0 60%,' + bn[1] + ' 60% 100%)';
+      b.addEventListener('click', function () { rulerPick.banner = bn; U.sfx.tap(); renderSetup(); });
+      br.appendChild(b);
     });
     el('setup-desc').innerHTML = '<b>' + MAPS[setup.map].name + '.</b> ' + MAPS[setup.map].desc + '<br><b>' + SIM.DIFFS[setup.diff].name + '.</b> ' +
       SIM.DIFFS[setup.diff].desc + '<br><b>' + SIM.SCENARIOS[setup.scen].name + '.</b> ' + SIM.SCENARIOS[setup.scen].desc;
@@ -154,12 +166,24 @@
       }
       openSetup();
     });
+    el('ruler-title').addEventListener('click', function () {
+      rulerPick.title = rulerPick.title === 'Queen' ? 'King' : 'Queen';
+      el('ruler-title').textContent = rulerPick.title; U.sfx.tap();
+    });
+    el('ruler-dice').addEventListener('click', function () {
+      var r = COURT.randomRuler(); r.title = rulerPick.title;
+      r.name = (r.title === 'Queen' ? COURT.F_NAMES : COURT.M_NAMES)[Math.floor(Math.random() * 12)];
+      rulerPick = r; el('ruler-name').value = r.name; el('ruler-house').value = r.house; U.sfx.tap(); renderSetup();
+    });
     el('btn-found').addEventListener('click', function () {
       U.resumeAudio(); U.sfx.tap();
+      rulerPick.name = (el('ruler-name').value || '').trim().slice(0, 16) || rulerPick.name;
+      rulerPick.house = (el('ruler-house').value || '').trim().slice(0, 16) || rulerPick.house;
+      setup.ruler = rulerPick;
       try { localStorage.setItem('ashveil.setup', JSON.stringify(setup)); } catch (e) {}
       el('setup').classList.add('hidden');
       U.wipe();
-      SIM.newGame(null, { map: setup.map, diff: setup.diff, scen: setup.scen });
+      SIM.newGame(null, { map: setup.map, diff: setup.diff, scen: setup.scen, ruler: setup.ruler });
       prepare(enter);
     });
     el('btn-setup-back').addEventListener('click', function () {
@@ -203,6 +227,7 @@
   }
 
   function enter() {
+    COURT.applyBanner();
     var ts = el('title-screen');
     ts.classList.add('gone');
     setTimeout(function () { ts.style.display = 'none'; }, 520);

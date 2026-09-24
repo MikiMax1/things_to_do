@@ -121,7 +121,7 @@ var DATA = (function () {
     },
     pasture: {
       id: 'pasture', name: 'Pasture', cat: 'industry', ic: '🐑', w: 2, h: 2, noYard: true,
-      cost: { wood: 28, gold: 30 }, build: 6, jobs: 2, produces: { wool: 0.100 }, upkeep: 0.02,
+      cost: { wood: 28, gold: 30 }, build: 6, jobs: 2, produces: { wool: 0.100 }, upkeep: 0.02, radius: 3, aura: { weaver: 0.2 },
       terrain: ['grass', 'meadow'], seasonalWool: true,
       desc: 'Grazes sheep on open grass for wool. Needs room — it will not thrive on sand or in the hills.'
     },
@@ -142,7 +142,7 @@ var DATA = (function () {
     mine: {
       id: 'mine', name: 'Iron Mine', cat: 'industry', ic: '⛰️', tech: 'mining',
       cost: { wood: 45, stone: 30, gold: 50 }, build: 11, jobs: 2, produces: { iron: 0.14 }, upkeep: 0.06,
-      terrain: ['hill'], near: { terrain: ['rock'], min: 1 },
+      terrain: ['hill'], near: { terrain: ['rock'], min: 1 }, radius: 3, aura: { smith: 0.2 },
       desc: 'Iron for arms and armour. Needs a crag next door.'
     },
     smith: {

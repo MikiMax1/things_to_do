@@ -261,11 +261,11 @@ var UI = (function () {
 
   var PANELS = {
     build: { title: 'Build', tabs: function () { return [{ key: 'suggested', name: '★ Suggested' }].concat(DATA.CATS); }, body: buildBody },
-    people: { title: 'People', tabs: function () { return [{ key: 'quests', name: 'Story' }, { key: 'overview', name: 'Realm' }, { key: 'folk', name: 'Families' }, { key: 'jobs', name: 'Work' }]; }, body: peopleBody },
+    people: { title: 'People', tabs: function () { return [{ key: 'quests', name: 'Story' }, { key: 'overview', name: 'Realm' }, { key: 'folk', name: 'Families' }, { key: 'court', name: 'Court' }, { key: 'jobs', name: 'Work' }]; }, body: peopleBody },
     army: { title: 'Army', tabs: function () { return [{ key: 'roster', name: 'Roster' }, { key: 'muster', name: 'Muster' }, { key: 'war', name: 'War' }, { key: 'dip', name: 'Diplomacy' }]; }, body: armyBody },
     tech: { title: 'Research', tabs: function () { return [{ key: 1, name: 'Tier I' }, { key: 2, name: 'Tier II' }, { key: 3, name: 'Tier III' }]; }, body: techBody },
     decrees: { title: 'Royal Decrees', tabs: function () { return [{ key: 'all', name: 'Decrees' }]; }, body: decreesBody },
-    alerts: { title: 'Needs attention', tabs: function () { return [{ key: 'all', name: 'All' }]; }, body: alertsBody },
+    alerts: { title: 'Your Advisor', tabs: function () { return [{ key: 'all', name: 'What to do' }]; }, body: alertsBody },
     news: { title: 'News', tabs: function () { return [{ key: 'all', name: 'Latest' }]; }, body: newsBody },
     grow: { title: 'Village Growth', tabs: function () { return [{ key: 'all', name: 'Growth' }, { key: 'log', name: 'What they built' }]; }, body: growBody },
     world: { title: 'The Realm', tabs: function () { return [{ key: 'castle', name: 'Castle' }, { key: 'trade', name: 'Trade' }, { key: 'sea', name: 'Sea chart' }, { key: 'honours', name: 'Honours' }, { key: 'chronicle', name: 'Chronicle' }, { key: 'settings', name: 'Settings' }]; }, body: worldBody }
@@ -329,8 +329,37 @@ var UI = (function () {
   }
 
   /* ---------------- ALERTS ---------------- */
+  /* the steward at your elbow: the one or two things worth doing next */
+  function advise() {
+    var G = SIM.G, out = [];
+    var urgent = SIM.issues().filter(function (i) { return i.sev >= 2; })[0];
+    if (urgent) out.push({ ic: urgent.ic, text: urgent.text, why: urgent.hint || 'This cannot wait.', b: urgent.b });
+    var goal = SIM.activeQuests()[0];
+    if (goal) {
+      var gp = SIM.goalProgress(goal);
+      out.push({ ic: '🎯', text: goal.label, why: 'Your chapter goal' + (gp.need > 1 ? ' — ' + gp.have + ' of ' + gp.need : '') + '. Finishing it pays ' + rewardText(goal.reward || {}) + '.' });
+    }
+    (G.petitions || []).slice(0, 1).forEach(function (a) { out.push({ ic: '🙏', text: COURT.petitionLabel(a), why: 'A petition from ' + a.who + ' — answer it within ' + Math.max(0, (a.until - G.time) / DATA.SEASON_LEN).toFixed(1) + ' seasons.' }); });
+    var adv = SIM.advice();
+    if (adv.order.length) { var id = adv.order[0]; out.push({ ic: '🏗️', text: 'Build ' + (/^[aeiou]/i.test(DATA.B[id].name) ? 'an ' : 'a ') + DATA.B[id].name.toLowerCase(), why: adv.map[id] + '.', build: id }); }
+    if (G.letters && G.letters.length) out.push({ ic: '📜', text: 'Read your letters', why: G.letters.length + ' waiting — some go stale.', letters: true });
+    if (!out.length) out.push({ ic: '🌿', text: 'All is well', why: 'A good moment for a great work (The Realm → Castle), the sea chart, or Brannoch.' });
+    return out.slice(0, 4);
+  }
   function alertsBody(box) {
+    advise().forEach(function (a, n) {
+      var row = h('<button class="issue ' + (n === 0 ? 'sev1' : 'sev0') + ' advice"><span class="ic">' + a.ic + '</span><span class="body"><b>' + a.text + '</b><small>' + a.why + '</small></span>' +
+        (a.b || a.build || a.letters ? '<span class="go">' + (a.build ? 'Build ›' : a.letters ? 'Read ›' : 'Show ›') + '</span>' : '') + '</button>');
+      row.addEventListener('click', function () {
+        if (a.b) { RENDER.centreOn(a.b.x, a.b.y); closeSheet(); select({ b: a.b }); }
+        else if (a.build) startBuild(a.build);
+        else if (a.letters) { closeSheet(); openLetter(); }
+        U.sfx.tap();
+      });
+      box.appendChild(row);
+    });
     var list = SIM.issues();
+    if (list.length) box.appendChild(h('<p class="sect-label">Everything that needs attention</p>'));
     if (!list.length) {
       box.appendChild(h('<p class="hint">Nothing needs you. The realm is running itself — a good moment to build something, or study.</p>'));
       return;
@@ -468,9 +497,30 @@ var UI = (function () {
     }
   }
 
+  /* the ruler, the royal family, the realm's charters, the people's petitions */
+  function courtBody(box) {
+    var G = SIM.G, r = COURT.ruler();
+    var ban = '<span class="banner-chip" style="background:linear-gradient(90deg,' + r.banner[0] + ' 0 60%,' + r.banner[1] + ' 60% 100%)"></span>';
+    box.appendChild(h('<div class="card"><h4 style="font-family:var(--font);font-size:16px">' + ban + ' ' + COURT.styled(r) + '</h4>' +
+      '<div class="stat-line"><span>Age</span><b>' + Math.floor(r.age) + (r.gen > 1 ? ' · ' + ['', '', 'second', 'third', 'fourth', 'fifth'][Math.min(5, r.gen)] + ' of the line' : '') + '</b></div>' +
+      '<div class="stat-line"><span>Consort</span><b>' + (r.spouse ? r.spouse.name + ', ' + Math.floor(r.spouse.age) : 'unwed') + '</b></div>' +
+      '<div class="stat-line"><span>Heirs</span><b>' + (r.heirs.length ? r.heirs.map(function (x) { return x.name + ' (' + Math.floor(x.age) + ')'; }).join(', ') : 'none yet') + '</b></div>' +
+      '</div>'));
+    var perks = Object.keys(G.perks || {});
+    box.appendChild(h('<p class="sect-label">Charters of the realm</p>'));
+    box.appendChild(h(perks.length ? '<div class="card">' + perks.map(function (id) { var c = COURT.CHARTERS[id]; return '<div class="stat-line"><span>' + c.ic + ' ' + c.name + '</span><b style="font-weight:400">' + c.desc + '</b></div>'; }).join('') + '</div>'
+      : '<p class="hint" style="margin-top:0">At the end of each chapter the council offers three charters. You choose one, for good.</p>'));
+    box.appendChild(h('<p class="sect-label">Petitions</p>'));
+    var ps = G.petitions || [];
+    box.appendChild(h(ps.length ? '<div class="card">' + ps.map(function (a) {
+      return '<div class="stat-line"><span>' + COURT.petitionLabel(a) + '<br><small style="color:#8a7a5e">from ' + a.who + '</small></span><b>' + Math.max(0, (a.until - G.time) / DATA.SEASON_LEN).toFixed(1) + ' seasons</b></div>';
+    }).join('') + '</div>' : '<p class="hint" style="margin-top:0">No petitions open. Villagers write to you now and then — answer in time and they remember it.</p>'));
+  }
+
   function peopleBody(box, tab) {
     var G = SIM.G;
     if (tab === 'folk') { folkBody(box); return; }
+    if (tab === 'court') { courtBody(box); return; }
     if (tab === 'overview') {
       var target = SIM.happyTarget();
       var led = h('<div class="card ledger"><p class="sect-label" style="margin:0 0 6px">The ledger, season by season</p><div class="ledger-grid"></div></div>');
@@ -1922,11 +1972,18 @@ var UI = (function () {
     U.sfx.victory();
     chronicle('Chapter ' + ROMAN[idx] + ' closed: ' + ch.title);
     if (!nxt) return;               // the last chapter ends in the victory card
-    storyCard(ch.icon, 'Chapter ' + ROMAN[idx] + ' complete', ch.done + (rewardText(ch.reward) ? '\n\nThe realm is rewarded: ' + rewardText(ch.reward) : ''), [
-      { label: 'Onward', sub: 'Chapter ' + ROMAN[idx + 1] + ': ' + nxt.title, then: function () {
-        storyCard(nxt.icon, 'Chapter ' + ROMAN[idx + 1] + ' · ' + nxt.title, nxt.text, [{ label: 'Begin', sub: nxt.goals.length + ' goals — see the card at the top of the screen' }]);
-      } }
-    ]);
+    if (SCENERY.fireworks) SCENERY.fireworks(8);
+    var next = function () {
+      storyCard(nxt.icon, 'Chapter ' + ROMAN[idx + 1] + ' · ' + nxt.title, nxt.text, [{ label: 'Begin', sub: nxt.goals.length + ' goals — see the card at the top of the screen' }]);
+    };
+    // each chapter's end grants a charter: one of three, for the rest of the reign
+    var choices = COURT.charterChoices(idx);
+    storyCard(ch.icon, 'Chapter ' + ROMAN[idx] + ' complete', ch.done + (rewardText(ch.reward) ? '\n\nThe realm is rewarded: ' + rewardText(ch.reward) : '') +
+      (choices.length ? '\n\nThe council asks what kind of realm this is to be. Choose a charter — it lasts the whole reign.' : ''),
+      choices.length ? choices.map(function (id) {
+        var c = COURT.CHARTERS[id];
+        return { label: c.ic + ' ' + c.name, sub: c.desc, then: function () { COURT.takeCharter(id); chronicle('Granted the ' + c.name + '.'); toast(c.ic + ' ' + c.name + ' granted.', 'good'); next(); } };
+      }) : [{ label: 'Onward', sub: 'Chapter ' + ROMAN[idx + 1] + ': ' + nxt.title, then: next }]);
   }
   function victoryEvent() {
     var G = SIM.G;
@@ -1971,11 +2028,17 @@ var UI = (function () {
      Offers, requests and festivals arrive as sealed scrolls. The game keeps
      going; open them when it suits you. Most go stale after a while. */
   function letterTitle(L) {
+    if (L.k === 'petition') return 'A petition from ' + L.who;
+    if (L.k === 'match') return 'A match is proposed';
+    if (L.k === 'harric') return 'A letter from Lord Harric';
     if (L.k === 'event') return (DATA.EVENTS[L.i] || {}).title || 'A letter';
     if (L.k === 'festival') return (DATA.FESTIVALS[L.key] || {}).title || 'A festival';
     return 'Your steward asks for a word';
   }
   function letterArt(L) {
+    if (L.k === 'petition') return '🙏';
+    if (L.k === 'match') return '💍';
+    if (L.k === 'harric') return '📜';
     if (L.k === 'event') return (DATA.EVENTS[L.i] || {}).art || '📜';
     if (L.k === 'festival') return (DATA.FESTIVALS[L.key] || {}).art || '🎉';
     return '🕯️';
@@ -2006,7 +2069,22 @@ var UI = (function () {
     var L = G.letters.shift();
     refreshLetters();
     U.sfx.tap();
-    if (L.k === 'event') showEvent(DATA.EVENTS[L.i]);
+    if (L.k === 'petition') {
+      storyCard('🙏', 'A Petition', COURT.petitionText(L) + '\n\nThey hope to see it done within two seasons.', [
+        { label: 'We shall see to it', sub: 'Do it in time for a reward; fail and people talk', then: function () { COURT.acceptPetition(L); toast('🙏 Petition accepted — see the Advisor.', 'good'); } },
+        { label: 'Not now', sub: '−2 contentment', then: function () { SIM.G.happy = U.clamp(SIM.G.happy - 2, 0, 100); } }
+      ]);
+    } else if (L.k === 'match') {
+      var R0 = COURT.ruler();
+      storyCard('💍', 'A Match for the ' + R0.title, 'Your council has three matches for ' + COURT.styled(R0) + '. Each would bring something to the realm.',
+        COURT.matchOffer().map(function (o) { return { label: o.label, sub: o.sub, then: function () { var m = COURT.marry(o); toast(m, 'good'); chronicle(m); U.sfx.quest(); if (SCENERY.fireworks) SCENERY.fireworks(6); } }; })
+          .concat([{ label: 'Not yet', sub: 'The council will ask again in a year', then: function () { R0.matchOffered = false; R0.matchAt = SIM.G.time + DATA.SEASON_LEN * 4; } }]));
+    } else if (L.k === 'harric') {
+      var H = COURT.harricCard(L.kind);
+      storyCard(H.art, H.title, H.text, H.choices.map(function (c) {
+        return { label: c.label, sub: c.sub, then: function () { COURT.applyChoice(c); refreshHUD(); } };
+      }));
+    } else if (L.k === 'event') showEvent(DATA.EVENTS[L.i]);
     else if (L.k === 'festival') festivalEvent(L.key);
     else reliefEvent();
   }
@@ -2054,6 +2132,7 @@ var UI = (function () {
           return;
         }
         if (c.apply) SIM.applyEffects(c.apply);   // applyEffects clamps at zero
+        if (c.apply && c.apply.happy >= 10 && SCENERY.fireworks) SCENERY.fireworks(5);
         setSpeed(prevSpeed || 1);
         refreshHUD();
       });
@@ -2257,6 +2336,15 @@ var UI = (function () {
       if (kind === 'honour') { toast('🏅 Honour earned: ' + payload.name + ' — ' + payload.desc, 'good'); chronicle('Honour earned: ' + payload.name + '.'); U.sfx.victory(); }
       if (kind === 'work-done') { var wp = DATA.PROJECTS[payload]; toast(wp.ic + ' ' + wp.name + ' is finished! ' + wp.desc.split('.').slice(1).join('.').trim(), 'good'); chronicle(wp.name + ' was completed.'); U.sfx.quest(); }
       if (kind === 'grow-built') { toast('🏘️ ' + payload.msg, ''); if (payload.b) showUndo(); }
+      if (kind === 'court-letter') addLetter(payload);
+      if (kind === 'court') { toast(payload.msg, payload.good ? 'good' : 'bad'); chronicle(payload.msg); if (/born/.test(payload.msg) && SCENERY.fireworks) SCENERY.fireworks(4); }
+      if (kind === 'succession') {
+        var sc2 = payload;
+        chronicle(sc2.old.title + ' ' + sc2.old.name + ' died, aged ' + Math.floor(sc2.old.age) + '. ' + COURT.styled(sc2.next) + ' succeeds.');
+        storyCard('⚱️', 'The ' + sc2.old.title + ' Is Dead', sc2.old.title + ' ' + sc2.old.name + ' of House ' + sc2.old.house + ' has died, aged ' + Math.floor(sc2.old.age) + ', after ' +
+          'a reign the chroniclers will argue over for years.\n\n' + sc2.note + '\n\nLong live ' + COURT.styled(sc2.next) + '.', [{ label: 'Long live the ' + sc2.next.title }]);
+        U.sfx.defeat();
+      }
       if (kind === 'plan-built') toast('📐 The builders have started the planned ' + DATA.B[payload.plan.id].name.toLowerCase() + '.', 'good');
       if (kind === 'harvest') { toast('🌾 Harvest time! ' + payload + ' food stands in the fields — the farmhands are bringing it in.', 'good'); chronicle('The harvest began: ' + payload + ' in the fields.'); U.sfx.quest(); }
       if (kind === 'fire') {

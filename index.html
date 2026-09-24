@@ -173,6 +173,16 @@
       <button class="primary" id="btn-continue" type="button">Continue</button>
       <button class="primary" id="btn-new" type="button">New Kingdom</button>
       <div id="setup" class="hidden">
+        <p class="setup-label">Your ruler</p>
+        <div class="ruler-row">
+          <input id="ruler-name" maxlength="16" autocomplete="off" aria-label="Your name">
+          <button type="button" class="setup-pill" id="ruler-title">Queen</button>
+        </div>
+        <div class="ruler-row">
+          <span class="house-of">of House</span><input id="ruler-house" maxlength="16" autocomplete="off" aria-label="House">
+          <button type="button" class="setup-pill" id="ruler-dice" title="Roll another">🎲</button>
+        </div>
+        <div class="setup-row banner-row" id="banner-row"></div>
         <p class="setup-label">The island</p><div class="setup-row" data-k="map"></div>
         <p class="setup-label">The world</p><div class="setup-row" data-k="diff"></div>
         <p class="setup-label">The beginning</p><div class="setup-row" data-k="scen"></div>
@@ -196,6 +206,7 @@
 <script src="js/explore.js"></script>
 <script src="js/honours.js"></script>
 <script src="js/steward.js"></script>
+<script src="js/court.js"></script>
 <script src="js/agents.js"></script>
 <script src="js/scenery.js"></script>
 <script src="js/render.js"></script>

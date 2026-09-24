@@ -40,6 +40,7 @@ var SIM = (function () {
     if (typeof EXPLORE !== 'undefined') EXPLORE.reset();
     if (typeof HONOURS !== 'undefined') HONOURS.reset();
     if (typeof STEWARD !== 'undefined') STEWARD.reset();
+    if (typeof COURT !== 'undefined') COURT.reset();
     seed = seed || Math.floor(Math.random() * 1e9);
     setup = setup || { map: 'green', diff: 'fair', scen: 'standard' };
     var spot = W.generate(seed, setup.map);
@@ -310,6 +311,9 @@ var SIM = (function () {
     Object.keys(def.cost || {}).forEach(function (k) {
       var v = def.cost[k];
       if (k === 'stone' && G.tech.masonry) v *= 0.9;
+      if (k === 'stone' && perk('masons')) v *= 0.8;
+      if (id === 'market' && perk('trade')) v *= 0.8;
+      if ((id === 'chapel' || id === 'well') && perk('holy')) v *= 0.67;
       out[k] = Math.round(v * (diff().cost || 1));
     });
     return out;
@@ -640,11 +644,19 @@ var SIM = (function () {
     return 'raid';
   }
 
+  /* a home with a well, a market, a chapel or a tavern near its door pays
+     more: neighbours matter */
+  function homeMul(b) {
+    if (typeof FOLK === 'undefined') return 1;
+    var sv = FOLK.servicesOf(b), n = (sv.well ? 1 : 0) + (sv.market ? 1 : 0) + (sv.chapel ? 1 : 0) + (sv.tavern ? 1 : 0);
+    return 1 + 0.12 * n;
+  }
+  function perk(id) { return typeof COURT !== 'undefined' && COURT.perk(id); }
   function defenseScore() {
     var d = castleBonus().defense || 0;
     var mul = G.tech.fortification ? 1.6 : 1;
     G.buildings.forEach(function (b) { if (b.built && b.def.defense) d += b.def.defense * mul * lvlMul(b); });
-    return Math.round(d);
+    return Math.round(d * (perk('fortress') ? 1.3 : 1));
   }
 
   function smithBonus() {
@@ -855,6 +867,9 @@ var SIM = (function () {
     if (res === 'gold' && G.tech.trade_charter) m += 0.25;
     if (res === 'gold' && G.tech.guilds) m += 0.15;
     if (res === 'gold' && G.tech.banking) m += 0.25;
+    if (res === 'gold' && perk('trade')) m += 0.15;
+    if (res === 'food' && perk('granary')) m += 0.15;
+    if (res === 'wood' && perk('foresters')) m += 0.25;
     var cb = castleBonus();
     if (res === 'gold' && cb.gold) m += cb.gold;
     if (cb.all) m += cb.all;
@@ -1123,14 +1138,14 @@ var SIM = (function () {
     G.buildings.forEach(function (b) {
       if (!b.built || !b.def.evolves) return;
       var tier = DATA.HOUSE_TIERS[(b.level || 1) - 1];
-      if (tier && tier.tax) net.gold += tier.tax * techMul('gold');
+      if (tier && tier.tax) net.gold += tier.tax * techMul('gold') * homeMul(b);
       if ((b.level || 1) >= 3) fine++;
     });
     if (fine) net.cloth -= fine * DATA.CLOTH_PER_FINE_HOUSE;
     net.tools -= toolDemand() * (G.toolCov || 0);
     net.bread -= breadDemand() * (G.breadCov || 0);
     net.food -= G.pop * 0.055 * (1 - BREAD_SAVING * (G.breadCov || 0)) * (G.rationUntil > G.time ? 0.65 : 1);
-    net.food -= armySlots() * 0.012;
+    net.food -= armySlots() * 0.012 * (perk('fortress') ? 0.5 : 1);
     net.food -= campaignSlots() * PROVISION_PER_SLOT;
     net.gold -= armySlots() * 0.014;
     if (season().key === 'winter') {
@@ -1190,7 +1205,7 @@ var SIM = (function () {
     // construction
     G.buildings.forEach(function (b) {
       if (b.built) { b.t += dt; return; }
-      var speed = (1 + G.builders * 0.35) / Math.max(1, b.def.build);
+      var speed = (1 + G.builders * 0.35) / Math.max(1, b.def.build) * (perk('masons') ? 1.3 : 1);
       var dp = speed * dt;
       if (b.def.wonderCost) {
         // each slice of progress must be paid for as it is laid
@@ -1246,7 +1261,7 @@ var SIM = (function () {
 
     // research
     if (G.research) {
-      var rate = 0.34 * (done('academy') ? 1.4 : 1);
+      var rate = 0.34 * (done('academy') ? 1.4 : 1) * (perk('scholars') ? 1.3 : 1);
       G.buildings.forEach(function (b) {
         if (b.built && b.def.research) rate += b.def.research * staffRatio(b) * lvlMul(b);
       });
@@ -1300,6 +1315,7 @@ var SIM = (function () {
     if (typeof EXPLORE !== 'undefined') EXPLORE.tick(dt);
     if (typeof HONOURS !== 'undefined') HONOURS.tick(dt);
     if (typeof STEWARD !== 'undefined') STEWARD.tick(dt);
+    if (typeof COURT !== 'undefined') COURT.tick(dt);
     tickWeather(dt);
     tickHarvest(dt);
     tickFire(dt);
@@ -1409,7 +1425,7 @@ var SIM = (function () {
         var sk = season().key, sm = sk === 'winter' ? 1.5 : sk === 'summer' ? 1.3 : 1;
         G.buildings.forEach(function (b) {
           if (!b.built || b.fire) return;
-          var risk = fireRisk(b);
+          var risk = fireRisk(b) * (perk('foresters') ? 0.7 : 1);
           if (!risk) return;
           var p = 0.00042 * risk * sm * (wellsNear(b, 4) ? 0.4 : 1) * diff().fire * (G.fireCalm > G.time ? 0.3 : 1);
           if (Math.random() < p) ignite(b);
@@ -2362,7 +2378,7 @@ var SIM = (function () {
       tut: typeof G.tut === 'number' ? G.tut : -1, mkt: G.mkt || {}, decrees: G.decrees || {}, shiftUntil: G.shiftUntil || -1, finds: G.finds || [],
       dip: G.dip || null, tribute: G.tribute || null,
       folk: typeof FOLK !== 'undefined' ? FOLK.pack() : null,
-      grow: G.grow || null,
+      grow: G.grow || null, ruler: G.ruler || null, petitions: G.petitions || [], perks: G.perks || {},
       works: G.works || {}, workNow: G.workNow || null, rationUntil: G.rationUntil || 0, fireCalm: G.fireCalm || 0, banditAt: G.banditAt || -1e9,
       plans: G.plans || [], news: (G.news || []).slice(0, 40), letters: G.letters || [], tips: G.tips || {},
       hist: G.hist || [], fog: G.fog, sites: G.sites || null, sea: G.sea || null, scouts: G.scouts || [], blessing: G.blessing || 0,
@@ -2410,6 +2426,7 @@ var SIM = (function () {
     if (typeof EXPLORE !== 'undefined') EXPLORE.reset();
     if (typeof HONOURS !== 'undefined') HONOURS.reset();
     if (typeof STEWARD !== 'undefined') STEWARD.reset();
+    if (typeof COURT !== 'undefined') COURT.reset();
     if (!d || !(d.v >= 2 && d.v <= 4)) return false;    // older saves still load
     W.deserialize(d.world);
     var st = d.stats || {};
@@ -2426,7 +2443,7 @@ var SIM = (function () {
       chapter: d.chapter || 0, won: !!d.won, weather: 'clear', weatherTimer: 30,
       tut: typeof d.tut === 'number' ? d.tut : -1, mkt: d.mkt || {}, decrees: d.decrees || {}, shiftUntil: d.shiftUntil || -1, finds: d.finds || [],
       dip: d.dip || null, tribute: d.tribute || null, folkSave: d.folk || null,
-      grow: d.grow || null,
+      grow: d.grow || null, ruler: d.ruler || null, petitions: d.petitions || [], perks: d.perks || {},
       works: d.works || {}, workNow: d.workNow || null, rationUntil: d.rationUntil || 0, fireCalm: d.fireCalm || 0, banditAt: d.banditAt === undefined ? -1e9 : d.banditAt,
       plans: d.plans || [], news: d.news || [], letters: d.letters || [], tips: d.tips || {},
       hist: d.hist || [], fog: d.fog, sites: d.sites || null, sea: d.sea || null, scouts: d.scouts || [], blessing: d.blessing || 0,
@@ -2502,6 +2519,7 @@ var SIM = (function () {
     preview: preview, soilMul: soilMul,
     canUndo: canUndo, undoLeft: undoLeft, undoPlace: undoPlace, lastAction: function () { return lastPlaced && lastPlaced.kind; },
     autoBattle: autoBattle, foeSpec: foeSpec, foeStrengthOf: foeStrengthOf, banditPower: banditPower, banditReady: banditReady,
+    perk: perk, homeMul: homeMul,
     done: done, workProgress: workProgress, workAvailable: workAvailable, startWork: startWork, zeal: zeal,
     planBuild: planBuild, cancelPlan: cancelPlan, planAt: planAt, get plans() { return plans(); },
     moveCost: moveCost, canMove: canMove, moveBuilding: moveBuilding,

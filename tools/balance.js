@@ -32,7 +32,7 @@ global.document = {
 
 // runInThisContext, not eval: a strict-mode eval keeps its declarations to
 // itself, so the game's globals would never appear.
-for (const f of ['util', 'data', 'world', 'sim', 'folk', 'steward', 'agents']) {
+for (const f of ['util', 'data', 'world', 'sim', 'folk', 'steward', 'court', 'agents']) {
   vm.runInThisContext(fs.readFileSync(path.join(ROOT, 'js', f + '.js'), 'utf8'), { filename: f + '.js' });
 }
 const { U, DATA, W, SIM, AGENTS } = global;

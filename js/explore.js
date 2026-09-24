@@ -281,7 +281,7 @@ var EXPLORE = (function () {
     if (sp.known) return { ok: false, why: 'Already charted' };
     if (!canAfford(CHART_COST)) return { ok: false, why: 'Needs 30 gold and 20 food for the crew' };
     pay(CHART_COST);
-    g.sea.voyage = { to: i, t: 0, len: DATA.SEASON_LEN * 0.55 };
+    g.sea.voyage = { to: i, t: 0, len: DATA.SEASON_LEN * 0.55 * (SIM.perk && SIM.perk('seafarers') ? 0.5 : 1) };
     return { ok: true, msg: 'A ship puts out to chart the waters. Back in about half a season.' };
   }
   function tickSea(dt) {
@@ -341,7 +341,7 @@ var EXPLORE = (function () {
           notes.push('Sea Wolves raided ' + d.name + ' — nothing came home');
           return;
         }
-        var amt = d.amt * (SIM.season().key === 'winter' && sp.k === 'food' ? 0.4 : 1) * (SIM.done('harbour') ? 1.25 : 1);
+        var amt = d.amt * (SIM.season().key === 'winter' && sp.k === 'food' ? 0.4 : 1) * (SIM.done('harbour') ? 1.25 : 1) * (SIM.perk && SIM.perk('seafarers') ? 1.3 : 1);
         g.res[d.res] = Math.min(SIM.cap(d.res), (g.res[d.res] || 0) + amt);
         if (g.seen) g.seen[d.res] = 1;
         notes.push('+' + Math.round(amt) + ' ' + d.res + ' from ' + d.name);
