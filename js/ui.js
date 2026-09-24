@@ -2285,6 +2285,12 @@ var UI = (function () {
      ========================================================= */
   function init() {
     bindInput(el('scene'));
+    // the news line sits just under the HUD, however tall it has wrapped
+    var hudTop = el('hud-top'), placeNews = function () {
+      el('app').style.setProperty('--hud-b', Math.round(hudTop.getBoundingClientRect().bottom) + 'px');
+    };
+    if (window.ResizeObserver) new ResizeObserver(placeNews).observe(hudTop);
+    window.addEventListener('resize', placeNews); placeNews();
     guard('event-modal', 'modal');
     RENDER.onQuality = function (lvl) {
       toast('Lowered the detail to ' + (lvl === 'saver' ? 'battery saver' : 'balanced') + ' for smoother play. Change it in ☰ → Settings.', '');
