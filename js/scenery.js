@@ -215,6 +215,28 @@ var SCENERY = (function () {
       if (h % 3 === 0 && season !== 'winter' && api.night < 0.55)
         items.push({ k: 'scn', d: b.x + b.y + 1.4, o: { draw: function (g2) { drawHens(g2, b, h, api); } } });
     });
+    // storm damage: a tarp over the torn thatch
+    g.buildings.forEach(function (b) {
+      if (!b.damage || !api.onScreen(b.x + 0.5, b.y + 0.5, api.z * 2)) return;
+      items.push({ k: 'scn', d: b.x + b.y + (b.def.w || 1) + 0.1, o: { draw: function (g2) {
+        var s = api.toScreen(b.x + (b.def.w || 1) * 0.5, b.y + (b.def.h || 1) * 0.5), u = api.z / 60;
+        g2.fillStyle = '#6b5a44'; g2.save(); g2.translate(s.x + 4 * u, s.y - 30 * u); g2.rotate(-0.4);
+        g2.fillRect(-8 * u, -4 * u, 16 * u, 9 * u); g2.strokeStyle = '#3d2c1c'; g2.lineWidth = 0.8; g2.strokeRect(-8 * u, -4 * u, 16 * u, 9 * u); g2.restore();
+      } } });
+    });
+    // the churchyard fills, one stone at a time
+    var chapel = g.buildings.filter(function (b) { return b.built && b.id === 'chapel'; })[0], dead = Math.min(24, g.stats.dead || 0);
+    if (chapel && dead && api.onScreen(chapel.x + 0.5, chapel.y + 0.5, api.z * 3)) {
+      items.push({ k: 'scn', d: chapel.x + chapel.y + 1.9, o: { draw: function (g2) {
+        var u = api.z / 60;
+        for (var i = 0; i < dead; i++) {
+          var s = api.toScreen(chapel.x + 1.15 + (i % 4) * 0.16, chapel.y + 0.15 + Math.floor(i / 4) * 0.15);
+          g2.fillStyle = 'rgba(0,0,0,.2)'; g2.fillRect(s.x - 1 * u, s.y - 0.5 * u, 4 * u, 1.5 * u);
+          g2.fillStyle = i % 3 ? '#a39c8c' : '#8f8878';
+          g2.beginPath(); g2.moveTo(s.x - 1.6 * u, s.y); g2.lineTo(s.x - 1.6 * u, s.y - 3.6 * u); g2.quadraticCurveTo(s.x, s.y - 5.4 * u, s.x + 1.6 * u, s.y - 3.6 * u); g2.lineTo(s.x + 1.6 * u, s.y); g2.fill();
+        }
+      } } });
+    }
     carts.forEach(function (ct) {
       if (api.onScreen(ct.x, ct.y, 60)) items.push({ k: 'scn', d: ct.x + ct.y + 0.03, o: { draw: function (g2) { drawCart(g2, ct, api); } } });
     });

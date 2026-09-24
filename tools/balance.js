@@ -114,6 +114,8 @@ function runKingdom(seed, seasons) {
   const DT = 0.5, ticks = Math.round(seasons * DATA.SEASON_LEN / DT);
 
   SIM.on(k => { if (k === 'raid-incoming') rec.raids++; });
+  // a stuck realm is offered the vault; any player would take it
+  SIM.on(k => { if (k === 'relief' && SIM.G === G) { G.res.gold += 120; G.res.wood += 60; G.res.stone += 40; rec.reliefs = (rec.reliefs || 0) + 1; } });
   // every kingdom follows its own copy of the plan: counting down a shared
   // one left every kingdom after the first with a plan of single buildings
   const plan = PLAN.map(p => p.slice());

@@ -531,6 +531,13 @@ var UI = (function () {
         requestAnimationFrame(function () { HONOURS.drawChart(cell.querySelector('canvas'), c[0], c[2]); });
       });
       box.appendChild(led);
+      var fwN = SIM.hearths();
+      var dietNames = [G.count.farm ? 'grain' : '', G.count.fishery ? 'fish' : '', G.count.hunter ? 'venison' : '', (G.breadCov || 0) > 0.2 ? 'bread' : ''].filter(Boolean);
+      box.appendChild(h('<div class="card">' +
+        '<div class="stat-line"><span>🪵 Firewood a winter</span><b style="color:' + (G.res.wood > fwN * DATA.SEASON_LEN ? '#8fd06a' : '#e0795f') + '">~' + Math.round(fwN * DATA.SEASON_LEN) + ' wood' + (SIM.cold() ? ' — the town is freezing!' : '') + '</b></div>' +
+        '<div class="stat-line"><span>🍲 On the table</span><b>' + (dietNames.join(', ') || 'nothing much') + (dietNames.length > 1 ? ' (+' + (dietNames.length - 1) * 2 + ' contentment)' : '') + '</b></div>' +
+        (G.drought && SIM.season().key === 'summer' ? '<div class="stat-line"><span>☀️ Drought</span><b style="color:#e0b23c">a dry summer — thin crops away from wells</b></div>' : '') +
+        '</div>'));
       box.appendChild(h('<div class="card">' +
         '<div class="stat-line"><span>Villagers</span><b>' + Math.floor(G.pop) + ' / ' + Math.floor(SIM.housing()) + ' housing</b></div>' +
         '<div class="stat-line"><span>At work</span><b>' + (Math.floor(G.pop) - (G.idle || 0)) + '</b></div>' +
@@ -1089,6 +1096,17 @@ var UI = (function () {
       } else {
         box.appendChild(h('<p class="hint">Your castle can rise no further. Ashveil is complete.</p>'));
       }
+      box.appendChild(h('<p class="sect-label">Taxes and the tithe</p>'));
+      var tr = h('<div class="pill-row"></div>');
+      [['low', 'Light taxes', '−40% house tax, +6 contentment'], ['normal', 'Fair taxes', ''], ['high', 'Heavy taxes', '+50% house tax, −10 contentment']].forEach(function (o) {
+        var on = (G.tax || 'normal') === o[0], pb = h('<button class="pill' + (on ? ' on' : '') + '">' + o[1] + '</button>');
+        pb.addEventListener('click', function () { G.tax = o[0]; U.sfx.tap(); if (o[2]) toast(o[1] + ': ' + o[2] + '.', ''); renderSheet(); refreshHUD(); });
+        tr.appendChild(pb);
+      });
+      var tt = h('<button class="pill' + (G.tithe ? ' on' : '') + '">⛪ Pay the tithe</button>');
+      tt.addEventListener('click', function () { G.tithe = !G.tithe; U.sfx.tap(); if (G.tithe) toast('The church takes a tenth of the house tax; the people are glad of it (+4).', ''); renderSheet(); });
+      tr.appendChild(tt);
+      box.appendChild(tr);
       worksList(box);
       box.appendChild(h('<p class="sect-label">Realm at a glance</p>'));
       var built = G.buildings.filter(function (b2) { return b2.built; }).length;
@@ -1461,12 +1479,31 @@ var UI = (function () {
         fb.addEventListener('click', function () { SIM.rallyBrigade(b); U.sfx.horn(); U.vibrate(25); renderInspector(); });
         acts.appendChild(fb);
       }
+      if (b.damage) lines.push('<div class="stat-line"><span style="color:#e0b23c">⛈️ Storm damage</span><b>' + Math.round(b.damage * 100) + '% — builders mending it with timber</b></div>');
       if (b.def.seasonal && b.built) {
+        var soil = b.soil === undefined ? 1 : b.soil, fal = b.fallowUntil > SIM.G.time;
+        lines.push('<div class="stat-line"><span>🌱 Soil</span><b style="color:' + (soil > 0.66 ? '#8fd06a' : soil > 0.35 ? '#e0b23c' : '#e0795f') + '">' +
+          (fal ? 'lying fallow — ' + Math.max(0, (b.fallowUntil - SIM.G.time) / DATA.SEASON_LEN).toFixed(1) + ' seasons left' : soil > 0.85 ? 'rich' : soil > 0.6 ? 'good' : soil > 0.35 ? 'tired' : 'worn out') +
+          ' (' + Math.round(SIM.tired(b) * 100) + '% yield)</b></div>');
+        if (!fal && soil < 0.8) {
+          var fb2 = h('<button class="btn sec">🌾 Let it lie fallow (3 seasons)</button>');
+          fb2.addEventListener('click', function () { SIM.fallow(b); toast('The field is left to rest. It will come back rich.', 'good'); U.sfx.tap(); renderInspector(); });
+          acts.appendChild(fb2);
+        }
         var hr = SIM.harvestRate(b);
         lines.push('<div class="stat-line"><span>🌾 Crop standing in the fields</span><b>' + Math.round(b.crop || 0) + '</b></div>');
         lines.push('<div class="stat-line"><span>Now</span><b>' + (hr > 0 ? 'harvesting — ' + (hr * DATA.SEASON_LEN).toFixed(0) + ' a season'
           : SIM.season().key === 'winter' ? 'the fields lie fallow' : SIM.season().key === 'autumn' ? 'harvest is in'
           : 'growing — harvest comes in autumn') + '</b></div>');
+      }
+      if (b.id === 'fishery' || b.id === 'hunter') {
+        var stk = SIM.G.stocks ? SIM.G.stocks[b.id === 'fishery' ? 'fish' : 'deer'] : 1;
+        lines.push('<div class="stat-line"><span>' + (b.id === 'fishery' ? '🐟 Fish in these waters' : '🦌 Deer in the woods') + '</span><b style="color:' + (stk > 0.66 ? '#8fd06a' : stk > 0.35 ? '#e0b23c' : '#e0795f') + '">' +
+          (stk > 0.8 ? 'plenty' : stk > 0.55 ? 'thinning' : stk > 0.3 ? 'scarce' : 'nearly gone') + ' (' + Math.round(SIM.stockMul(b) * 100) + '%)</b></div>');
+      }
+      if (b.built && SIM.jobsOf(b) > 0 && typeof FOLK !== 'undefined') {
+        var skm = FOLK.skillMul(b);
+        if (skm > 1.01) lines.push('<div class="stat-line"><span>⭐ Old hands</span><b>+' + Math.round((skm - 1) * 100) + '% from years at the trade</b></div>');
       }
       if (def.upkeep) lines.push('<div class="stat-line"><span>upkeep</span><b>−' + def.upkeep.toFixed(2) + ' g/s</b></div>');
       if (def.housing) lines.push('<div class="stat-line"><span>housing</span><b>+' + def.housing + '</b></div>');

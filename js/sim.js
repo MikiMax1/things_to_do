@@ -751,12 +751,13 @@ var SIM = (function () {
   }
 
   function assignWorkers(force) {
-    var key = G.buildings.length + '|' + Math.floor(G.pop) + '|' + (G.research ? 1 : 0) + '|' + (G.sickN || 0);
+    var key = G.buildings.length + '|' + Math.floor(G.pop) + '|' + (G.research ? 1 : 0) + '|' + (G.sickN || 0) + '|' + Math.floor(G.kidsOff || 0);
     if (!force && G._workTimer > 0 && G._workKey === key) return;
     G._workTimer = 0.45;
     G._workKey = key;
 
-    var avail = Math.max(0, Math.floor(G.pop) - (G.sickN || 0));   // the sick stay abed
+    // the sick stay abed, and little children do not work (older ones help)
+    var avail = Math.max(0, Math.floor(G.pop) - (G.sickN || 0) - Math.floor(G.kidsOff || 0));
     var list = G.buildings.filter(function (b) { return b.built && jobsOf(b) > 0 && !b.paused; });
     G.buildings.forEach(function (b) { b.workers = 0; });
     if (!list.length) { G.idle = avail; G.builders = Math.min(6, Math.max(1, Math.floor(avail * 0.5) + 1)); return; }
@@ -977,6 +978,107 @@ var SIM = (function () {
   function banditReady() { return G.time - (G.banditAt === undefined ? -1e9 : G.banditAt) >= DATA.SEASON_LEN; }
 
   /* ---------------------------------------------------------
+     the world pushing back, quietly: tired soil, dry summers, storm-torn
+     roofs, cold winters, thin fish and deer. Each one either looks after
+     itself or turns into a plain choice.
+     --------------------------------------------------------- */
+  // fields tire with every harvest and rest a little every season
+  function tired(b) { var s = b.soil === undefined ? 1 : b.soil; return 0.55 + 0.45 * s; }
+  function harvestSoil() {
+    G.buildings.forEach(function (b) {
+      if (!b.def.seasonal || !b.built) return;
+      if (b.soil === undefined) b.soil = 1;
+      b.soil = Math.max(0, b.soil - (G.tech.crop_rotation ? 0.035 : 0.08));
+    });
+  }
+  function restSoil() {
+    G.buildings.forEach(function (b) {
+      if (!b.def.seasonal || b.soil === undefined) return;
+      b.soil = Math.min(1, b.soil + (b.fallowUntil > G.time ? 0.3 : 0.025));
+    });
+  }
+  function fallow(b) {
+    if (!b.def.seasonal) return { ok: false, why: 'Only fields can lie fallow' };
+    b.fallowUntil = G.time + DATA.SEASON_LEN * 3; b.crop = 0;
+    return { ok: true };
+  }
+  // a dry summer: no rain, thin crops — unless there is water to hand
+  function droughtMul(b) {
+    if (!G.drought || season().key !== 'summer') return 1;
+    if (G.tech.irrigation) return 0.95;
+    return wellsNear(b, 3) ? 0.9 : 0.72;
+  }
+  // storm damage, mended by the builders with timber
+  function wear(b) { return 1 - (b.damage || 0) * 0.6; }
+  function stormDamage() {
+    var roofs = G.buildings.filter(function (b) { return b.built && fireRisk(b) > 0 && b.id !== 'castle' && !b.damage; });
+    var n = Math.min(roofs.length, 1 + Math.floor(Math.random() * 3)), hit = [];
+    for (var i = 0; i < n; i++) { var b = roofs.splice(Math.floor(Math.random() * roofs.length), 1)[0]; b.damage = 0.5 + Math.random() * 0.3; hit.push(b.def.name.toLowerCase()); }
+    if (hit.length) emit('toast', { msg: '⛈️ The storm tore at the thatch: ' + hit.join(', ') + ' damaged. The builders will mend them with timber.', kind: 'war' });
+  }
+  function mendRoofs(dt) {
+    G.buildings.forEach(function (b) {
+      if (!b.damage) return;
+      if (G.res.wood < 0.3 * dt) return;
+      G.res.wood -= 0.3 * dt;
+      b.damage = Math.max(0, b.damage - dt * 0.02);
+      if (!b.damage) delete b.damage;
+    });
+  }
+  // skill: a trade learned over years (the register knows who has been where)
+  function skill(b) { return typeof FOLK !== 'undefined' && FOLK.skillMul ? FOLK.skillMul(b) : 1; }
+  // fish and deer: stocks that thin if worked too hard, and come back
+  function stockMul(b) {
+    var st = G.stocks || { fish: 1, deer: 1 };
+    if (b.id === 'fishery') return 0.45 + 0.55 * st.fish;
+    if (b.id === 'hunter') return 0.4 + 0.6 * st.deer;
+    return 1;
+  }
+  function tickStocks(dt) {
+    if (!G.stocks) G.stocks = { fish: 1, deer: 1 };
+    var st = G.stocks, fishers = 0, hunters = 0;
+    G.buildings.forEach(function (b) { if (b.built && !b.paused) { if (b.id === 'fishery') fishers += staffRatio(b); if (b.id === 'hunter') hunters += staffRatio(b); } });
+    st.fish = U.clamp(st.fish - fishers * 0.00045 * dt + (1 - st.fish) * 0.006 * dt, 0.05, 1);
+    st.deer = U.clamp(st.deer - hunters * 0.0009 * dt + (1 - st.deer) * 0.005 * dt, 0.05, 1);
+  }
+  // woodcutters really do fell the woods around them; the woods grow back
+  function tickFelling(dt) {
+    G._fellT = (G._fellT || 0) - dt;
+    if (G._fellT > 0) return;
+    G._fellT = 12;
+    G.buildings.forEach(function (b) {
+      if (b.id !== 'lumber' || !b.built || b.paused || staffRatio(b) < 0.5) return;
+      if (Math.random() > (G.tech.forestry ? 0.12 : 0.25)) return;   // forestry replants as it goes
+      var best = null;
+      for (var dy = -2; dy <= 2; dy++) for (var dx = -2; dx <= 2; dx++) {
+        var t = W.at(b.x + dx, b.y + dy);
+        if (t && t.terr === 'forest' && !t.bld && (Math.abs(dx) > 1 || Math.abs(dy) > 1)) { best = t; break; }
+      }
+      if (best) { best.terr = 'grass'; best.cleared = true; best._trees = null; emit('felled', { t: best, gain: 0, quiet: true }); }
+    });
+  }
+  // winter: every hearth burns wood. Without it, the town is cold.
+  var FIREWOOD = 0.022;   // wood a second, per hearth, through the winter
+  function hearths() {
+    var n = 0;
+    G.buildings.forEach(function (b) { if (b.built && b.def.housing && b.id !== 'castle') n += FIREWOOD * lvlMul(b); });
+    return n;
+  }
+  function firewoodNeed() { return season().key === 'winter' ? hearths() : 0; }
+  function cold() { return season().key === 'winter' && G.res.wood < 1; }
+  // a varied table: grain, fish, meat, bread
+  function diet() {
+    var d = 0;
+    if (G.count.farm) d++;
+    if (G.count.fishery) d++;
+    if (G.count.hunter) d++;
+    if ((G.breadCov || 0) > 0.2) d++;
+    return d;
+  }
+  // taxes and the church's tithe, set by the ruler
+  function taxMul() { return G.tax === 'low' ? 0.6 : G.tax === 'high' ? 1.5 : 1; }
+
+  /* ---------------------------------------------------------
      great works: paid for as they go up
      --------------------------------------------------------- */
   function done(id) { return !!(G.works && G.works[id] === true); }
@@ -1034,8 +1136,9 @@ var SIM = (function () {
     if (ratio <= 0) return 0;
     var toolBoost = 1 + TOOL_BONUS * (G.toolCov || 0);
     if (G.tech.iron_ploughs) toolBoost += 0.25 * (G.toolCov || 0);
+    if (b.fallowUntil > G.time) return 0;
     return b.def.produces.food * efficiency() * ratio * auraFor(b) * lvlMul(b) * toolBoost *
-      techMul('food') * soilMul(b) * shiftMul();
+      techMul('food') * soilMul(b) * shiftMul() * tired(b) * droughtMul(b) * wear(b) * skill(b);
   }
   function cropRate(b) { return farmPotential(b) * CROP_RATE * growMul(); }
   function harvesting() { return season().key === 'autumn' && seasonProgress() < HARVEST_LEN + 0.02; }
@@ -1085,7 +1188,7 @@ var SIM = (function () {
     if (ratio <= 0 && jobsOf(b) > 0) return out;
     var toolBoost = (b.id === 'smith') ? 1 : 1 + TOOL_BONUS * (G.toolCov || 0);
     if (G.tech.iron_ploughs && (b.def.seasonal || b.def.seasonalWool)) toolBoost += 0.25 * (G.toolCov || 0);
-    var eff = efficiency() * ratio * auraFor(b) * lvlMul(b) * toolBoost * shiftMul();
+    var eff = efficiency() * ratio * auraFor(b) * lvlMul(b) * toolBoost * shiftMul() * wear(b) * skill(b) * stockMul(b);
     if (b.def.produces) {
       Object.keys(b.def.produces).forEach(function (k) {
         var v = b.def.produces[k] * eff * techMul(k);
@@ -1138,7 +1241,7 @@ var SIM = (function () {
     G.buildings.forEach(function (b) {
       if (!b.built || !b.def.evolves) return;
       var tier = DATA.HOUSE_TIERS[(b.level || 1) - 1];
-      if (tier && tier.tax) net.gold += tier.tax * techMul('gold') * homeMul(b);
+      if (tier && tier.tax) net.gold += tier.tax * techMul('gold') * homeMul(b) * taxMul() * (G.tithe ? 0.9 : 1);
       if ((b.level || 1) >= 3) fine++;
     });
     if (fine) net.cloth -= fine * DATA.CLOTH_PER_FINE_HOUSE;
@@ -1146,6 +1249,10 @@ var SIM = (function () {
     net.bread -= breadDemand() * (G.breadCov || 0);
     net.food -= G.pop * 0.055 * (1 - BREAD_SAVING * (G.breadCov || 0)) * (G.rationUntil > G.time ? 0.65 : 1);
     net.food -= armySlots() * 0.012 * (perk('fortress') ? 0.5 : 1);
+    net.wood -= firewoodNeed();
+    // with the woodpile low, anyone without a trade goes out for deadwood
+    if (firewoodNeed() && G.res.wood < hearths() * DATA.SEASON_LEN) net.wood += Math.min(firewoodNeed() * 0.8, (G.idle || 0) * 0.03);
+    if (season().key === 'winter') net.food -= (G.count.pasture || 0) * 0.015;   // hay for the flocks
     net.food -= campaignSlots() * PROVISION_PER_SLOT;
     net.gold -= armySlots() * 0.014;
     if (season().key === 'winter') {
@@ -1169,6 +1276,10 @@ var SIM = (function () {
     t += G.blessing || 0;
     if (G.rationUntil > G.time) t -= 12;
     t += diff().joy || 0;
+    if (cold()) t -= 14;
+    t += Math.max(0, diet() - 1) * 2;
+    if (G.tax === 'low') t += 6; else if (G.tax === 'high') t -= 10;
+    if (G.tithe) t += 4;
     // a bigger town expects more of its lord: crowds, noise, prices
     t -= U.clamp((G.pop - 45) * 0.12, 0, 14);
     // and the better off a household is, the harder it is to please
@@ -1310,6 +1421,9 @@ var SIM = (function () {
 
     if (typeof WAR !== 'undefined') WAR.tick(dt);
     tickPlans(dt);
+    tickStocks(dt);
+    tickFelling(dt);
+    mendRoofs(dt);
     tickWorks(dt);
     if (typeof FOLK !== 'undefined') FOLK.tick(dt);
     if (typeof EXPLORE !== 'undefined') EXPLORE.tick(dt);
@@ -1343,10 +1457,19 @@ var SIM = (function () {
       U.sfx.season();
       emit('season', season());
       dipSeason();
+      restSoil();
+      // one summer in seven or so is a dry one
+      G.drought = season().key === 'summer' && seasonIndex() > 4 && Math.random() < 0.15;
+      if (G.drought) emit('toast', { msg: '☀️ A dry summer: no rain is coming. Fields near a well hold up; the rest will be thin. (Irrigation would help.)', kind: 'war' });
+      if (season().key === 'autumn' && seasonIndex() > 2) {
+        var needW = Math.round(hearths() * DATA.SEASON_LEN);
+        if (G.res.wood < needW * 1.2) emit('toast', { msg: '🪵 Winter hearths will burn about ' + needW + ' wood. Lay some by, or the town will be cold.', kind: 'war' });
+      }
       if (season().key === 'autumn') {
         winterWarning();
         var any = 0;
         G.buildings.forEach(function (b) { if (b.def.seasonal && b.built) { b.cropStart = b.crop || 0; any += b.crop || 0; } });
+        harvestSoil();
         if (any > 1) emit('harvest', Math.round(any));
       }
       if (season().key === 'winter') {
@@ -1381,6 +1504,8 @@ var SIM = (function () {
     G.weather = wet ? 'rain' : 'clear';
     // now and then a summer or autumn rain comes in as a storm: wind, lightning
     G.storm = wet && (season().key === 'summer' || season().key === 'autumn') && Math.random() < 0.3;
+    if (G.drought && season().key === 'summer') { G.weather = 'clear'; G.storm = false; }
+    if (G.storm && seasonIndex() > 3) stormDamage();
     G.weatherTimer = wet ? 14 + Math.random() * 16 : 24 + Math.random() * 30;
   }
   function rainMul() { return G.weather === 'rain' ? 1.12 : 1; }
@@ -2243,6 +2368,11 @@ var SIM = (function () {
         text: 'Food is falling — about ' + seasons.toFixed(1) + ' seasons left',
         hint: 'Build farms, or a fishing hut by the water' });
     }
+    if (cold()) out.push({ sev: 2, ic: '🥶', text: 'No firewood — the town is freezing', hint: 'Timber, now: a lumber camp, felling woodland, or buying wood at market' });
+    G.buildings.forEach(function (b) {
+      if (b.def.seasonal && b.built && b.soil !== undefined && b.soil < 0.35 && !(b.fallowUntil > G.time))
+        out.push({ sev: 0, ic: '🌱', text: 'A field is worn out', b: b, hint: 'Tap it and let it lie fallow for a while — or research Crop Rotation' });
+    });
     ['gold', 'wood', 'stone'].forEach(function (k) {
       if (G.res[k] >= cap(k) * 0.98 && G.time > DATA.SEASON_LEN * 3)
         out.push({ sev: 0, ic: '📦', text: 'Your ' + k + ' store is full — anything more is wasted',
@@ -2326,6 +2456,7 @@ var SIM = (function () {
       if (foodTrend(net) < 0.2 || G.res.food < G.pop * 6) need('hunter', 'Winter: the forest still feeds you when the fields do not');
     }
     if (net.wood < 0.05 && G.res.wood < 90) need('lumber', 'Timber is running low');
+    if ((season().key === 'autumn' || season().key === 'winter') && G.res.wood < firewoodNeed() * DATA.SEASON_LEN + 60 + G.pop) need('lumber', 'Firewood for the winter hearths');
     if ((G.count.quarry || 0) === 0 && G.res.stone < 60) need('quarry', 'Nothing brings in stone');
     if (net.gold < 0.15) need('market', 'Gold comes in slowly');
     if (G.res.food >= cap('food') - 5 && G.res.food < G.pop * 20) need('granary', 'The barns are full');
@@ -2378,6 +2509,7 @@ var SIM = (function () {
       tut: typeof G.tut === 'number' ? G.tut : -1, mkt: G.mkt || {}, decrees: G.decrees || {}, shiftUntil: G.shiftUntil || -1, finds: G.finds || [],
       dip: G.dip || null, tribute: G.tribute || null,
       folk: typeof FOLK !== 'undefined' ? FOLK.pack() : null,
+      stocks: G.stocks || null, tax: G.tax || 'normal', tithe: !!G.tithe, drought: !!G.drought,
       grow: G.grow || null, ruler: G.ruler || null, petitions: G.petitions || [], perks: G.perks || {},
       works: G.works || {}, workNow: G.workNow || null, rationUntil: G.rationUntil || 0, fireCalm: G.fireCalm || 0, banditAt: G.banditAt || -1e9,
       plans: G.plans || [], news: (G.news || []).slice(0, 40), letters: G.letters || [], tips: G.tips || {},
@@ -2388,7 +2520,8 @@ var SIM = (function () {
       eventTimer: G.eventTimer, speed: G.speed, setup: G.setup,
       buildings: G.buildings.map(function (b) {
         return [b.id, b.x, b.y, b.built ? 1 : 0, Number(b.prog.toFixed(3)),
-                b.paused ? 1 : 0, b.level || 1, b.compact ? 1 : 0, Math.round(b.crop || 0), Math.round(b.cropStart || 0)];
+                b.paused ? 1 : 0, b.level || 1, b.compact ? 1 : 0, Math.round(b.crop || 0), Math.round(b.cropStart || 0),
+                b.soil === undefined ? 1 : Number(b.soil.toFixed(3)), b.fallowUntil || 0, Number((b.damage || 0).toFixed(3))];
       })
     };
     return U.save(d);
@@ -2443,6 +2576,7 @@ var SIM = (function () {
       chapter: d.chapter || 0, won: !!d.won, weather: 'clear', weatherTimer: 30,
       tut: typeof d.tut === 'number' ? d.tut : -1, mkt: d.mkt || {}, decrees: d.decrees || {}, shiftUntil: d.shiftUntil || -1, finds: d.finds || [],
       dip: d.dip || null, tribute: d.tribute || null, folkSave: d.folk || null,
+      stocks: d.stocks || null, tax: d.tax || 'normal', tithe: !!d.tithe, drought: !!d.drought,
       grow: d.grow || null, ruler: d.ruler || null, petitions: d.petitions || [], perks: d.perks || {},
       works: d.works || {}, workNow: d.workNow || null, rationUntil: d.rationUntil || 0, fireCalm: d.fireCalm || 0, banditAt: d.banditAt === undefined ? -1e9 : d.banditAt,
       plans: d.plans || [], news: d.news || [], letters: d.letters || [], tips: d.tips || {},
@@ -2458,6 +2592,7 @@ var SIM = (function () {
       b.built = !!a[3]; b.prog = a[4]; b.paused = !!a[5];
       b.level = a[6] || 1;
       b.crop = a[8] || 0; b.cropStart = a[9] || 0;
+      if (a[10] !== undefined) { b.soil = a[10]; if (a[11]) b.fallowUntil = a[11]; if (a[12]) b.damage = a[12]; }
       // Farms and pastures became 2×2 plots. One saved before that keeps its
       // single tile rather than spilling onto its neighbours.
       if (a[7] || (d.v < 4 && (b.def.w || 1) > 1 && b.id !== 'castle')) makeCompact(b);
@@ -2519,7 +2654,7 @@ var SIM = (function () {
     preview: preview, soilMul: soilMul,
     canUndo: canUndo, undoLeft: undoLeft, undoPlace: undoPlace, lastAction: function () { return lastPlaced && lastPlaced.kind; },
     autoBattle: autoBattle, foeSpec: foeSpec, foeStrengthOf: foeStrengthOf, banditPower: banditPower, banditReady: banditReady,
-    perk: perk, homeMul: homeMul,
+    perk: perk, homeMul: homeMul, hearths: hearths, tired: tired, fallow: fallow, cold: cold, diet: diet, firewoodNeed: firewoodNeed, stockMul: stockMul, taxMul: taxMul,
     done: done, workProgress: workProgress, workAvailable: workAvailable, startWork: startWork, zeal: zeal,
     planBuild: planBuild, cancelPlan: cancelPlan, planAt: planAt, get plans() { return plans(); },
     moveCost: moveCost, canMove: canMove, moveBuilding: moveBuilding,
